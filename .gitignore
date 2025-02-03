@@ -1,0 +1,7 @@
+STM32CubeMX/
+cubemx.temp/
+libopencm3/
+libusbhost/
+stutils/
+tinyusb/
+objs

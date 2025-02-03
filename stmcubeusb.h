@@ -1,0 +1,18 @@
+/*
+ * This is free and unencumbered software released into the public domain.
+ * See the LICENSE file for additional details.
+ *
+ * Designed by Chris Hooper in 2025.
+ *
+ * ---------------------------------------------------------------------
+ *
+ * ST-Micro CubeMX USB Host library handling.
+ */
+
+#ifndef _CUBEUSB_H
+#define _CUBEUSB_H
+
+void cubeusb_init(void);
+void cubeusb_shutdown(void);
+
+#endif /* _CUBEUSB_H */
