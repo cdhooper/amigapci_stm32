@@ -43,6 +43,7 @@ USB_SRCS := $(wildcard $(CUBEUHL)/*/*/*.c $(CUBEUHL)/*/*/*/*.c \
 
 USB_SRCS := $(filter-out %usbh_conf_template.c,$(USB_SRCS))
 USB_DEFS += \
+	    -Ist-micro \
 	    -I$(CUBEUHL)/Core/Inc -I$(CUBE)/USB_HOST/Target -I. \
 	    -I$(CUBEUHL)/Class/AUDIO/Inc \
 	    -I$(CUBEUHL)/Class/HUB \
