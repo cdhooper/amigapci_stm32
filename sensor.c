@@ -18,7 +18,12 @@
 #include "gpio.h"
 #include "power.h"
 #include "sensor.h"
+#include "fan.h"
 #include "timer.h"
+#include "config.h"
+
+#define CHANNEL_FAN_TACH 0x20
+#define CHANNEL_FAN_PWM  0x21
 
 #define PA 1
 #define PB 2
@@ -32,7 +37,7 @@ typedef struct {
     const char *s_name;
     uint8_t     s_adc_channel;  // ADC channel (0 - 18)
     uint8_t     s_gpio_packed;  // GPIO pin (0 = virtual)
-    uint8_t     s_power_domain; // Power domain (0 = all)
+    uint8_t     s_power_domain; // Power domain (0 = all, 1=PS, 2=Regulators)
     int16_t     s_mul;          // Scale reading multiplier (< 6500)
     int16_t     s_div;          // Scale reading divisor    (> 0)
     int         s_add;          // Add constant to reading after multiply
@@ -41,18 +46,21 @@ typedef struct {
 } sensor_t;
 
 static const sensor_t sensors[] = {
-    { "VrefInt", ADC_CHANNEL_VREF, 0x00, 0, 1, 1, 0, 1200, 1220 },
+//  { "VrefInt", ADC_CHANNEL_VREF, 0x00, 0, 1, 1, 0, 1200, 1220 },
+    { "VrefInt", ADC_CHANNEL_VREF, 0x00, 0, 1, 1, 0, 1190, 1230 },
     { "TEMP",    ADC_CHANNEL_TEMP, 0x00, 0, 10000 / TEMP_AVGSLOPE, 1,
             -1 * TEMP_V25 * 10000 / TEMP_AVGSLOPE + 25 * 100000, 0, 60000 },
     { "VBAT",    ADC_CHANNEL_VBAT, 0x00, 0, 2, 1, 0, 2000, 5100 },
-    { "V5SB",    1,  GPP(PA, 1), 0, 2, 1, 0,   4500,   5300 },
-    { "V5",      0,  GPP(PA, 0), 1, 2, 1, 0,   4500,   5300 },
-    { "V3P3",    2,  GPP(PA, 2), 1, 2, 1, 0,   3200,   3400 },
-    { "V1P2",    3,  GPP(PA, 3), 1, 1, 1, 0,   1100,   1300 },
+    { "V5SB",    1,  GPP(PA, 1), 0, 2, 1, 0,   4500,   5500 },
+    { "V5",      0,  GPP(PA, 0), 1, 2, 1, 0,   4500,   5500 },
+    { "V3P3",    2,  GPP(PA, 2), 1, 2, 1, 0,   3200,   3600 },
+    { "V1P2",    3,  GPP(PA, 3), 2, 1, 1, 0,   1100,   1300 },
 //  { "MONx",    6,  GPP(PA, 6), 0, 2, 1, 0,      0,   5000 },
 //  { "MONy",    7,  GPP(PA, 7), 0, 1, 1, 0,      0,   5000 },
     { "V12",     14, GPP(PC, 4), 1, 61, 10, 0,  11400,  12600 },
-    { "V-12",    15, GPP(PC, 5), 1, 61, 10, -1670000, -12600, -11400 },
+    { "V-12",    15, GPP(PC, 5), 1, 61, 10, -1670000, -12600, -11200 },
+    { "Fan",     CHANNEL_FAN_TACH, 0x00, 1, 1, 1, 0,   100000, 4000000 },
+    { "Fan %",   CHANNEL_FAN_PWM, 0x00, 1, 1, 1, 0,    0, 100000 },
 };
 #define SENSOR_COUNT ARRAY_SIZE(sensors)
 
@@ -68,6 +76,19 @@ typedef struct {
 sensor_state_t sensor_states[SENSOR_COUNT];
 
 uint64_t adc_startup_time;
+
+static int
+average_cpu_temp(int reading)
+{
+#define CPU_TEMP_BUCKETS 64
+    static int total;
+    reading += (int) config.cpu_temp_bias * 100000;
+    if (total == 0)
+        total = reading / 8 * CPU_TEMP_BUCKETS;
+    else
+        total += reading / 8 - total / CPU_TEMP_BUCKETS;
+    return (total / CPU_TEMP_BUCKETS * 8);
+}
 
 /*
  * print_limit
@@ -146,14 +167,31 @@ sensor_check_readings(void)
     uint adc_which = 0;
 
     for (cur = 0; cur < ARRAY_SIZE(sensors); cur++) {
-        int reading = adc_get_reading(adc_which++) * sensors[cur].s_mul /
-                      sensors[cur].s_div + sensors[cur].s_add;
+        int reading;
+        int limit_min = sensors[cur].s_limit_min;
+        int limit_max = sensors[cur].s_limit_max;
+        switch (sensors[cur].s_adc_channel) {
+            case CHANNEL_FAN_TACH:
+                reading = fan_get_rpm() * 100000;
+                fan_get_limits(&limit_min, &limit_max);
+                break;
+            case CHANNEL_FAN_PWM:
+                reading = fan_get_percent() * 100000;
+                break;
+            default:
+                reading = adc_get_reading(adc_which++) * sensors[cur].s_mul /
+                          sensors[cur].s_div + sensors[cur].s_add;
+                break;
+        }
+        if (sensors[cur].s_adc_channel == ADC_CHANNEL_TEMP)
+            reading = average_cpu_temp(reading);
+
         sensor_states[cur].ss_reading = reading;
 
         /* Check limits */
-        if (reading / 100 < sensors[cur].s_limit_min) {
+        if (reading / 100 < limit_min) {
             sensor_states[cur].ss_flags |= SS_FLAG_UNDER_LIMIT;
-        } else if (reading / 100 > sensors[cur].s_limit_max) {
+        } else if (reading / 100 > limit_max) {
             sensor_states[cur].ss_flags |= SS_FLAG_OVER_LIMIT;
         } else {
             /* Sensor is in normal state */
@@ -194,44 +232,67 @@ sensor_get_power_state(void)
     if (adc_startup_time != 0)
         return (POWER_STATE_INITIAL);  // Waiting for ADCs to start up
 
-    // XXX: Actually, need to check all secondary rails
-    //      If any are down, then the power supply is in a fault state
-    // (sensors[cur].s_power_domain == 1)
-
-    /* Use the 12V and 5V rails to determine the power supply state */
+    /*
+     * Check all secondary rails.
+     * If any are down, then the power supply is in a fault state
+     * or is off.
+     */
     for (cur = 0; cur < ARRAY_SIZE(sensors); cur++) {
         if (sensors[cur].s_power_domain == 1) {
+            /* This is the power supply-is-on domain */
             if (sensor_states[cur].ss_flags &
-                (SS_FLAG_UNDER_LIMIT | SS_FLAG_OVER_LIMIT))
+                (SS_FLAG_UNDER_LIMIT | SS_FLAG_OVER_LIMIT)) {
                 count_bad++;
-            else
+            } else {
                 count_good++;
+            }
         }
     }
 
-#if 0
-    // XXX: Simplify for now
-    if (count_good != 0)
-        return (POWER_STATE_ON);
-    // XXX: Simplify for now
-#endif
-
-    if ((count_bad == 0) && (count_good > 0))
+    if ((count_bad == 0) && (count_good > 2))
         return (POWER_STATE_ON);   // All on
 
-    if ((count_good == 0) && (count_bad > 0))
-        return (POWER_STATE_OFF);  // All off
+    if (count_bad > 3)
+        return (POWER_STATE_OFF);  // Probably off
 
-    return (POWER_STATE_FAULT);     // Not all on
+    return (POWER_STATE_FAULT);
+}
+
+static const char *
+sensor_suffix(uint pos)
+{
+    switch (sensors[pos].s_adc_channel) {
+        default:
+            return ("V");
+        case ADC_CHANNEL_TEMP:
+            return ("C");
+        case CHANNEL_FAN_TACH:
+            return ("RPM");
+        case CHANNEL_FAN_PWM:
+            return ("%");
+    }
+}
+
+uint
+sensor_get(const char *name, uint *value, const char **type)
+{
+    uint pos;
+    for (pos = 0; pos < ARRAY_SIZE(sensors); pos++) {
+        if (strcmp(name, sensors[pos].s_name) == 0) {
+            *type = sensor_suffix(pos);
+            *value = sensor_states[pos].ss_reading;
+            return (0);
+        }
+    }
+    return (1);
 }
 
 static void
 sensor_show_state(uint pos, uint with_limits)
 {
-    uint is_temp = sensors[pos].s_adc_channel == ADC_CHANNEL_TEMP;
-    int reading  = sensor_states[pos].ss_reading;
+    int reading = sensor_states[pos].ss_reading;
     const char *status;
-    const char *suffix;
+    const char *suffix = sensor_suffix(pos);
 
     if (sensor_states[pos].ss_flags & SS_FLAG_IGNORED)
         status = "Ignored";
@@ -242,16 +303,21 @@ sensor_show_state(uint pos, uint with_limits)
     else
         status = "Normal";
 
-    suffix = is_temp ? "C" : "V";
-
     printf("%-15s", sensors[pos].s_name);
     print_reading(reading, suffix);
     printf(" %-12s", status);
     if (with_limits) {
+        int limit_min = sensors[pos].s_limit_min;
+        int limit_max = sensors[pos].s_limit_max;
+        switch (sensors[pos].s_adc_channel) {
+            case CHANNEL_FAN_TACH:
+                fan_get_limits(&limit_min, &limit_max);
+                break;
+        }
         printf(" [ ");
-        print_limit(sensors[pos].s_limit_min, suffix);
+        print_limit(limit_min, suffix);
         printf(" - ");
-        print_limit(sensors[pos].s_limit_max, suffix);
+        print_limit(limit_max, suffix);
         printf(" ]");
     }
     printf("\n");
@@ -331,8 +397,16 @@ sensor_init(void)
     /* Initialize all sensors */
     for (cur = 0; cur < ARRAY_SIZE(sensors); cur++) {
         // Eventually handle other sensors, such as Fan RPM & PWM
-        adc_setup_sensor(adc_which++, sensors[cur].s_gpio_packed,
-                         sensors[cur].s_adc_channel);
+        switch (sensors[cur].s_adc_channel) {
+            case CHANNEL_FAN_TACH:
+            case CHANNEL_FAN_PWM:
+                /* Non-ADC sensor */
+                break;
+            default:
+                adc_setup_sensor(adc_which++, sensors[cur].s_gpio_packed,
+                                 sensors[cur].s_adc_channel);
+                break;
+        }
     }
     adc_init();
     adc_startup_time = timer_tick_plus_msec(1);

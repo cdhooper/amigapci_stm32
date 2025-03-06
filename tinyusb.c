@@ -23,14 +23,19 @@
 #include <libopencm3/cm3/nvic.h>
 #include <libopencm3/cm3/scb.h>
 
+//  HCD_EVENT_DEVICE_ATTACH = 0
+//  HCD_EVENT_DEVICE_REMOVE = 1
+//  HCD_EVENT_XFER_COMPLETE = 2
+
 static void open_hid_interface(uint8_t daddr,
                                const tusb_desc_interface_t *desc_itf,
                                uint16_t max_len);
 static void free_hid_buf(uint8_t daddr);
+static void tinyusb_show_dev(uint daddr);
 
 tusb_rhport_init_t host_init = {
     .role = TUSB_ROLE_HOST,
-    .speed = TUSB_SPEED_FULL   // or TUSB_SPEED_AUTO
+    .speed = TUSB_SPEED_AUTO   // or TUSB_SPEED_AUTO
 };
 
 uint32_t SystemCoreClock;
@@ -112,6 +117,7 @@ hcd_deinit(uint8_t rhport)
 
 uint8_t usbh_get_rhport(uint8_t dev_addr);
 
+#include <class/hid/hid_host.h>
 void
 usb_show_stats(void)
 {
@@ -129,6 +135,42 @@ usb_show_stats(void)
         if (mounted) {
             uint16_t vid;
             uint16_t pid;
+            uint     idx;
+            if (tuh_vid_pid_get(dev, &vid, &pid) == false) {
+                vid = 0;
+                pid = 0;
+            }
+// tuh_descriptor_get
+// tuh_descriptor_get_device
+            printf("Dev%u            USB%u %04x.%04x sp=%x %s\n",
+                   dev, usbh_get_rhport(dev),
+                   vid, pid, tuh_speed_get(dev),
+                   tuh_rhport_is_active(dev) ? "Active" : "Inactive");
+
+#if 0
+const usbh_device_t *udev = get_device(dev);
+bool hub_port_get_status(uint8_t hub_addr, uint8_t hub_port, void* resp,
+                         tuh_xfer_cb_t complete_cb, uintptr_t user_data)
+#endif
+
+
+            for (idx = 0; idx < CFG_TUH_HID; idx++) {
+                if (tuh_hid_mounted(dev, idx))
+                    printf("Dev%u.%u          HID\n", dev, idx);
+            }
+        }
+    }
+}
+
+void
+usb_ls(uint verbose)
+{
+    uint dev;
+    for (dev = 0; dev < 16; dev++) {
+        if (tuh_mounted(dev)) {
+            uint16_t vid;
+            uint16_t pid;
+            uint     idx;
             if (tuh_vid_pid_get(dev, &vid, &pid) == false) {
                 vid = 0;
                 pid = 0;
@@ -137,8 +179,21 @@ usb_show_stats(void)
                    dev, usbh_get_rhport(dev),
                    vid, pid, tuh_speed_get(dev),
                    tuh_rhport_is_active(dev) ? "Active" : "Inactive");
+            for (idx = 0; idx < CFG_TUH_HID; idx++) {
+                if (tuh_hid_mounted(dev, idx))
+                    printf("Dev%u.%u         HID\n", idx, dev);
+            }
+            tinyusb_show_dev(dev);
         }
     }
+}
+
+void
+tuh_hid_mount_cb(uint8_t dev_addr, uint8_t instance,
+                 uint8_t const *desc_report, uint16_t desc_len)
+{
+    printf("HID device address = %d, instance = %d is mounted\r\n",
+            dev_addr, instance);
 }
 
 #if 0
@@ -151,10 +206,15 @@ usb_app_cb(uint8_t *driver_count)
 usbh_class_driver_t const *usbh_app_driver_get_cb = usb_cb;
 #endif
 
+uint64_t timer_hub_poll;
 void
-usb_poll(void)
+tinyusb_poll(void)
 {
     tuh_task();
+    if (timer_tick_has_elapsed(timer_hub_poll)) {
+        timer_hub_poll = timer_tick_plus_msec(1000);
+// poll any attached hubs for port changes
+    }
 }
 
 void
@@ -339,8 +399,8 @@ parse_config_descriptor(uint8_t dev_addr,
     }
 }
 
-void
-tuh_mount_cb(uint8_t daddr)
+static void
+tinyusb_show_dev(uint daddr)
 {
     uint8_t xfer_result;
     printf("tuh_mount_cb %x\n", daddr);
@@ -410,6 +470,12 @@ tuh_mount_cb(uint8_t daddr)
                                 sizeof (temp_buf)) == XFER_RESULT_SUCCESS) {
         parse_config_descriptor(daddr, (tusb_desc_configuration_t *) temp_buf);
     }
+}
+
+void
+tuh_mount_cb(uint8_t daddr)
+{
+    tinyusb_show_dev(daddr);
 }
 
 void

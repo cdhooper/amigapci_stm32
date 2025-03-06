@@ -14,5 +14,6 @@
 
 void tinyusb_init(void);
 void tinyusb_shutdown(void);
+void tinyusb_poll(void);
 
 #endif /* _TINYUSB_H */

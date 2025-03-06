@@ -24,13 +24,11 @@
 /*
  * STM32F205 timer usage
  *   TIM2     - bits 0-31 of tick timer (bits 32-63 are in global timer_high)
+ *   TIM4     - Fan speed measurement
  *
  * STM32F1 timer usage
  *   TIM1     - bits 0-15 of tick timer, OVF trigger to TIM3
  *   TIM3     - bits 16-31 of tick timer (bits 32-63 are in global timer_high)
- *   TIM4+CH3 - Power LED PWM
- *   TIM2 CH1 - ROM OE (PA0) trigger to DMA1 CH5 capture of address lo
- *   TIM5 CH1 - ROM OE (PA0) trigger to DMA2 CH5 capture of address hi
  */
 
 /*
@@ -45,7 +43,7 @@
  *  TIM4 | TIM1 | TIM2 | TIM3 | TIM8
  *  TIM5 | TIM2 | TIM3 | TIM4 | TIM8
  *
- *  Timer Triggers in use:
+ *  Timer Triggers in use (STM32F1):
  *      TIM1 -> TIM3 ITR0
  */
 

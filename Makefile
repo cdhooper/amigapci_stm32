@@ -6,14 +6,14 @@ SRCS	:= main.c gpio.c led.c timer.c printf.c uart.c \
 	   mem_access.c readline.c cmdline.c cmds.c pcmds.c \
 	   utils.c scanf.c stm32flash.c version.c config.c \
 	   clock.c crc32.c usb.c keyboard.c irq.c power.c \
-	   adc.c sensor.c
+	   adc.c sensor.c fan.c
 SRCS    += libopencm3_stm32f2/adc_common_v1.c \
 	   libopencm3_stm32f2/adc_common_v1_multi.c \
 	   libopencm3_stm32f2/adc_common_f47.c
 # STM32F2 library is missing ADC source and headers
 
-STACK := tinyusb
-#STACK := stmcubemx
+#STACK := tinyusb
+STACK := stmcubemx
 
 # TinyUSB support
 ifeq ($(STACK),tinyusb)
@@ -39,12 +39,13 @@ CUBEHAL  := $(CUBE)/Drivers/STM32F2xx_HAL_Driver/Src
 DEFS	 += -DUSE_STMCUBEUSB
 USB_SRCS := $(wildcard $(CUBEUHL)/*/*/*.c $(CUBEUHL)/*/*/*/*.c \
 	      $(CUBEHAL)/stm32f2xx_hal_hcd.c $(CUBEHAL)/stm32f2xx_ll_usb.c \
-	      stmcubeusb.c)
+	      cubeusb.c)
 
 USB_SRCS := $(filter-out %usbh_conf_template.c,$(USB_SRCS))
 USB_DEFS += \
 	    -I$(CUBEUHL)/Core/Inc -I$(CUBE)/USB_HOST/Target -I. \
 	    -I$(CUBEUHL)/Class/AUDIO/Inc \
+	    -I$(CUBEUHL)/Class/HUB \
 	    -I$(CUBEUHL)/Class/CDC/Inc -I$(CUBEUHL)/Class/HID/Inc \
 	    -I$(CUBEUHL)/Class/MSC/Inc -I$(CUBEUHL)/Class/MTP/Inc \
 	    -I$(CUBE)/Drivers/CMSIS/Device/ST/STM32F2xx/Include \
@@ -150,7 +151,7 @@ GDB		:= $(PREFIX)-gdb
 STFLASH		= $(shell which st-flash)
 OPT		:= -O2
 DEBUG		:= -ggdb3
-CSTD		?= -std=gnu99
+CSTD		?= -std=gnu11
 
 # C flags
 TGT_CFLAGS	+= $(OPT) $(CSTD) $(DEBUG)

@@ -40,7 +40,7 @@
 #define INPUT_BUF_MAX 512  /* Max input line length */
 
 /* ASCII input and output keystrokes */
-#define KEY_LINE_BEGIN       0x01  /* ^A Line begin */
+#define KEY_CTRL_A           0x01  /* ^A Line begin */
 #define KEY_CTRL_B           0x02  /* ^B Cursor left */
 #define KEY_CTRL_C           0x03  /* ^C Abort */
 #define KEY_CTRL_D           0x04  /* ^D Delete char to the right */
@@ -66,6 +66,7 @@
 #define KEY_BACKSPACE2       0x7f  /* ^? Backspace on some keyboards */
 #define KEY_AMIGA_ESC        0x9b  /* Amiga key sequence */
 
+#define KEY_LINE_BEGIN       KEY_CTRL_A
 #define KEY_LEFT             KEY_CTRL_B
 #define KEY_DEL_CHAR         KEY_CTRL_D
 #define KEY_LINE_END         KEY_CTRL_E
@@ -394,7 +395,10 @@ get_new_input_line(const char *prompt, char **line)
                     ch = KEY_LINE_BEGIN;
                     break;
                 default:
-                    printf("\nUnknown 'ESC [ 1 ; 2|3|5 %c'\n", ch);
+                    printf("\nUnknown 'ESC [ 1 ; %c %c'\n",
+                           (input_mode == INPUT_MODE_1SEMI2) ? '2' :
+                           (input_mode == INPUT_MODE_1SEMI3) ? '3' : '5',
+                           ch);
                     goto redraw_prompt;
             }
             break;

@@ -33,6 +33,16 @@
 #define CC_ASSERT_ARRAY_SIZE(type, nelem) \
         CC_ASSERT(ARRAY_SIZE(type) == (nelem), type)
 
+/*
+ * low_bit() calculates the bit position of the lowest bit set in a value.
+ *           At least one bit must be set.
+ */
+static inline int
+low_bit(uint32_t value)
+{
+    return (__builtin_ffs(value) - 1);
+}
+
 void reset_dfu(int in_rom);
 void reset_cpu(void);
 void reset_check(void);

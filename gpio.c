@@ -18,6 +18,26 @@
 #include <stdlib.h>
 #include <string.h>
 
+/*
+ * STM32F2 Alternate Functions
+ *  AF0  System
+ *  AF1  TIM1, TIM2
+ *  AF2  TIM3, TIM4, TIM5
+ *  AF3  TIM8, TIM9, TIM10, TIM11
+ *  AF4  I2C1, I2C2, I2C3
+ *  AF5  SPI1, SPI2
+ *  AF6  SPI3
+ *  AF7  USART1, USART2, USART3
+ *  AF8  USART4, USART5, USART6
+ *  AF9  CAN1, CAN1, TIM12, TIM13, TIM14
+ *  AF10 OTG_FS, OTG_HS
+ *  AF11 ETH
+ *  AF12 FSMC, SDIO, OTH_HS
+ *  AF13 DCMI
+ *  AF14 -
+ *  AF15 EVENTOUT
+ */
+
 /**
  * spread8to32() will spread an 8-bit value to odd bits of a 32-bit value
  *
@@ -764,16 +784,22 @@ gpio_init(void)
 {
     gpio_setmode(PWRSW_PORT, PWRSW_PIN, GPIO_SETMODE_INPUT_PU);  // Power button
 
-    gpio_setmode(FANPWM_PORT, FANPWM_PIN, GPIO_SETMODE_INPUT_PU);   // AF?
-    gpio_setmode(FANTACH_PORT, FANTACH_PIN, GPIO_SETMODE_INPUT_PU); // AF?
+    gpio_setmode(FANTACH_PORT, FANTACH_PIN,
+                 GPIO_SETMODE_PU |
+                 GPIO_SETMODE_ALTFUNC_2 | GPIO_SETMODE_AF_AF2);
+    gpio_setmode(FANPWM_PORT, FANPWM_PIN,
+                 GPIO_SETMODE_PU |
+                 GPIO_SETMODE_ALTFUNC_25 | GPIO_SETMODE_AF_AF3);
+
     gpio_setmode(STMRSTA_PORT, STMRSTA_PIN, GPIO_SETMODE_INPUT_PU);
 
     gpio_setmode(FORWARD_PORT, FORWARD_PIN | BACK_PIN | LEFT_PIN | RIGHT_PIN |
                  FIRE_PIN, GPIO_SETMODE_INPUT_PU);
     gpio_setmode(PotX_PORT, PotX_PIN | PotY_PIN, GPIO_SETMODE_INPUT_PU);
 
-    gpio_setmode(KBRST_PORT, KBRST_PIN, GPIO_SETMODE_INPUT_PU);
-    gpio_setmode(KBDATA_PORT, KBDATA_PIN | KBCLK_PIN, GPIO_SETMODE_INPUT_PU);
+    gpio_setv(KBRST_PORT, KBRST_PIN | KBDATA_PIN | KBCLK_PIN, 1);
+    gpio_setmode(KBRST_PORT, KBRST_PIN | KBDATA_PIN | KBCLK_PIN,
+                 GPIO_SETMODE_OUTPUT_ODRAIN_25 | GPIO_SETMODE_PU);
 
     gpio_setmode(VMON5_PORT, VMON5_PIN | VMON5SB_PIN | VMON3V3_PIN |
                  VMON1V2_PIN | VMONx_PIN | VMONy_PIN | VMON12_PIN |

@@ -19,6 +19,7 @@
 #include "crc32.h"
 #include "stm32flash.h"
 #include "utils.h"
+#include "keyboard.h"
 
 #define CONFIG_MAGIC     0x19460602
 #define CONFIG_VERSION   0x01
@@ -95,6 +96,26 @@ config_write(void)
     }
 }
 
+
+void
+config_set_defaults(void)
+{
+    memset(&config, 0, sizeof (config));
+    config.magic   = CONFIG_MAGIC;
+    config.size    = sizeof (config);
+    config.valid   = 0x01;
+    config.version = CONFIG_VERSION;
+    config.ps_on_mode = 0;            // Power supply on at AC restored
+    config.led_level = 10;  // 10%
+    config.fan_speed = BIT(7) | 100;  // Fan speed percent (bit 7 = auto)
+    config.fan_speed_min = 20;        // Fan (auto) speed at minimum temperature
+    config.fan_temp_max = 40;         // Temperature (C) for maximum fan speed
+    config.fan_temp_min = 21;         // Temperature (C) for minimum fan speed
+    config.fan_rpm_max = 2200;        // Fan maximum RPM
+    keyboard_set_defaults();
+    config_updated();
+}
+
 /*
  * config_read
  * -----------
@@ -119,19 +140,14 @@ config_read(void)
                 memcpy(&config, (void *) addr, sizeof (config));
                 if (config.name[0] != '\0')
                     printf("    %s\n", config.name);
+                config.version = CONFIG_VERSION;
+                config.size    = sizeof (config);
                 return;
             }
         }
     }
     printf("New config\n");
-    memset(&config, 0, sizeof (config));
-    config.magic   = CONFIG_MAGIC;
-    config.size    = sizeof (config);
-    config.valid   = 0x01;
-    config.version = CONFIG_VERSION;
-    config.led_level = 10;  // 10%
-
-    config_updated();
+    config_set_defaults();
 }
 
 /*

@@ -14,7 +14,9 @@
 
 #define HAVE_SPACE_FLASH
 
+rc_t cmd_amiga(int argc, char * const *argv);
 rc_t cmd_cpu(int argc, char * const *argv);
+rc_t cmd_fan(int argc, char * const *argv);
 rc_t cmd_gpio(int argc, char * const *argv);
 rc_t cmd_map(int argc, char * const *argv);
 rc_t cmd_power(int argc, char * const *argv);
@@ -23,7 +25,9 @@ rc_t cmd_set(int argc, char * const *argv);
 rc_t cmd_snoop(int argc, char * const *argv);
 rc_t cmd_usb(int argc, char * const *argv);
 
+extern const char cmd_amiga_help[];
 extern const char cmd_cpu_help[];
+extern const char cmd_fan_help[];
 extern const char cmd_gpio_help[];
 extern const char cmd_power_help[];
 extern const char cmd_reset_help[];

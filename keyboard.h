@@ -11,6 +11,16 @@
 #ifndef _KEYBOARD_H
 #define _KEYBOARD_H
 
+/* These definitiions are for USB HID keyboards */
+#define KEYBOARD_MODIFIER_LEFTCTRL   BIT(0)  // Left Control
+#define KEYBOARD_MODIFIER_LEFTSHIFT  BIT(1)  // Left Shift
+#define KEYBOARD_MODIFIER_LEFTALT    BIT(2)  // Left Alt
+#define KEYBOARD_MODIFIER_LEFTMETA   BIT(3)  // Left Meta (Windows)
+#define KEYBOARD_MODIFIER_RIGHTCTRL  BIT(4)  // Right Control
+#define KEYBOARD_MODIFIER_RIGHTSHIFT BIT(5)  // Right Shift
+#define KEYBOARD_MODIFIER_RIGHTALT   BIT(6)  // Right Alt
+#define KEYBOARD_MODIFIER_RIGHTMETA  BIT(7)  // Right Meta
+
 extern const uint8_t keycode2ascii[128][2];
 
 typedef struct {
@@ -21,5 +31,9 @@ typedef struct {
 
 /* Handle input from USB keyboard */
 void usb_keyboard_input(usb_keyboard_report_t *report);
+void keyboard_set_defaults(void);
+void keyboard_poll(void);
+void keyboard_init(void);
+void keyboard_term(void);
 
 #endif /* _KEYBOARD_H */

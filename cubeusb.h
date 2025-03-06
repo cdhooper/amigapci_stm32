@@ -14,5 +14,6 @@
 
 void cubeusb_init(void);
 void cubeusb_shutdown(void);
+void cubeusb_poll(void);
 
 #endif /* _CUBEUSB_H */

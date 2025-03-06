@@ -48,12 +48,17 @@ static rc_t cmd_help(int argc, char * const *argv);
 
 static const cmd_t cmd_list[] = {
     { cmd_help,    "?",       0, NULL, " [<cmd>]", "display help" },
+    { cmd_amiga,   "amiga",   3, cmd_amiga_help,
+                        " keyboard", "control Amiga" },
     { cmd_copy,    "copy",    3, cmd_copy_help,
                         "[bwlqoh] <saddr> <daddr> <len>", "copy memory" },
     { cmd_comp,    "comp",    2, cmd_comp_help,
                         "[bwlqoh] <addr1> <addr2> <len>", "compare memory" },
 #ifdef EMBEDDED_CMD
-    { cmd_cpu,     "cpu",     2, cmd_cpu_help, " regs|usb", "CPU information" },
+    { cmd_fan,     "fan",     2, cmd_fan_help,
+                        " auto|on|off|speed", "Fan control" },
+    { cmd_cpu,     "cpu",     2, cmd_cpu_help,
+                        " regs|fault", "CPU information" },
 #endif
     { cmd_c,       "c",       1, cmd_c_help,
                         "[bwlqohS] <addr> <value...>", "change memory" },

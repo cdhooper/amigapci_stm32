@@ -12,11 +12,15 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "main.h"
+#include "config.h"
 #include "printf.h"
 #include "keyboard.h"
+#include "timer.h"
 #include "utils.h"
 #include "uart.h"
 #include "usb.h"
+#include "gpio.h"
+#include <libopencm3/stm32/gpio.h>
 
 #undef DEBUG_KEYBOARD
 #ifdef DEBUG_KEYBOARD
@@ -25,17 +29,516 @@
 #define DPRINTF(x...) do { } while (0)
 #endif
 
-/* These definitiions are for USB HID keyboards */
-#define KEYBOARD_MODIFIER_LEFTCTRL   BIT(0)  // Left Control
-#define KEYBOARD_MODIFIER_LEFTSHIFT  BIT(1)  // Left Shift
-#define KEYBOARD_MODIFIER_LEFTALT    BIT(2)  // Left Alt
-#define KEYBOARD_MODIFIER_LEFTMETA   BIT(3)  // Left Meta (Windows)
-#define KEYBOARD_MODIFIER_RIGHTCTRL  BIT(4)  // Right Control
-#define KEYBOARD_MODIFIER_RIGHTSHIFT BIT(5)  // Right Shift
-#define KEYBOARD_MODIFIER_RIGHTALT   BIT(6)  // Right Alt
-#define KEYBOARD_MODIFIER_RIGHTMETA  BIT(7)  // Right Meta
 
-/* HID Key to ASCII pseudo-conversion modifiers */
+/* Amiga scancodes */
+                               // Shifted Unshifted
+#define AS_BACKTICK    (0x00)  // '~' and '`'
+#define AS_1           (0x01)  // '!' and '1'
+#define AS_2           (0x02)  // '@' and '2'
+#define AS_3           (0x03)  // '#' and '3'
+#define AS_4           (0x04)  // '$' and '4'
+#define AS_5           (0x05)  // '%' and '5'
+#define AS_6           (0x06)  // '^' and '6'
+#define AS_7           (0x07)  // '&' and '7'
+#define AS_8           (0x08)  // '*' and '8'
+#define AS_9           (0x09)  // '(' and '9'
+#define AS_0           (0x0a)  // ')' and '0'
+#define AS_MINUS       (0x0b)  // '_' and '-'
+#define AS_EQUAL       (0x0c)  // '+' and '='
+#define AS_BACKSLASH   (0x0d)  // '|' and '\'
+#define AS_KP0         (0x0f)  // Keypad '0'
+#define AS_Q           (0x10)  // 'Q' and 'q'
+#define AS_W           (0x11)  // 'W' and 'w'
+#define AS_E           (0x12)  // 'E' and 'e'
+#define AS_R           (0x13)  // 'R' and 'r'
+#define AS_T           (0x14)  // 'T' and 't'
+#define AS_Y           (0x15)  // 'Y' and 'y'
+#define AS_U           (0x16)  // 'U' and 'u'
+#define AS_I           (0x17)  // 'I' and 'i'
+#define AS_O           (0x18)  // 'O' and 'o'
+#define AS_P           (0x19)  // 'P' and 'p'
+#define AS_LBRACKET    (0x1a)  // '{' and '['
+#define AS_RBRACKET    (0x1b)  // '}' and ']'
+#define AS_KP1         (0x1d)  // Keypad '1'
+#define AS_KP2         (0x1e)  // Keypad '2'
+#define AS_KP3         (0x1f)  // Keypad '3'
+#define AS_A           (0x20)  // 'A' and 'a'
+#define AS_S           (0x21)  // 'S' and 's'
+#define AS_D           (0x22)  // 'D' and 'd'
+#define AS_F           (0x23)  // 'F' and 'f'
+#define AS_G           (0x24)  // 'G' and 'g'
+#define AS_H           (0x25)  // 'H' and 'h'
+#define AS_J           (0x26)  // 'J' and 'j'
+#define AS_K           (0x27)  // 'K' and 'k'
+#define AS_L           (0x28)  // 'L' and 'l'
+#define AS_SEMICOLON   (0x29)  // ';' and ':'
+#define AS_APOSTROPHE  (0x2a)  // ''' and '"'
+#define AS_UNLABELED1  (0x2b)  // Key next to Return
+#define AS_KP4         (0x2d)  // Keypad '4'
+#define AS_KP5         (0x2e)  // Keypad '5'
+#define AS_KP6         (0x2f)  // Keypad '6'
+#define AS_UNLABELED2  (0x30)  // Key next to Left Shift
+#define AS_Z           (0x31)  // 'Z' and 'z'
+#define AS_X           (0x32)  // 'Z' and 'z'
+#define AS_C           (0x33)  // 'Z' and 'z'
+#define AS_V           (0x34)  // 'Z' and 'z'
+#define AS_B           (0x35)  // 'Z' and 'z'
+#define AS_N           (0x36)  // 'Z' and 'z'
+#define AS_M           (0x37)  // 'Z' and 'z'
+#define AS_COMMA       (0x38)  // '<' and ','
+#define AS_DOT         (0x39)  // '>' and '.'
+#define AS_SLASH       (0x3a)  // '>' and '/'
+#define AS_KPDOT       (0x3c)  // Keypad '.'
+#define AS_KP7         (0x3d)  // Keypad '7'
+#define AS_KP8         (0x3e)  // Keypad '8'
+#define AS_KP9         (0x3f)  // Keypad '9'
+#define AS_SPACE       (0x40)  // Space
+#define AS_BACKSPACE   (0x41)  // Backspace
+#define AS_TAB         (0x42)  // Tab
+#define AS_KPENTER     (0x43)  // Keypad Enter
+#define AS_RETURN      (0x44)  // Carriage Return
+#define AS_ESC         (0x45)  // ESC
+#define AS_DELETE      (0x46)  // Delete
+#define AS_KPMINUS     (0x4a)  // Keypad '-'
+#define AS_UP          (0x4c)  // Cursor Up
+#define AS_DOWN        (0x4d)  // Cursor Down
+#define AS_RIGHT       (0x4e)  // Cursor Right
+#define AS_LEFT        (0x4f)  // Cursor Left
+#define AS_F1          (0x50)  // F1
+#define AS_F2          (0x51)  // F2
+#define AS_F3          (0x52)  // F3
+#define AS_F4          (0x53)  // F4
+#define AS_F5          (0x54)  // F5
+#define AS_F6          (0x55)  // F6
+#define AS_F7          (0x56)  // F7
+#define AS_F8          (0x57)  // F8
+#define AS_F9          (0x58)  // F9
+#define AS_F10         (0x59)  // F10
+#define AS_KP_LPAREN   (0x5a)  // Keypad '('
+#define AS_KP_RPAREN   (0x5b)  // Keypad ')'
+#define AS_KPSLASH     (0x5c)  // Keypad '/'
+#define AS_KPASTERISK  (0x5d)  // Keypad '*'
+#define AS_KPPLUS      (0x63)  // Keypad '+'
+#define AS_HELP        (0x5f)  // Help
+#define AS_LEFTSHIFT   (0x60)  // Left Shift
+#define AS_RIGHTSHIFT  (0x61)  // Right Shift
+#define AS_CAPSLOCK    (0x62)  // Caps Lock
+#define AS_CTRL        (0x63)  // Ctrl
+#define AS_LEFTALT     (0x64)  // Left Alt
+#define AS_RIGHTALT    (0x64)  // Right Alt  (SAME as Left Alt??)
+#define AS_LEFTAMIGA   (0x66)  // Left Amiga
+#define AS_RIGHTAMIGA  (0x67)  // Right Amiga
+#define AS_LOST_SYNC   (0xf9)  // Keyboard lost sync with Amiga
+#define AS_POST_FAIL   (0xfc)  // Keyboard selftest failed
+#define AS_POWER_INIT  (0xfd)  // Keyboard powerup start key stream
+#define AS_POWER_DONE  (0xfe)  // Keyboard powerup done key stream
+#define AS_NONE        (0xff)  // Not a valid keycode
+
+#define SAF_ADD_SHIFT 0x01
+static const struct {
+    uint8_t sa_amiga;    // Amiga scancode
+    uint8_t sa_shifted;  // Only if different from native key
+    uint8_t sa_flags;    // special flags
+} scancode_to_amiga[] = {
+                            //       Shifted Unshifted
+    { AS_NONE,       0, 0x00 },  // 0x00 No key pressed
+    { AS_NONE,       0, 0x00 },  // 0x01 Keyboard Error Roll Over
+    { AS_POST_FAIL,  0, 0x00 },  // 0x02 Keyboard POST Fail
+    { AS_NONE,       0, 0x00 },  // 0x03 Keyboard Error
+    { AS_A,          0, 0x00 },  // 0x04  'A' and 'a'
+    { AS_B,          0, 0x00 },  // 0x05  'B' and 'b'
+    { AS_C,          0, 0x00 },  // 0x06  'C' and 'c'
+    { AS_D,          0, 0x00 },  // 0x07  'D' and 'd'
+    { AS_E,          0, 0x00 },  // 0x08  'E' and 'e'
+    { AS_F,          0, 0x00 },  // 0x09  'F' and 'f'
+    { AS_G,          0, 0x00 },  // 0x0a  'G' and 'g'
+    { AS_H,          0, 0x00 },  // 0x0b  'H' and 'h'
+    { AS_I,          0, 0x00 },  // 0x0c  'I' and 'i'
+    { AS_J,          0, 0x00 },  // 0x0d  'J' and 'j'
+    { AS_K,          0, 0x00 },  // 0x0e  'K' and 'k'
+    { AS_L,          0, 0x00 },  // 0x0f  'L' and 'l'
+    { AS_M,          0, 0x00 },  // 0x10  'M' and 'm'
+    { AS_N,          0, 0x00 },  // 0x11  'N' and 'n'
+    { AS_O,          0, 0x00 },  // 0x12  'O' and 'o'
+    { AS_P,          0, 0x00 },  // 0x13  'P' and 'p'
+    { AS_Q,          0, 0x00 },  // 0x14  'Q' and 'q'
+    { AS_R,          0, 0x00 },  // 0x15  'R' and 'r'
+    { AS_S,          0, 0x00 },  // 0x16  'S' and 's'
+    { AS_T,          0, 0x00 },  // 0x17  'T' and 't'
+    { AS_U,          0, 0x00 },  // 0x18  'U' and 'u'
+    { AS_Y,          0, 0x00 },  // 0x19  'Y' and 'y'
+    { AS_W,          0, 0x00 },  // 0x1a  'W' and 'w'
+    { AS_X,          0, 0x00 },  // 0x1b  'X' and 'x'
+    { AS_Y,          0, 0x00 },  // 0x1c  'Y' and 'y'
+    { AS_Z,          0, 0x00 },  // 0x1d  'Z' and 'z'
+    { AS_1,          0, 0x00 },  // 0x1e  '!' and '1'
+    { AS_2,          0, 0x00 },  // 0x1f  '@' and '2'
+    { AS_3,          0, 0x00 },  // 0x20  '#' and '3'
+    { AS_4,          0, 0x00 },  // 0x21  '$' and '4'
+    { AS_5,          0, 0x00 },  // 0x22  '%' and '5'
+    { AS_6,          0, 0x00 },  // 0x23  '^' and '6'
+    { AS_7,          0, 0x00 },  // 0x24  '&' and '7'
+    { AS_8,          0, 0x00 },  // 0x25  '*' and '8'
+    { AS_9,          0, 0x00 },  // 0x26  '(' and '9'
+    { AS_0,          0, 0x00 },  // 0x27  ')' and '0'
+    { AS_RETURN,     0, 0x00 },  // 0x28  Enter / Return
+    { AS_ESC,        0, 0x00 },  // 0x29  ESC
+    { AS_BACKSPACE,  0, 0x00 },  // 0x2a  Backspace
+    { AS_TAB,        0, 0x00 },  // 0x2b  Tab
+    { AS_SPACE,      0, 0x00 },  // 0x2c  Space
+    { AS_MINUS,      0, 0x00 },  // 0x2d  '_' and '-'
+    { AS_EQUAL,      0, 0x00 },  // 0x2e  '+' and '='
+    { AS_LBRACKET,   0, 0x00 },  // 0x2f  '{' and '['
+    { AS_RBRACKET,   0, 0x00 },  // 0x30  '}' and ']'
+    { AS_BACKSLASH,  0, 0x00 },  // 0x31  '|' and '\'
+    { AS_3, AS_BACKTICK, 0x01 }, // 0x32  '~' and '#' (Non-US)
+    { AS_SEMICOLON,  0, 0x00 },  // 0x33  ':' and ';'
+    { AS_APOSTROPHE, 0, 0x00 },  // 0x34  '"' and '''
+    { AS_BACKTICK,   0, 0x00 },  // 0x35  '~' and '`'
+    { AS_COMMA,      0, 0x00 },  // 0x36  '<' and ','
+    { AS_DOT,        0, 0x00 },  // 0x37  '>' and '.'
+    { AS_SLASH,      0, 0x00 },  // 0x38  '?' and '/'
+    { AS_CAPSLOCK,   0, 0x00 },  // 0x39  Capslock
+    { AS_F1,         0, 0x00 },  // 0x3a  F1
+    { AS_F2,         0, 0x00 },  // 0x3b  F2
+    { AS_F3,         0, 0x00 },  // 0x3c  F3
+    { AS_F4,         0, 0x00 },  // 0x3d  F4
+    { AS_F5,         0, 0x00 },  // 0x3e  F5
+    { AS_F6,         0, 0x00 },  // 0x3f  F6
+    { AS_F7,         0, 0x00 },  // 0x40  F7
+    { AS_F8,         0, 0x00 },  // 0x41  F8
+    { AS_F9,         0, 0x00 },  // 0x42  F9
+    { AS_F10,        0, 0x00 },  // 0x43  F10
+    { AS_NONE,       0, 0x00 },  // 0x44  F11
+    { AS_NONE,       0, 0x00 },  // 0x45  F12
+    { AS_NONE,       0, 0x00 },  // 0x46  SysRq
+    { AS_NONE,       0, 0x00 },  // 0x47  Scroll Lock
+    { AS_NONE,       0, 0x00 },  // 0x48  Pause
+    { AS_BACKSLASH,  0, 0x00 },  // 0x49  Insert
+    { AS_KP_LPAREN,  0, 0x00 },  // 0x4a  Home      (FS-UAE mapping)
+    { AS_KP_RPAREN,  0, 0x00 },  // 0x4b  Page Up   (FS-UAE mapping)
+    { AS_DELETE,     0, 0x00 },  // 0x4c  Delete
+    { AS_HELP,       0, 0x00 },  // 0x4d  End       (FS-UAE mapping)
+    { AS_RIGHTAMIGA, 0, 0x00 },  // 0x4e  Page Down (FS-UAE mapping)
+    { AS_RIGHT,      0, 0x00 },  // 0x4f  Cursor Right
+    { AS_LEFT,       0, 0x00 },  // 0x50  Cursor Left
+    { AS_DOWN,       0, 0x00 },  // 0x51  Cursor Down
+    { AS_UP,         0, 0x00 },  // 0x52  Cursor Up
+    { AS_NONE,       0, 0x00 },  // 0x53  Numlock
+    { AS_KPSLASH,    0, 0x00 },  // 0x54  Keypad '/'
+    { AS_KPASTERISK, 0, 0x00 },  // 0x55  Keypad '*'
+    { AS_KPMINUS,    0, 0x00 },  // 0x56  Keypad '-'
+    { AS_KPPLUS,     0, 0x00 },  // 0x57  Keypad '+'
+    { AS_KPENTER,    0, 0x00 },  // 0x58  Keypad Enter
+    { AS_KP1,        0, 0x00 },  // 0x59  Keypad '1'
+    { AS_KP2,        0, 0x00 },  // 0x5a  Keypad '2'
+    { AS_KP3,        0, 0x00 },  // 0x5b  Keypad '3'
+    { AS_KP4,        0, 0x00 },  // 0x5c  Keypad '4'
+    { AS_KP5,        0, 0x00 },  // 0x5d  Keypad '5'
+    { AS_KP6,        0, 0x00 },  // 0x5e  Keypad '6'
+    { AS_KP7,        0, 0x00 },  // 0x5f  Keypad '7'
+    { AS_KP8,        0, 0x00 },  // 0x60  Keypad '8'
+    { AS_KP9,        0, 0x00 },  // 0x61  Keypad '9'
+    { AS_KP0,        0, 0x00 },  // 0x62  Keypad '0'
+    { AS_KPDOT,      0, 0x00 },  // 0x63  Keypad '.'
+    { AS_BACKSLASH,  0, 0x00 },  // 0x64  102ND '\' and '|' (non-US)
+    { AS_NONE,       0, 0x00 },  // 0x65  Compose
+    { AS_NONE,       0, 0x00 },  // 0x66  Power Key
+    { AS_EQUAL,      0, 0x00 },  // 0x67  Keypad '='
+    { AS_NONE,       0, 0x00 },  // 0x68  F13
+    { AS_NONE,       0, 0x00 },  // 0x69  F14
+    { AS_NONE,       0, 0x00 },  // 0x6a  F15
+    { AS_NONE,       0, 0x00 },  // 0x6b  F16
+    { AS_NONE,       0, 0x00 },  // 0x6c  F17
+    { AS_NONE,       0, 0x00 },  // 0x6d  F18
+    { AS_NONE,       0, 0x00 },  // 0x6e  F19
+    { AS_NONE,       0, 0x00 },  // 0x6f  F20
+    { AS_NONE,       0, 0x00 },  // 0x70  F21
+    { AS_NONE,       0, 0x00 },  // 0x71  F22
+    { AS_NONE,       0, 0x00 },  // 0x72  F23
+    { AS_NONE,       0, 0x00 },  // 0x73  F24
+    { AS_NONE,       0, 0x00 },  // 0x74  Open (Execute)
+    { AS_HELP,       0, 0x00 },  // 0x75  Help
+    { AS_NONE,       0, 0x00 },  // 0x76  Props
+    { AS_NONE,       0, 0x00 },  // 0x77  Front
+    { AS_NONE,       0, 0x00 },  // 0x78  Stop
+    { AS_NONE,       0, 0x00 },  // 0x79  Again
+    { AS_NONE,       0, 0x00 },  // 0x7a  Undo
+    { AS_NONE,       0, 0x00 },  // 0x7b  Cut
+    { AS_NONE,       0, 0x00 },  // 0x7c  Copy
+    { AS_NONE,       0, 0x00 },  // 0x7d  Paste
+    { AS_NONE,       0, 0x00 },  // 0x7e  Find
+    { AS_NONE,       0, 0x00 },  // 0x7f  Mute
+    { AS_NONE,       0, 0x00 },  // 0x80  Volume Up
+    { AS_NONE,       0, 0x00 },  // 0x81  Volume Down
+    { AS_CAPSLOCK,   0, 0x00 },  // 0x82  Locking Caps Lock
+    { AS_NONE,       0, 0x00 },  // 0x83  Locking Num Lock
+    { AS_NONE,       0, 0x00 },  // 0x84  Locking Scroll Lock
+    { AS_COMMA,      0, 0x00 },  // 0x85  Keypad ','
+    { AS_EQUAL,      0, 0x00 },  // 0x86  Keypad '='
+    { AS_NONE,       0, 0x00 },  // 0x87  International1 RO
+    { AS_NONE,       0, 0x00 },  // 0x88  International2 Katakana Hiragana
+    { AS_NONE,       0, 0x00 },  // 0x89  International3 Yen
+    { AS_NONE,       0, 0x00 },  // 0x8a  International4 Henkan
+    { AS_NONE,       0, 0x00 },  // 0x8b  International5 Muhenkan
+    { AS_NONE,       0, 0x00 },  // 0x8c  International6 Keypad JP Comma
+    { AS_NONE,       0, 0x00 },  // 0x8d  International7
+    { AS_NONE,       0, 0x00 },  // 0x8e  International8
+    { AS_NONE,       0, 0x00 },  // 0x8f  International9
+    { AS_NONE,       0, 0x00 },  // 0x90  LANG1 Hangeul
+    { AS_NONE,       0, 0x00 },  // 0x91  LANG2 Hanja
+    { AS_NONE,       0, 0x00 },  // 0x92  LANG3 Katakana
+    { AS_NONE,       0, 0x00 },  // 0x93  LANG4 Hiragana
+    { AS_NONE,       0, 0x00 },  // 0x94  LANG5 Zenkakuhankaku
+    { AS_NONE,       0, 0x00 },  // 0x95  LANG6
+    { AS_NONE,       0, 0x00 },  // 0x96  LANG7
+    { AS_NONE,       0, 0x00 },  // 0x97  LANG8
+    { AS_NONE,       0, 0x00 },  // 0x98  LANG9
+    { AS_NONE,       0, 0x00 },  // 0x99  Alternate Erase
+    { AS_NONE,       0, 0x00 },  // 0x9a  SysReq / Attention
+    { AS_NONE,       0, 0x00 },  // 0x9b  Cancel
+    { AS_NONE,       0, 0x00 },  // 0x9c  Clear
+    { AS_NONE,       0, 0x00 },  // 0x9d  Prior
+    { AS_NONE,       0, 0x00 },  // 0x9e  Return
+    { AS_NONE,       0, 0x00 },  // 0x9f  Separator
+    { AS_NONE,       0, 0x00 },  // 0xa0  Out
+    { AS_NONE,       0, 0x00 },  // 0xa1  Oper
+    { AS_NONE,       0, 0x00 },  // 0xa2  Clear / Again
+    { AS_NONE,       0, 0x00 },  // 0xa3  CrSel / Props
+    { AS_NONE,       0, 0x00 },  // 0xa4  ExSel
+    { AS_NONE,       0, 0x00 },  // 0xa5
+    { AS_NONE,       0, 0x00 },  // 0xa6
+    { AS_NONE,       0, 0x00 },  // 0xa7
+    { AS_NONE,       0, 0x00 },  // 0xa8
+    { AS_NONE,       0, 0x00 },  // 0xa9
+    { AS_NONE,       0, 0x00 },  // 0xaa
+    { AS_NONE,       0, 0x00 },  // 0xab
+    { AS_NONE,       0, 0x00 },  // 0xac
+    { AS_NONE,       0, 0x00 },  // 0xad
+    { AS_NONE,       0, 0x00 },  // 0xae
+    { AS_NONE,       0, 0x00 },  // 0xaf
+    { AS_NONE,       0, 0x00 },  // 0xb0  Keypad 00
+    { AS_NONE,       0, 0x00 },  // 0xb1  Keypad 000
+    { AS_NONE,       0, 0x00 },  // 0xb2  Thousands Separator
+    { AS_NONE,       0, 0x00 },  // 0xb3  Decimal Separator
+    { AS_NONE,       0, 0x00 },  // 0xb4  Currency Unit
+    { AS_NONE,       0, 0x00 },  // 0xb5  Currency Sub-unit
+    { AS_KP_LPAREN,  0, 0x00 },  // 0xb6  Keypad '('
+    { AS_KP_RPAREN,  0, 0x00 },  // 0xb7  Keypad ')'
+    { AS_NONE,       0, 0x00 },  // 0xb8  Keypad '{'
+    { AS_NONE,       0, 0x00 },  // 0xb9  Keypad '}'
+    { AS_TAB,        0, 0x00 },  // 0xba  Keypad Tab
+    { AS_BACKSPACE,  0, 0x00 },  // 0xbb  Keypad Backspace
+    { AS_A,          0, 0x00 },  // 0xbc  Keypad 'A'
+    { AS_B,          0, 0x00 },  // 0xbd  Keypad 'B'
+    { AS_C,          0, 0x00 },  // 0xbe  Keypad 'C'
+    { AS_D,          0, 0x00 },  // 0xbf  Keypad 'D'
+    { AS_E,          0, 0x00 },  // 0xc0  Keypad 'E'
+    { AS_F,          0, 0x00 },  // 0xc1  Keypad 'F'
+    { AS_NONE,       0, 0x00 },  // 0xc2  Keypad XOR
+    { AS_6,          0, 0x01 },  // 0xc3  Keypad '^'
+    { AS_5,          0, 0x01 },  // 0xc4  Keypad '%'
+    { AS_COMMA,      0, 0x01 },  // 0xc5  Keypad '<'
+    { AS_DOT,        0, 0x01 },  // 0xc6  Keypad '>'
+    { AS_7,          0, 0x01 },  // 0xc7  Keypad '&'
+    { AS_NONE,       0, 0x00 },  // 0xc8  Keypad &&
+    { AS_BACKSLASH,  0, 0x01 },  // 0xc9  Keypad '|'
+    { AS_NONE,       0, 0x00 },  // 0xca  Keypad ||
+    { AS_SEMICOLON,  0, 0x01 },  // 0xcb  Keypad ':'
+    { AS_3,          0, 0x01 },  // 0xcc  Keypad '#'
+    { AS_SPACE,      0, 0x00 },  // 0xcd  Keypad Space
+    { AS_2,          0, 0x01 },  // 0xce  Keypad '@'
+    { AS_1,          0, 0x01 },  // 0xcf  Keypad '!'
+    { AS_NONE,       0, 0x00 },  // 0xd0  Keypad Memory Store
+    { AS_NONE,       0, 0x00 },  // 0xd1  Keypad Memory Recall
+    { AS_NONE,       0, 0x00 },  // 0xd2  Keypad Memory Clear
+    { AS_NONE,       0, 0x00 },  // 0xd3  Keypad Memory Add
+    { AS_NONE,       0, 0x00 },  // 0xd4  Keypad Memory Subtract
+    { AS_NONE,       0, 0x00 },  // 0xd5  Keypad Memory Multiply
+    { AS_NONE,       0, 0x00 },  // 0xd6  Keypad Memory Divide
+    { AS_NONE,       0, 0x00 },  // 0xd7  Keypad +/-
+    { AS_NONE,       0, 0x00 },  // 0xd8  Keypad Clear
+    { AS_NONE,       0, 0x00 },  // 0xd9  Keypad Clear Entry
+    { AS_NONE,       0, 0x00 },  // 0xda  Keypad Binary
+    { AS_NONE,       0, 0x00 },  // 0xdb  Keypad Octal
+    { AS_NONE,       0, 0x00 },  // 0xdc  Keypad Decimal
+    { AS_NONE,       0, 0x00 },  // 0xdd  Keypad Hexadecimal
+    { AS_NONE,       0, 0x00 },  // 0xde
+    { AS_NONE,       0, 0x00 },  // 0xdf
+    { AS_CTRL,       0, 0x00 },  // 0xe0  Left Control
+    { AS_LEFTSHIFT,  0, 0x00 },  // 0xe1  Left Shift
+    { AS_LEFTALT,    0, 0x00 },  // 0xe2  Left Alt
+    { AS_LEFTAMIGA,  0, 0x00 },  // 0xe3  Left Meta
+    { AS_CTRL,       0, 0x00 },  // 0xe4  Right Control
+    { AS_RIGHTSHIFT, 0, 0x00 },  // 0xe5  Right Shift
+    { AS_RIGHTALT,   0, 0x00 },  // 0xe6  Right Alt
+    { AS_RIGHTAMIGA, 0, 0x00 },  // 0xe7  Right Meta
+    { AS_NONE,       0, 0x00 },  // 0xe8  Media Play / Pause
+    { AS_NONE,       0, 0x00 },  // 0xe9  Media Stop CD
+    { AS_NONE,       0, 0x00 },  // 0xea  Media Previous Song
+    { AS_NONE,       0, 0x00 },  // 0xeb  Media Next Song
+    { AS_NONE,       0, 0x00 },  // 0xec  Media Eject CD
+    { AS_NONE,       0, 0x00 },  // 0xed  Media Volume Up
+    { AS_NONE,       0, 0x00 },  // 0xee  Media Volume Down
+    { AS_NONE,       0, 0x00 },  // 0xef  Media Mute
+    { AS_NONE,       0, 0x00 },  // 0xf0  Media WWW
+    { AS_NONE,       0, 0x00 },  // 0xf1  Media Back
+    { AS_NONE,       0, 0x00 },  // 0xf2  Media Forward
+    { AS_NONE,       0, 0x00 },  // 0xf3  Media Stop
+    { AS_NONE,       0, 0x00 },  // 0xf4  Media Find
+    { AS_NONE,       0, 0x00 },  // 0xf5  Media Scroll Up
+    { AS_NONE,       0, 0x00 },  // 0xf6  Media Scroll Down
+    { AS_NONE,       0, 0x00 },  // 0xf7  Media Edit
+    { AS_NONE,       0, 0x00 },  // 0xf8  Media Sleep
+    { AS_NONE,       0, 0x00 },  // 0xf9  Media Coffee
+    { AS_NONE,       0, 0x00 },  // 0xfa  Media Refresh
+    { AS_NONE,       0, 0x00 },  // 0xfb  Media Calc
+    { AS_NONE,       0, 0x00 },  // 0xfc
+    { AS_NONE,       0, 0x00 },  // 0xfd
+    { AS_NONE,       0, 0x00 },  // 0xfe
+    { AS_NONE,       0, 0x00 },  // 0xff
+};
+// 0x01 = Assert shift on non-shifted version
+
+#define ATA_ADD_SHIFT 0x100
+#define ATA_ADD_CTRL  0x200
+static const uint16_t
+ascii_to_amiga[] = {
+    AS_NONE,                       // 0x00 ^@
+    AS_A | ATA_ADD_CTRL,           // 0x01 ^A
+    AS_B | ATA_ADD_CTRL,           // 0x02 ^B
+    AS_C | ATA_ADD_CTRL,           // 0x03 ^C
+    AS_D | ATA_ADD_CTRL,           // 0x04 ^D
+    AS_E | ATA_ADD_CTRL,           // 0x05 ^E
+    AS_F | ATA_ADD_CTRL,           // 0x06 ^F
+    AS_G | ATA_ADD_CTRL,           // 0x07 ^G
+    AS_BACKSPACE,                  // 0x08 ^H
+    AS_TAB,                        // 0x09 ^I
+    AS_J | ATA_ADD_CTRL,           // 0x0a ^J
+    AS_K | ATA_ADD_CTRL,           // 0x0b ^K
+    AS_L | ATA_ADD_CTRL,           // 0x0c ^L
+    AS_RETURN,                     // 0x0d ^M
+    AS_N | ATA_ADD_CTRL,           // 0x0e ^N
+    AS_O | ATA_ADD_CTRL,           // 0x0f ^O
+    AS_P | ATA_ADD_CTRL,           // 0x10 ^P
+    AS_Q | ATA_ADD_CTRL,           // 0x11 ^Q
+    AS_R | ATA_ADD_CTRL,           // 0x12 ^R
+    AS_S | ATA_ADD_CTRL,           // 0x13 ^S
+    AS_T | ATA_ADD_CTRL,           // 0x14 ^T
+    AS_U | ATA_ADD_CTRL,           // 0x15 ^U
+    AS_V | ATA_ADD_CTRL,           // 0x16 ^V
+    AS_W | ATA_ADD_CTRL,           // 0x17 ^W
+    AS_X | ATA_ADD_CTRL,           // 0x18 ^X
+    AS_Y | ATA_ADD_CTRL,           // 0x19 ^Y
+    AS_Z | ATA_ADD_CTRL,           // 0x1a ^Z
+    AS_ESC,                        // 0x1b ESC
+    AS_NONE,                       // 0x1c
+    AS_NONE,                       // 0x1d
+    AS_NONE,                       // 0x1e
+    AS_NONE,                       // 0x1f
+    AS_SPACE,                      // 0x20 ' '
+    AS_1 | ATA_ADD_SHIFT,          // 0x21 '!'
+    AS_APOSTROPHE | ATA_ADD_SHIFT, // 0x22 '"'
+    AS_3 | ATA_ADD_SHIFT,          // 0x23 '#'
+    AS_4 | ATA_ADD_SHIFT,          // 0x24 '$'
+    AS_5 | ATA_ADD_SHIFT,          // 0x25 '%'
+    AS_7 | ATA_ADD_SHIFT,          // 0x26 '&'
+    AS_APOSTROPHE,                 // 0x27 '''
+    AS_9 | ATA_ADD_SHIFT,          // 0x28 '('
+    AS_0 | ATA_ADD_SHIFT,          // 0x29 ')'
+    AS_8 | ATA_ADD_SHIFT,          // 0x2a '*'
+    AS_EQUAL | ATA_ADD_SHIFT,      // 0x2b '+'
+    AS_COMMA,                      // 0x2c ','
+    AS_MINUS,                      // 0x2d '-'
+    AS_DOT,                        // 0x2e '.'
+    AS_SLASH,                      // 0x2f '/'
+    AS_0,                          // 0x30 '0'
+    AS_1,                          // 0x31 '1'
+    AS_2,                          // 0x32 '2'
+    AS_3,                          // 0x33 '3'
+    AS_4,                          // 0x34 '4'
+    AS_5,                          // 0x35 '5'
+    AS_6,                          // 0x36 '6'
+    AS_7,                          // 0x37 '7'
+    AS_8,                          // 0x38 '8'
+    AS_9,                          // 0x39 '9'
+    AS_SEMICOLON | ATA_ADD_SHIFT,  // 0x3a ':'
+    AS_SEMICOLON,                  // 0x3b ';'
+    AS_COMMA | ATA_ADD_SHIFT,      // 0x3c '<'
+    AS_EQUAL,                      // 0x3d '='
+    AS_DOT | ATA_ADD_SHIFT,        // 0x3e '>'
+    AS_SLASH | ATA_ADD_SHIFT,      // 0x3f '?'
+    AS_2 | ATA_ADD_SHIFT,          // 0x40 '@'
+    AS_A | ATA_ADD_SHIFT,          // 0x41 'A'
+    AS_B | ATA_ADD_SHIFT,          // 0x42 'B'
+    AS_C | ATA_ADD_SHIFT,          // 0x43 'C'
+    AS_D | ATA_ADD_SHIFT,          // 0x44 'D'
+    AS_E | ATA_ADD_SHIFT,          // 0x45 'E'
+    AS_F | ATA_ADD_SHIFT,          // 0x46 'F'
+    AS_G | ATA_ADD_SHIFT,          // 0x47 'G'
+    AS_H | ATA_ADD_SHIFT,          // 0x48 'H'
+    AS_I | ATA_ADD_SHIFT,          // 0x49 'I'
+    AS_J | ATA_ADD_SHIFT,          // 0x4a 'J'
+    AS_K | ATA_ADD_SHIFT,          // 0x4b 'K'
+    AS_L | ATA_ADD_SHIFT,          // 0x4c 'L'
+    AS_M | ATA_ADD_SHIFT,          // 0x4d 'M'
+    AS_N | ATA_ADD_SHIFT,          // 0x4e 'N'
+    AS_O | ATA_ADD_SHIFT,          // 0x4f 'O'
+    AS_P | ATA_ADD_SHIFT,          // 0x50 'P'
+    AS_Q | ATA_ADD_SHIFT,          // 0x51 'Q'
+    AS_R | ATA_ADD_SHIFT,          // 0x52 'R'
+    AS_S | ATA_ADD_SHIFT,          // 0x53 'S'
+    AS_T | ATA_ADD_SHIFT,          // 0x54 'T'
+    AS_U | ATA_ADD_SHIFT,          // 0x55 'U'
+    AS_V | ATA_ADD_SHIFT,          // 0x56 'V'
+    AS_W | ATA_ADD_SHIFT,          // 0x57 'R'
+    AS_X | ATA_ADD_SHIFT,          // 0x58 'X'
+    AS_Y | ATA_ADD_SHIFT,          // 0x59 'Y'
+    AS_Z | ATA_ADD_SHIFT,          // 0x5a 'Z'
+    AS_LBRACKET,                   // 0x5b '['
+    AS_BACKSLASH,                  // 0x5c '\'
+    AS_RBRACKET,                   // 0x5d ']'
+    AS_6 | ATA_ADD_SHIFT,          // 0x5e '^'
+    AS_MINUS | ATA_ADD_SHIFT,      // 0x5f '_'
+    AS_BACKTICK,                   // 0x60 '`'
+    AS_A,                          // 0x61 'a'
+    AS_B,                          // 0x62 'b'
+    AS_C,                          // 0x63 'c'
+    AS_D,                          // 0x64 'd'
+    AS_E,                          // 0x65 'e'
+    AS_F,                          // 0x66 'f'
+    AS_G,                          // 0x67 'g'
+    AS_H,                          // 0x68 'h'
+    AS_I,                          // 0x69 'i'
+    AS_J,                          // 0x6a 'j'
+    AS_K,                          // 0x6b 'k'
+    AS_L,                          // 0x6c 'l'
+    AS_M,                          // 0x6d 'm'
+    AS_N,                          // 0x6e 'n'
+    AS_O,                          // 0x6f 'o'
+    AS_P,                          // 0x70 'p'
+    AS_Q,                          // 0x71 'q'
+    AS_R,                          // 0x72 'r'
+    AS_S,                          // 0x73 's'
+    AS_T,                          // 0x74 't'
+    AS_U,                          // 0x75 'u'
+    AS_V,                          // 0x76 'v'
+    AS_W,                          // 0x77 'w'
+    AS_X,                          // 0x78 'x'
+    AS_Y,                          // 0x79 'y'
+    AS_Z,                          // 0x7a 'z'
+    AS_LBRACKET | ATA_ADD_SHIFT,   // 0x7b '{'
+    AS_BACKSLASH | ATA_ADD_SHIFT,  // 0x7c '|'
+    AS_RBRACKET | ATA_ADD_SHIFT,   // 0x7d '}'
+    AS_BACKTICK | ATA_ADD_SHIFT,   // 0x7e '~'
+    AS_BACKSPACE,                  // 0x7f Backspace
+    AS_DELETE,                     // 0x80 Delete
+    AS_UP,                         // 0x81 Cursor up
+    AS_DOWN,                       // 0x82 Cursor down
+    AS_LEFT,                       // 0x83 Cursor left
+    AS_RIGHT,                      // 0x84 Cursor right
+    AS_KPENTER,                    // 0x85 Keypad enter
+};
 
 /*
  * HID Key to ASCII pseudo-conversion
@@ -200,7 +703,7 @@
 #define HK_RIGHTMETA   (0x0143)  // Left Meta (Windows)
 
 /* Scancodes to ASCII per USB spec 1.11 */
-const uint16_t scancode_to_ascii_ext[] =
+static const uint16_t scancode_to_ascii_ext[] =
 {
     HK_NONE, HK_ERR_OVF, HK_POST_FAIL, HK_KBD_ERROR, HK_A, HK_B, HK_C, HK_D,
     HK_E, HK_F, HK_G, HK_H, HK_I, HK_J, HK_K, HK_L,
@@ -265,6 +768,7 @@ const uint16_t scancode_to_ascii_ext[] =
 };
 CC_ASSERT_ARRAY_SIZE(scancode_to_ascii_ext, 256);
 
+
 static inline bool
 find_key_in_report(usb_keyboard_report_t *report, uint8_t keycode)
 {
@@ -309,16 +813,319 @@ keyboard_terminal_put(uint ascii, uint conv)
     }
 }
 
+void
+keyboard_set_defaults(void)
+{
+    uint code;
+    for (code = 0; code < 256; code++)
+        config.keymap[code] = scancode_to_amiga[code].sa_amiga;
+    config.modkeymap[0] = AS_CTRL;
+    config.modkeymap[1] = AS_LEFTSHIFT;
+    config.modkeymap[2] = AS_LEFTALT;
+    config.modkeymap[3] = AS_LEFTAMIGA;
+    config.modkeymap[4] = AS_CTRL;
+    config.modkeymap[5] = AS_RIGHTSHIFT;
+    config.modkeymap[6] = AS_RIGHTALT;
+    config.modkeymap[7] = AS_RIGHTAMIGA;
+}
+
+static uint8_t
+convert_scancode_to_amiga(uint8_t keycode, uint8_t modifier,
+                          uint8_t *amiga_modifier)
+{
+    uint8_t code = config.keymap[keycode];
+    *amiga_modifier = 0;
+    if (modifier & (KEYBOARD_MODIFIER_LEFTSHIFT |
+                    KEYBOARD_MODIFIER_RIGHTSHIFT)) {
+        if (scancode_to_amiga[keycode].sa_shifted != 0)
+            code = scancode_to_amiga[keycode].sa_shifted;  // Can't remap these
+    } else {
+        if (scancode_to_amiga[keycode].sa_flags & SAF_ADD_SHIFT) {
+            // Must assert shift modifier to Amiga
+            *amiga_modifier = 1;
+        }
+    }
+    return (code);
+}
+
+/* Keyboard-to-Amiga ring buffer */
+static uint    ak_rb_producer;
+static uint    ak_rb_consumer;
+static uint8_t ak_rb[16];
+static uint8_t ak_has_sync;
+static uint8_t ak_lost_sync;
+
+#define IO_BASE              0x40000000
+#define BND_IO_BASE          0x42000000
+#define GPIO_IDR_OFFSET      0x10  // Input Data Register offset
+#define GPIO_ODR_OFFSET      0x14  // Output Data Register offset
+#define BND_IO(byte, bit)    (BND_IO_BASE + ((byte) - IO_BASE) * 32 + (bit) * 4)
+#define BND_ODR_TO_IDR(addr) ((addr) + (GPIO_IDR_OFFSET - GPIO_ODR_OFFSET) * 32)
+
+static inline void
+set_kbclk_0(void)
+{
+   *ADDR32(BND_IO(KBCLK_PORT + GPIO_ODR_OFFSET, low_bit(KBCLK_PIN))) = 0;
+}
+
+static inline void
+set_kbclk_1(void)
+{
+   *ADDR32(BND_IO(KBCLK_PORT + GPIO_ODR_OFFSET, low_bit(KBCLK_PIN))) = 1;
+}
+
+static inline void
+set_kbdat_0(void)
+{
+   *ADDR32(BND_IO(KBDATA_PORT + GPIO_ODR_OFFSET, low_bit(KBDATA_PIN))) = 0;
+}
+
+static inline void
+set_kbdat_1(void)
+{
+   *ADDR32(BND_IO(KBDATA_PORT + GPIO_ODR_OFFSET, low_bit(KBDATA_PIN))) = 1;
+}
+
+static inline uint
+get_kbdat(void)
+{
+   return (*ADDR32(BND_IO(KBDATA_PORT + GPIO_IDR_OFFSET, low_bit(KBDATA_PIN))));
+}
+
+static inline uint
+get_kbclk(void)
+{
+   return (*ADDR32(BND_IO(KBCLK_PORT + GPIO_IDR_OFFSET, low_bit(KBCLK_PIN))));
+}
+
+static inline uint
+get_kbclk_output_value(void)
+{
+   return (*ADDR32(BND_IO(KBDATA_PORT + GPIO_ODR_OFFSET, low_bit(KBDATA_PIN))));
+}
+
+
+/*
+ * amiga_keyboard_send() is responsible for clocking out keyboard data
+ * to the Amiga.
+ *
+ * The KCLK line is active low, and is driven by the keyboard. During
+ * the low time of KCLK, the Amiga will sample KDAT.
+ * The KDAT line is active low, and can be driven by either the keyboard
+ * or the Amiga. The Amiga will drive bit 9 after receiving 8 bits from
+ * the keyboard.
+ *
+ * Data is rotated before being sent from the keyboard such that the
+ * bit order is 6-5-4-3-2-1-0-7.
+ *
+ *     ___   ___   ___   ___   ___   ___   ___   ___   _______
+ * KCLK   \_/   \_/   \_/   \_/   \_/   \_/   \_/   \_/
+ *
+ *     _______________________________________________________
+ * KDAT   \_____x_____x_____x_____x_____x_____x_____x_____/
+ *          (6)   (5)   (4)   (3)   (2)   (1)   (0)   (7)
+ *
+ *         First                                     Last
+ *          sent                                     sent
+ *
+ * The keyboard sets KDAT, waits 20 usec, pulls KCLK low for 20 usec,
+ * releases KCLK, waits 20 usec, then releases KDAT. This results in a
+ * bit rate of 17 kbps.
+ */
+static void
+amiga_keyboard_send(void)
+{
+    uint code;
+    int  mask;
+    static uint64_t timer_kbdata_0;
+
+    if (ak_rb_consumer == ak_rb_producer)
+        return;  // Send buffer is empty
+
+    if (get_kbclk() == 0) {
+        ak_has_sync  = 0;
+        ak_lost_sync = 1;
+        return;
+    }
+    if (get_kbdat() == 0) {
+        if (timer_kbdata_0 == 0) {
+            timer_kbdata_0 = timer_tick_plus_msec(10);
+            return;
+        }
+        if (timer_tick_has_elapsed(timer_kbdata_0)) {
+            printf("K0");
+            ak_has_sync  = 0;
+            ak_lost_sync = 1;
+        }
+        return;
+    }
+
+    if (ak_lost_sync)
+        code = AS_LOST_SYNC;
+    else
+        code = ak_rb[ak_rb_consumer];
+    for (mask = 0x80; mask != 0; mask >>= 1) {
+        if (code & mask)
+            set_kbdat_1();
+        else
+            set_kbdat_0();
+
+        timer_delay_usec(19);
+        set_kbclk_0();
+        if ((code & mask) && (get_kbdat() == 0)) {
+            /*
+             * KBDATA was set to 1, but it's stuck low. Assume we've lost
+             * sync with the Amiga. Abort.
+             */
+            ak_has_sync  = 0;
+            ak_lost_sync = 1;
+            printf("Lsync1");
+            timer_delay_usec(19);
+            set_kbclk_1();
+            timer_kbdata_0 = 0;
+            return;
+        }
+        timer_delay_usec(20);
+        set_kbclk_1();
+        timer_delay_usec(20);
+    }
+    set_kbdat_1();
+    timer_delay_usec(10);
+
+    /* Wait for KBDAT to go low (ACK from Amiga) */
+    timer_kbdata_0 = timer_tick_plus_msec(143);  // Spec is 143 msec
+    while (get_kbdat() != 0) {
+        if (timer_tick_has_elapsed(timer_kbdata_0)) {
+            /* No ACK from Amiga */
+            timer_kbdata_0 = 0;
+            ak_has_sync  = 0;
+            ak_lost_sync = 1;
+            printf("Lsync2");
+            return;
+        }
+    }
+    timer_kbdata_0 = 0;
+//  printf(",%02x,", code);
+
+    if (ak_lost_sync)
+        ak_lost_sync = 0;
+    else
+        ak_rb_consumer = ((ak_rb_consumer + 1) % sizeof (ak_rb));
+}
+
+static void
+amiga_keyboard_put(uint8_t code)
+{
+    uint new_prod = ((ak_rb_producer + 1) % sizeof (ak_rb));
+
+    printf("[%02x]", code);
+    if (new_prod == ak_rb_consumer) {
+        /* Ring buffer full! */
+        printf("!%02x!", code);
+        return;
+    }
+
+    /* Rotate and invert for send */
+    ak_rb[ak_rb_producer] = ~((code << 1) | (code >> 7));
+    __sync_synchronize();  // Memory barrier
+    ak_rb_producer = new_prod;
+}
+
+/*
+ * amiga_keyboard_sync() attempts to achieve sync with the Amiga
+ *                       keyboard interface. It does this by slowly
+ *                       clocking out KBDAT=1 values until the Amiga
+ *                       responds by driving KBDAT=0.
+ */
+static void
+amiga_keyboard_sync(void)
+{
+    static uint8_t  sync_state;
+    static uint64_t timer_kbdata_0;
+
+#if 0
+    if ((get_kbclk() == 0) && (get_kbclk_output_value() != 0)) {
+        sync_state = 0;
+        return;  // Nothing can be done
+    }
+#endif
+
+    switch (sync_state) {
+        case 0:  // Drive KBDATA low
+            if ((get_kbdat() == 0) || (get_kbclk() == 0)) {
+                set_kbclk_1();
+                return;  // Wait for Amiga to stop driving
+            }
+            set_kbdat_0();
+            sync_state++;
+            break;
+        case 1:  // Drive KBCLK low
+            set_kbclk_0();
+            sync_state++;
+            break;
+        case 2:  // Release KBCLK
+            set_kbclk_1();
+            sync_state++;
+            break;
+        case 3:  // Release KBDATA
+            set_kbdat_1();
+            timer_kbdata_0 = timer_tick_plus_msec(143);
+            sync_state++;
+            break;
+        case 4:  // Wait for Amiga to respond by driving KBDATA low
+            if (get_kbdat() == 0) {
+                timer_kbdata_0 = timer_tick_plus_msec(143);
+                sync_state++;    // Advance to next state
+            } else {
+                if (timer_tick_has_elapsed(timer_kbdata_0)) {
+                    sync_state = 0;  // Got no response -- start over
+                }
+            }
+            break;
+        case 5:  // Wait for Amiga to release KBDATA
+            if (get_kbdat() == 0) {
+                /* Still low */
+                if (timer_tick_has_elapsed(timer_kbdata_0)) {
+                    /* KBDATA Stuck low */
+                    printf("Stuck");
+                    set_kbclk_1();
+                    sync_state = 0;  // Start all over again
+                    return;
+                }
+                return;  // Wait in the current statre
+            }
+            printf("Ksync\n");
+            ak_has_sync = 1;  // Amiga no longer driving low: got sync
+            sync_state = 0;   // Reset state for next loss of sync
+            break;
+    }
+}
+
 /* Handle input from USB keyboard */
 void
 usb_keyboard_input(usb_keyboard_report_t *report)
 {
     static usb_keyboard_report_t prev_report;
+    static uint8_t capslock;
     uint modifier = report->modifier;
+    uint pmodifier = prev_report.modifier;
+    uint mod_diff = modifier ^ pmodifier;
     uint cur;
     uint ascii;
-    uint16_t conv;
 
+    if ((mod_diff != 0) & !usb_keyboard_terminal) {
+        uint code;
+        uint bit;
+        for (bit = 0; bit < 8; bit++) {
+            if (mod_diff & BIT(bit)) {
+                code = config.modkeymap[bit];
+                if (modifier & BIT(bit))
+                    amiga_keyboard_put(code);         // pressed
+                else
+                    amiga_keyboard_put(code | 0x80);  // released
+            }
+        }
+    }
     for (cur = 0; cur < ARRAY_SIZE(report->keycode); cur++) {
         uint8_t keycode = report->keycode[cur];
         if (report->keycode[cur]) {
@@ -326,36 +1133,49 @@ usb_keyboard_input(usb_keyboard_report_t *report)
                 /* Current key is being held */
             } else {
                 /* New keypress */
-                conv = scancode_to_ascii_ext[keycode];
-                if ((conv >> 8) == 0) {
-                    /* Simple ASCII (shift and control are not applied) */
-                    ascii = conv;
-                    DPRINTF("KeyDown %c\n", ascii);
-                } else if ((conv >> 8) <  0x07) {
-                    /* Non-ASCII */
-                    DPRINTF("KeyDown Non-ASCII %02x\n", conv & 0xff);
-                    ascii = 0;
-                } else {
-                    if (modifier & (KEYBOARD_MODIFIER_LEFTSHIFT |
-                                         KEYBOARD_MODIFIER_RIGHTSHIFT)) {
-                        ascii = conv >> 8;
-                    } else {
-                        ascii = conv & 0xff;
-                    }
-                    if (modifier & (KEYBOARD_MODIFIER_LEFTCTRL |
-                                    KEYBOARD_MODIFIER_RIGHTCTRL)) {
-                        if ((ascii >= '@') && (ascii <= 'Z'))
-                            ascii -= '@';
-                        else if ((ascii >= '`') && (ascii <= 'z'))
-                            ascii -= '`';
-                    }
-                    if ((ascii >= ' ') && (ascii < 0x7f))
+                if (usb_keyboard_terminal) {
+                    uint16_t conv = scancode_to_ascii_ext[keycode];
+                    if ((conv >> 8) == 0) {
+                        /* Simple ASCII (shift and control are not applied) */
+                        ascii = conv;
                         DPRINTF("KeyDown %c\n", ascii);
-                    else
-                        DPRINTF("KeyDown %02x\n", ascii);
-                }
-                if (usb_keyboard_terminal)
+                    } else if ((conv >> 8) <  0x07) {
+                        /* Non-ASCII */
+                        DPRINTF("KeyDown Non-ASCII %02x\n", conv & 0xff);
+                        ascii = 0;
+                    } else {
+                        if (modifier & (KEYBOARD_MODIFIER_LEFTSHIFT |
+                                        KEYBOARD_MODIFIER_RIGHTSHIFT)) {
+                            ascii = conv >> 8;
+                        } else {
+                            ascii = conv & 0xff;
+                        }
+                        if (modifier & (KEYBOARD_MODIFIER_LEFTCTRL |
+                                        KEYBOARD_MODIFIER_RIGHTCTRL)) {
+                            if ((ascii >= '@') && (ascii <= 'Z'))
+                                ascii -= '@';
+                            else if ((ascii >= '`') && (ascii <= 'z'))
+                                ascii -= '`';
+                        }
+                        if ((ascii >= ' ') && (ascii < 0x7f))
+                            DPRINTF("KeyDown %c\n", ascii);
+                        else
+                            DPRINTF("KeyDown %02x\n", ascii);
+                    }
                     keyboard_terminal_put(ascii, conv);
+                } else {
+                    /* Convert to Amiga keypress */
+                    uint8_t amiga_modifier;
+                    uint8_t code = convert_scancode_to_amiga(keycode, modifier,
+                                                             &amiga_modifier);
+                    if (code == AS_CAPSLOCK) {
+                        /* Capslock is pressed a second time to release */
+                        if (capslock)
+                            code = AS_NONE;
+                    }
+                    if (code != AS_NONE)
+                        amiga_keyboard_put(code);
+                }
             }
         }
     }
@@ -368,25 +1188,337 @@ usb_keyboard_input(usb_keyboard_report_t *report)
     for (cur = 0; cur < ARRAY_SIZE(prev_report.keycode); cur++) {
         uint8_t keycode = prev_report.keycode[cur];
         if (keycode != 0) {
-            conv = scancode_to_ascii_ext[keycode];
-            if ((conv >> 8) == 0) {
-                /* Simple ASCII (shift is not applied) */
-                ascii = conv;
-            } else if ((conv >> 8) <  0x07) {
-                /* Non-ASCII */
-                DPRINTF("KeyUp special %02x\n", conv & 0xff);
+            /* Key released */
+            if (usb_keyboard_terminal) {
+                uint16_t conv = scancode_to_ascii_ext[keycode];
+                if ((conv >> 8) == 0) {
+                    /* Simple ASCII (shift is not applied) */
+                    ascii = conv;
+                } else if ((conv >> 8) <  0x07) {
+                    /* Non-ASCII */
+                    DPRINTF("KeyUp special %02x\n", conv & 0xff);
+                } else {
+                    if (modifier & (KEYBOARD_MODIFIER_LEFTSHIFT |
+                                    KEYBOARD_MODIFIER_RIGHTSHIFT))
+                        ascii = conv >> 8;
+                    else
+                        ascii = conv & 0xff;
+                    if ((ascii >= ' ') && (ascii < 0x7f))
+                        DPRINTF("KeyUp %c\n", ascii);
+                    else
+                        DPRINTF("KeyUp %02x\n", ascii);
+                }
             } else {
-                if (modifier & (KEYBOARD_MODIFIER_LEFTSHIFT |
-                                KEYBOARD_MODIFIER_RIGHTSHIFT))
-                    ascii = conv >> 8;
-                else
-                    ascii = conv & 0xff;
-                if ((ascii >= ' ') && (ascii < 0x7f))
-                    DPRINTF("KeyUp %c\n", ascii);
-                else
-                    DPRINTF("KeyUp %02x\n", ascii);
+                /* Convert to Amiga keypress */
+                uint8_t amiga_modifier;
+                uint8_t code = convert_scancode_to_amiga(keycode, modifier,
+                                                         &amiga_modifier);
+                if (code == AS_CAPSLOCK) {
+                    if (capslock) {
+                        capslock = 0;
+                    } else {
+                        capslock = 1;
+                        code = AS_NONE;
+                    }
+                }
+                if (code != AS_NONE)
+                    amiga_keyboard_put(code | 0x80);
             }
         }
     }
     prev_report = *report;
+}
+
+/* Input ESC key modes */
+typedef enum {
+    INPUT_MODE_NORMAL,  /* Normal user input */
+    INPUT_MODE_ESC,     /* ESC key pressed */
+    INPUT_MODE_BRACKET, /* ESC [ pressed */
+    INPUT_MODE_O,       /* ESC [ O pressed (cursor key sequence) */
+    INPUT_MODE_1,       /* ESC [ 1 pressed (HOME key sequence) */
+    INPUT_MODE_2,       /* ESC [ 2 pressed (INSERT key sequence) */
+    INPUT_MODE_3,       /* ESC [ 3 pressed (DEL key sequence) */
+    INPUT_MODE_1SEMI,   /* ESC [ 1 ; pressed (ctrl-cursor key) */
+    INPUT_MODE_1SEMI2,  /* ESC [ 1 ; 2 pressed (shift-cursor key) */
+    INPUT_MODE_1SEMI3,  /* ESC [ 1 ; 3 pressed (alt-cursor key) */
+    INPUT_MODE_1SEMI5,  /* ESC [ 1 ; 5 pressed (ctrl-cursor key) */
+    INPUT_MODE_LITERAL, /* Control-V pressed (next input is literal) */
+} input_mode_t;
+
+#define KEY_CTRL_Q           0x11  // ^Q Exit term
+#define KEY_ESC              0x1b  // ESC key
+#define KEY_DELETE           0x80  // Delete key
+#define KEY_UP               0x81  // Cursor up
+#define KEY_DOWN             0x82  // Cursor down
+#define KEY_LEFT             0x83  // Cursor left
+#define KEY_RIGHT            0x84  // Cursor right
+#define KEY_KPENTER          0x85  // Keypad enter
+
+void
+keyboard_term(void)
+{
+    int          ch;
+    uint16_t     code;
+    input_mode_t input_mode   = INPUT_MODE_NORMAL;
+    uint         adding_ctrl  = 0;
+    uint         adding_shift = 0;
+    uint64_t     esc_timeout  = 0;
+
+    printf("Press ^Q to exit\n");
+    while (1) {
+        main_poll();
+        ch = getchar();
+        if (ch <= 0) {
+            if (input_mode != INPUT_MODE_NORMAL) {
+                if (timer_tick_has_elapsed(esc_timeout)) {
+                    input_mode = INPUT_MODE_NORMAL;
+                    ch = KEY_ESC;
+                    goto handle_literal;
+                }
+            }
+            continue;
+        }
+        if (ch == KEY_CTRL_Q)
+            break;  // End session
+
+        switch (input_mode) {
+            default:
+            case INPUT_MODE_NORMAL:
+                if (ch == KEY_ESC) {
+                    input_mode = INPUT_MODE_ESC;
+                    esc_timeout = timer_tick_plus_msec(10);
+                    continue;
+                }
+                break;
+
+            case INPUT_MODE_ESC:
+                if ((ch == '[') || (ch == 'O')) {
+                    input_mode = INPUT_MODE_BRACKET;
+                } else {
+                    /* Unrecognized ESC sequence -- swallow both */
+                    input_mode = INPUT_MODE_NORMAL;
+                }
+                continue;
+
+            case INPUT_MODE_BRACKET:
+                input_mode = INPUT_MODE_NORMAL;
+                switch (ch) {
+                    case 'A':
+                        ch = KEY_UP;
+                        break;
+                    case 'B':
+                        ch = KEY_DOWN;
+                        break;
+                    case 'C':
+                        ch = KEY_RIGHT;
+                        break;
+                    case 'D':
+                        ch = KEY_LEFT;
+                        break;
+                    case 'F':
+                        continue;  // Line End
+                    case 'H':
+                        continue;  // Line Begin
+                    case 'M':
+                        ch = KEY_KPENTER;  // Enter on numeric keypad
+                        break;
+                    case 'O':
+                        input_mode = INPUT_MODE_O;
+                        break;
+                    case '1':
+                        input_mode = INPUT_MODE_1;
+                        continue;
+                    case '2':
+                        input_mode = INPUT_MODE_2;
+                        continue;
+                    case '3':
+                        input_mode = INPUT_MODE_3;
+                        continue;
+                    case '5':
+                        continue;  // Page Up
+                    case '6':
+                        continue;  // Page Down
+                    default:
+                        printf("\nUnknown 'ESC [ %c'\n", ch);
+                        input_mode = INPUT_MODE_NORMAL;
+                        continue;
+                }
+                break;
+
+            case INPUT_MODE_O:
+                input_mode = INPUT_MODE_NORMAL;
+                switch (ch) {
+                    case 'P':
+                        code = AS_F1;  // F1
+                        goto handle_code;
+                    case 'Q':
+                        code = AS_F2;  // F2
+                        goto handle_code;
+                    case 'R':
+                        code = AS_F3;  // F3
+                        goto handle_code;
+                    case 'S':
+                        code = AS_F4;  // F4
+                        goto handle_code;
+                    default:
+                        printf("\nUnknown 'ESC [ O %c'\n", ch);
+                        continue;
+                }
+                continue;
+
+            case INPUT_MODE_1:
+                input_mode = INPUT_MODE_NORMAL;
+                switch (ch) {
+                    case ';':
+                        input_mode = INPUT_MODE_1SEMI;
+                        continue;
+                    case '~':
+                        continue;  // Line Begin
+                    case '4':
+                        continue;  // F12
+                    case '5':
+                        code = AS_F5;  // F5
+                        goto handle_code;
+                    case '7':
+                        code = AS_F6;  // F6
+                        goto handle_code;
+                    case '8':
+                        code = AS_F7;  // F7
+                        goto handle_code;
+                    case '9':
+                        code = AS_F8;  // F8
+                        goto handle_code;
+                    default:
+                        printf("\nUnknown 'ESC [ 1 %c'\n", ch);
+                        continue;
+                }
+                break;
+
+            case INPUT_MODE_1SEMI:
+                switch (ch) {
+                    case '2':
+                        input_mode = INPUT_MODE_1SEMI2;
+                        break;
+                    case '3':
+                        input_mode = INPUT_MODE_1SEMI3;
+                        break;
+                    case '5':
+                        input_mode = INPUT_MODE_1SEMI5;
+                        break;
+                    default:
+                        input_mode = INPUT_MODE_NORMAL;
+                        printf("\nUnknown 'ESC [ 1 ; %c'\n", ch);
+                        continue;
+                }
+                continue;
+
+            case INPUT_MODE_1SEMI2:
+            case INPUT_MODE_1SEMI3:
+            case INPUT_MODE_1SEMI5:
+                input_mode = INPUT_MODE_NORMAL;
+                switch (ch) {
+                    case 'C':
+                        continue;  // Line End
+                    case 'D':
+                        continue;  // Line Begin
+                    default:
+                        printf("\nUnknown 'ESC [ 1 ; %c %c'\n",
+                               (input_mode == INPUT_MODE_1SEMI2) ? '2' :
+                               (input_mode == INPUT_MODE_1SEMI3) ? '3' : '5',
+                               ch);
+                        continue;
+                }
+                break;
+
+            case INPUT_MODE_2:
+                switch (ch) {
+                    case '~':
+                        break;
+                    case '0':
+                        code = AS_F9;  // F9
+                        goto handle_code;
+                    case '1':
+                        code = AS_F10;  // F10
+                        goto handle_code;
+                    case '2':
+                        continue;  // F11
+                    case '3':
+                        continue;  // F12
+                    default:
+                        printf("\nUnknown 'ESC [ 2 %c'\n", ch);
+                        continue;
+                }
+                /* Insert key */
+                input_mode = INPUT_MODE_NORMAL;
+                continue;
+
+            case INPUT_MODE_3:
+                input_mode = INPUT_MODE_NORMAL;
+                if (ch != '~') {
+                    printf("\nUnknown 'ESC [ 3 %c'\n", ch);
+                    continue;
+                }
+                ch = KEY_DELETE;
+                break;
+            case INPUT_MODE_LITERAL:
+                input_mode = INPUT_MODE_NORMAL;
+                break;
+        }
+handle_literal:
+        if (ch <= ARRAY_SIZE(ascii_to_amiga)) {
+            code = ascii_to_amiga[ch];
+handle_code:
+            if (ch != AS_NONE) {
+                if (code & ATA_ADD_CTRL) {
+                    if (adding_ctrl == 0) {
+                        amiga_keyboard_put(AS_CTRL);
+                        adding_ctrl = 1;
+                    }
+                } else if (adding_ctrl) {
+                    adding_ctrl = 0;
+                    amiga_keyboard_put(AS_CTRL | 0x80);
+                }
+                if (code & ATA_ADD_SHIFT) {
+                    if (adding_shift == 0) {
+                        adding_shift = 1;
+                        amiga_keyboard_put(AS_LEFTSHIFT);
+                    }
+                } else if (adding_shift) {
+                    adding_shift = 0;
+                    amiga_keyboard_put(AS_LEFTSHIFT | 0x80);
+                }
+                amiga_keyboard_put(code & 0x7f);
+                amiga_keyboard_put(code | 0x80);
+            }
+        }
+    }
+    if (adding_ctrl)
+        amiga_keyboard_put(AS_CTRL | 0x80);
+    if (adding_shift)
+        amiga_keyboard_put(AS_LEFTSHIFT | 0x80);
+}
+
+void
+keyboard_poll(void)
+{
+    if (ak_has_sync == 0) {
+        amiga_keyboard_sync();
+        return;
+    }
+    amiga_keyboard_send();
+}
+
+void
+keyboard_init(void)
+{
+    ak_rb_producer = ak_rb_consumer = 0;
+    amiga_keyboard_put(AS_POWER_INIT);
+    amiga_keyboard_put(AS_POWER_DONE);
+#if 0
+    printf("BND KBCLK_IN=%x KBCLK_OUT=%x KBDAT_IN=%x KBDAT_OUT=%x\n",
+           BND_IO(KBCLK_PORT + GPIO_IDR_OFFSET, low_bit(KBCLK_PIN)),
+           BND_IO(KBCLK_PORT + GPIO_ODR_OFFSET, low_bit(KBCLK_PIN)),
+           BND_IO(KBDATA_PORT + GPIO_IDR_OFFSET, low_bit(KBDATA_PIN)),
+           BND_IO(KBDATA_PORT + GPIO_ODR_OFFSET, low_bit(KBDATA_PIN)));
+#endif
 }

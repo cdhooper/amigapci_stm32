@@ -26,11 +26,13 @@
 #include "utils.h"
 #include "usb.h"
 #include "irq.h"
-#include "kbrst.h"
 #include "config.h"
+#include "fan.h"
+#include "kbrst.h"
+#include "keyboard.h"
+#include "led.h"
 #include "power.h"
 #include "sensor.h"
-#include "led.h"
 
 #include <libopencm3/cm3/scb.h>
 #include <libopencm3/stm32/gpio.h>
@@ -51,9 +53,18 @@
 #define FLASH_BASE FLASH_MEM_INTERFACE_BASE
 #endif
 
+const char cmd_amiga_help[] =
+"amiga keyboard - act as Amiga keyboard\n";
+
 const char cmd_cpu_help[] =
 "cpu hardfault - cause CPU hard fault (bad address)\n"
 "cpu regs      - show CPU registers";
+
+const char cmd_fan_help[] =
+"fan auto        - automatically adjust fan speed\n"
+"fan on          - turn fan on\n"
+"fan off         - turn fan off\n"
+"fan speed <num> - set fan speed to specified %%\n";
 
 const char cmd_gpio_help[] =
 "gpio [name=value/mode/?] - display or set GPIOs";
@@ -67,8 +78,16 @@ const char cmd_reset_help[] =
 "reset usb          - reset and restart USB interface";
 
 const char cmd_set_help[] =
-"set name <name>    - set board name\n"
-"set pson <num>     - set power on mode (1=On at AC restore)";
+"set cpu_temp_bias <num>  - Bias (+/-) for CPU temperature\n"
+"set debug <flags> [save] - set debug flags\n"
+"set defaults             - Force all settings to default values\n"
+"set fan_rpm_max <num>    - Fan maximum speed in RPM\n"
+"set fan_speed <num>|auto - Fan speed\n"
+"set fan_speed_min <num>  - Fan speed minimum percent\n"
+"set fan_temp_max <num>   - CPU temp for max fan speed\n"
+"set fan_temp_min <num>   - CPU temp for min fan speed\n"
+"set name <name>          - set board name\n"
+"set pson <num>           - set power on mode (1=On at AC restore)";
 
 const char cmd_power_help[] =
 "power cycle - cycle the power supply off/on\n"
@@ -86,6 +105,7 @@ const char cmd_usb_help[] =
    "usb debug <mask> - set debug mask\n"
    "usb disable      - reset and disable USB\n"
    "usb kbd [on|off] - take input from USB keyboard\n"
+   "usb ls           - list USB devices present\n"
    "usb off          - power off USB ports\n"
    "usb on           - power on USB ports\n"
    "usb regs         - display USB device registers\n"
@@ -349,6 +369,20 @@ cmd_reset(int argc, char * const *argv)
 }
 
 rc_t
+cmd_amiga(int argc, char * const *argv)
+{
+    if (argc < 2)
+        return (RC_USER_HELP);
+    if (strncmp(argv[1], "keyboard", 1) == 0) {
+        keyboard_term();
+    } else {
+        printf("Unknown argument %s\n", argv[1]);
+        return (RC_USER_HELP);
+    }
+    return (RC_SUCCESS);
+}
+
+rc_t
 cmd_cpu(int argc, char * const *argv)
 {
     if (argc < 2)
@@ -361,6 +395,50 @@ cmd_cpu(int argc, char * const *argv)
         printf("Unknown argument %s\n", argv[1]);
         return (RC_USER_HELP);
     }
+    return (RC_SUCCESS);
+}
+
+rc_t
+cmd_fan(int argc, char * const *argv)
+{
+    int narg = 0;
+    uint fan_speed = -1;
+    if (argc < 2)
+        return (RC_USER_HELP);
+    if (strcmp(argv[1], "auto") == 0) {
+        fan_speed = BIT(7) | 100;
+    } else if (strcmp(argv[1], "off") == 0) {
+        fan_speed = 0;
+        narg = 2;
+    } else if (strcmp(argv[1], "on") == 0) {
+        fan_speed = 100;
+        narg = 2;
+    } else if (strcmp(argv[1], "speed") == 0) {
+        int pos = 0;
+        int speed;
+        if (argc < 3) {
+            printf("fan percent value required (0 - 100)\n");
+            return (RC_USER_HELP);
+        }
+        if ((sscanf(argv[2], "%d%n", &speed, &pos) != 1) ||
+            (argv[2][pos] != '\0') || (speed < 0) || (speed > 100)) {
+            printf("Invalid fan percent value %s\n", argv[2]);
+            return (RC_USER_HELP);
+        }
+        fan_speed = speed;
+        narg = 3;
+    } else {
+        printf("Unknown argument %s\n", argv[1]);
+        return (RC_USER_HELP);
+    }
+    fan_set(fan_speed);
+    if (narg < argc) {
+        if (strcasecmp(argv[narg], "save") == 0) {
+            config.fan_speed = fan_speed;
+            config_updated();
+        }
+    }
+
     return (RC_SUCCESS);
 }
 
@@ -428,6 +506,8 @@ cmd_usb(int argc, char * const *argv)
             printf("Invalid argument %s\n", argv[2]);
             return (RC_BAD_PARAM);
         }
+    } else if (strcmp(argv[1], "ls") == 0) {
+        usb_ls(0);
     } else if (strcmp(argv[1], "off") == 0) {
         usb_set_power(0);
     } else if (strcmp(argv[1], "on") == 0) {
@@ -535,19 +615,259 @@ cmd_gpio(int argc, char * const *argv)
     return (RC_SUCCESS);
 }
 
+static const char *const debug_bits[] = {
+    "Keyboard", "Mouse", "", "",
+        "", "", "", "",
+    "", "", "", "",
+        "", "", "", "",
+    "", "", "", "",
+        "", "", "", "",
+    "", "", "", "",
+        "", "", "", "",
+};
+static void
+decode_debug_flags(uint32_t flags)
+{
+    uint bit;
+    uint printed = 0;
+
+    for (bit = 0; bit < 32; bit++) {
+        if (flags & BIT(bit)) {
+            if (printed++)
+                printf(", ");
+            if (debug_bits[bit][0] == '\0') {
+                printf("bit%u", bit);
+            } else {
+                printf("%s", debug_bits[bit]);
+            }
+        }
+    }
+}
+
+static uint
+match_debug_flag(const char *name)
+{
+    uint bit;
+    for (bit = 0; bit < 32; bit++) {
+        if (strcasecmp(name, debug_bits[bit]) == 0)
+            return (bit);
+    }
+    return (bit);
+}
+
+#define CFOFF(x) offsetof(config_t, x), sizeof (config.x)
+
+#define MODE_DEC         0       // Show value in decimal
+#define MODE_HEX         BIT(0)  // Show value in hexadecimal
+#define MODE_STRING      BIT(1)  // Show string
+#define MODE_DEBUG_FLAGS BIT(2)  // Decode debug flags
+#define MODE_FAN_AUTO    BIT(3)  // Interpret BIT(7) as "auto" otherwise decimal
+#define MODE_SIGNED      BIT(4)  // Decimal value is signed
+typedef struct {
+    const char *cs_name;
+    const char *cs_desc;
+    uint16_t    cs_offset;  // Offset into config structure
+    uint8_t     cs_size;    // Size of config value in bytes
+    uint8_t     cs_mode;    // Mode bits for display (1=hex)
+} config_set_t;
+static const config_set_t config_set[] = {
+    { "cpu_temp_bias",  "Bias (+/-) for CPU temperature",
+      CFOFF(cpu_temp_bias), MODE_SIGNED },
+    { "debug",         "",
+      CFOFF(debug_flag), MODE_HEX | MODE_DEBUG_FLAGS },
+    { "fan_rpm_max",  "Fan maximum speed in RPM",
+      CFOFF(fan_rpm_max), MODE_DEC },
+    { "fan_speed",     "Fan speed",
+      CFOFF(fan_speed), MODE_FAN_AUTO },
+    { "fan_speed_min", "Fan speed minimum percent",
+      CFOFF(fan_speed_min), MODE_DEC },
+    { "fan_temp_max",  "CPU temp for max fan speed",
+      CFOFF(fan_temp_max), MODE_DEC },
+    { "fan_temp_min",  "CPU temp for min fan speed",
+      CFOFF(fan_temp_min), MODE_DEC },
+    { "name",          "Board name",
+      CFOFF(name), MODE_STRING },
+    { "pson",          "Power on at AC restored",
+      CFOFF(ps_on_mode), MODE_DEC },
+};
+
 rc_t
 cmd_set(int argc, char * const *argv)
 {
     if (argc <= 1) {
-        printf("Board name:  ");
-        config_name(NULL);
-        printf("PS On:       Power %s at AC restored\n",
-               config.ps_on_mode ? "on" : "off");
+        uint pos;
+        for (pos = 0; pos < ARRAY_SIZE(config_set); pos++) {
+            char buf[32];
+            const config_set_t *c = &config_set[pos];
+            uint cs_mode = c->cs_mode;
+            uint value = 0;
+            void *src = (void *) ((uintptr_t) &config + c->cs_offset);
+            if (cs_mode & MODE_STRING) {
+                /* String */
+                sprintf(buf, "%s \"%.*s\"",
+                        c->cs_name, c->cs_size, (char *)src);
+            } else if (cs_mode & MODE_HEX) {
+                /* Hexadecimal */
+                memcpy(&value, src, c->cs_size);
+                sprintf(buf, "%s %0*x", c->cs_name, c->cs_size * 2, value);
+            } else {
+                /* Decimal : MODE_DEC */
+                memcpy(&value, src, c->cs_size);
+                if ((cs_mode & MODE_FAN_AUTO) && (value & BIT(7))) {
+                    sprintf(buf, "%s %s", c->cs_name, "auto");
+                } else if (cs_mode & MODE_SIGNED) {
+                    if (c->cs_size == 1)
+                        value = (int8_t) value;
+                    else if (c->cs_size == 2)
+                        value = (int16_t) value;
+                    sprintf(buf, "%s %d", c->cs_name, value);
+                } else {
+                    sprintf(buf, "%s %u", c->cs_name, value);
+                }
+            }
+            printf("%s%*s%s", buf, 24 - strlen(buf), "", c->cs_desc);
+            if (cs_mode & MODE_DEBUG_FLAGS) {
+                /* Also decode flags (currently only debug flags) */
+                if (value == 0)
+                    printf("Debug flags");
+                decode_debug_flags(value);
+            }
+            printf("\n");
+        }
         return (RC_SUCCESS);
     }
     if ((strcmp(argv[1], "help") == 0) ||
                (strcmp(argv[1], "?") == 0)) {
         return (RC_USER_HELP);
+    } else if (strcmp(argv[1], "cpu_temp_bias") == 0) {
+        int pos = 0;
+        int bias;
+        if (argc != 3) {
+            printf("CPU temp bias value required (-100 - 100)\n");
+            return (RC_BAD_PARAM);
+        }
+        if ((sscanf(argv[2], "%d%n", &bias, &pos) != 1) ||
+                   (argv[2][pos] != '\0') || (bias < -100) || (bias > 100)) {
+            printf("Invalid CPU tempo bias value %s\n", argv[2]);
+            return (RC_USER_HELP);
+        }
+        config.cpu_temp_bias = bias;
+        config_updated();
+    } else if (strcmp(argv[1], "debug") == 0) {
+        int      arg;
+        int      pos = 0;
+        uint     bit;
+        uint     do_save = 0;
+        uint     did_set = 0;
+        uint32_t value;
+        uint32_t nvalue = config.debug_flag;
+        if (argc <= 2) {
+            printf("Debug flags are a combination of bits\n");
+            for (bit = 0; bit < 32; bit++)
+                if (debug_bits[bit][0] != '\0')
+                    printf("  %2u  %s\n", bit, debug_bits[bit]);
+            printf("Current debug %08lx  ", config.debug_flag);
+            decode_debug_flags(config.debug_flag);
+            printf("\n");
+            return (RC_SUCCESS);
+        }
+        for (arg = 2; arg < argc; arg++) {
+            if (strcasecmp(argv[arg], "save") == 0) {
+                do_save = 1;
+                continue;
+            } else if ((bit = match_debug_flag(argv[arg])) < 32) {
+                if (did_set == 0)
+                    nvalue = 0;
+                nvalue |= BIT(bit);
+                did_set = 1;
+            } else {
+                if ((sscanf(argv[arg], "%x%n", &value, &pos) != 1) ||
+                    (argv[arg][pos] != '\0')) {
+                    printf("Invalid argument: %s\n", argv[arg]);
+                    return (RC_USER_HELP);
+                }
+                nvalue = value;
+                did_set = 1;
+            }
+        }
+        if (config.debug_flag != nvalue) {
+            config.debug_flag = nvalue;
+            printf("debug %08lx", nvalue);
+            decode_debug_flags(nvalue);
+            printf("\n");
+        }
+        if (do_save)
+            config_updated();
+    } else if (strcmp(argv[1], "defaults") == 0) {
+        if ((argc == 3) && (strncmp(argv[2], "keyboard", 1) == 0)) {
+            keyboard_set_defaults();
+            config_updated();
+        } else {
+            config_set_defaults();
+        }
+    } else if (strcmp(argv[1], "fan_rpm_max") == 0) {
+        int pos = 0;
+        int rpm;
+        if (argc != 3) {
+            printf("fan RPM value required (0 - 32000)\n");
+            return (RC_BAD_PARAM);
+        }
+        if ((sscanf(argv[2], "%d%n", &rpm, &pos) != 1) ||
+                   (argv[2][pos] != '\0') || (rpm < 0) || (rpm > 32000)) {
+            printf("Invalid fan RPM value %s\n", argv[2]);
+            return (RC_USER_HELP);
+        }
+        config.fan_rpm_max = rpm;
+        config_updated();
+    } else if (strcmp(argv[1], "fan_speed") == 0) {
+        int pos = 0;
+        int speed;
+        if (argc != 3) {
+            printf("fan percent value required (0 - 100) or auto\n");
+            return (RC_BAD_PARAM);
+        }
+        if (strcmp(argv[2], "auto") == 0) {
+            speed = BIT(7) | 100;
+        } else if ((sscanf(argv[2], "%d%n", &speed, &pos) != 1) ||
+                   (argv[2][pos] != '\0') || (speed < 0) || (speed > 100)) {
+            printf("Invalid fan percent value %s\n", argv[2]);
+            return (RC_USER_HELP);
+        }
+        fan_set(speed);
+        config.fan_speed = speed;
+        config_updated();
+    } else if (strcmp(argv[1], "fan_speed_min") == 0) {
+        int pos = 0;
+        int speed;
+        if (argc != 3) {
+            printf("fan percent value required (0 - 100)\n");
+            return (RC_BAD_PARAM);
+        }
+        if ((sscanf(argv[2], "%d%n", &speed, &pos) != 1) ||
+            (argv[2][pos] != '\0') || (speed < 0) || (speed > 100)) {
+            printf("Invalid fan percent value %s\n", argv[2]);
+            return (RC_USER_HELP);
+        }
+        config.fan_speed_min = speed;
+        config_updated();
+    } else if ((strcmp(argv[1], "fan_temp_min") == 0) ||
+               (strcmp(argv[1], "fan_temp_max") == 0)) {
+        int pos = 0;
+        int value;
+        if (argc != 3) {
+            printf("Integer temperature percent required (0 - 127)\n");
+            return (RC_BAD_PARAM);
+        }
+        if ((sscanf(argv[2], "%d%n", &value, &pos) != 1) ||
+            (argv[2][pos] != '\0') || (value < 0) || (value > 127)) {
+            printf("Invalid temperature value %s\n", argv[2]);
+            return (RC_USER_HELP);
+        }
+        if (strcmp(argv[1], "fan_temp_min") == 0)
+            config.fan_temp_min = value;
+        else
+            config.fan_temp_max = value;
+        config_updated();
     } else if (strcmp(argv[1], "name") == 0) {
         config_name((argc < 2) ? NULL : argv[2]);
         return (RC_SUCCESS);

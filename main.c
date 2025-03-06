@@ -19,6 +19,8 @@
 #include "cmdline.h"
 #include "clock.h"
 #include "config.h"
+#include "fan.h"
+#include "keyboard.h"
 #include "power.h"
 #include "readline.h"
 #include "sensor.h"
@@ -36,6 +38,8 @@ main_poll(void)
     config_poll();
     usb_poll();
     power_poll();
+    fan_poll();
+    keyboard_poll();
 }
 
 int
@@ -59,6 +63,8 @@ main(void)
     show_reset_reason();
     config_read();
     sensor_init();          // also starts adc_init()
+    fan_init();
+    keyboard_init();
     usb_init();
 
     rl_initialize();        // Enable command editing and history

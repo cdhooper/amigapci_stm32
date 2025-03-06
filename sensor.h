@@ -17,5 +17,6 @@ void sensor_poll(void);
 void sensor_show(void);
 uint sensor_get_power_state(void);
 void sensor_check_readings(void);
+uint sensor_get(const char *name, uint *value, const char **type);
 
 #endif /* _SENSOR_H */

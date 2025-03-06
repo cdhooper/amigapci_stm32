@@ -52,9 +52,9 @@
 #define A5_PIN                  GPIO13
 
 #define FANPWM_PORT         GPIOB
-#define FANPWM_PIN              GPIO7   // Fan speed select
+#define FANPWM_PIN              GPIO8   // Fan speed select
 #define FANTACH_PORT        GPIOB
-#define FANTACH_PIN             GPIO7   // Fan speed measurement
+#define FANTACH_PIN             GPIO9   // Fan speed measurement
 
 #define PWRSW_PORT          GPIOC
 #define PWRSW_PIN               GPIO12  // User power switch/button

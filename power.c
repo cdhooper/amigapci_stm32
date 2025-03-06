@@ -27,6 +27,7 @@
 uint8_t power_state_desired;
 uint8_t power_state;
 
+static uint64_t power_timer;
 
 /*
  * power_button_poll
@@ -127,8 +128,7 @@ power_button_poll(void)
 void
 power_poll(void)
 {
-    static uint64_t power_timer;
-    uint            new_state;
+    uint new_state;
 
     power_button_poll();
 
@@ -283,7 +283,9 @@ power_init(void)
 {
     power_state = POWER_STATE_OFF;  // Just check limits
     sensor_check_readings();
+    power_state = POWER_STATE_INITIAL;
     power_state = sensor_get_power_state();
+    power_timer = timer_tick_plus_msec(POWER_ON_STABLE);
 
     if (power_state == POWER_STATE_INITIAL) {
         printf("power_init() failed\n");

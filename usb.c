@@ -26,11 +26,12 @@
 #include "tinyusb.h"
 #endif
 #ifdef USE_STMCUBEUSB
-#include "stmcubeusb.h"
+#include "cubeusb.h"
 #endif
 
 uint usb_debug_mask;
 uint usb_keyboard_terminal;
+static uint64_t usb_power_timer;
 
 typedef struct {
     uint16_t regs_offset;
@@ -186,6 +187,7 @@ usb_set_power(int state)
 {
     gpio_setv(USB_ENABLE_PORT, USB_ENABLE_PIN,
               (state == USB_SET_POWER_ON) ? 0 : 1);
+    usb_power_timer = timer_tick_plus_msec(500);
 }
 
 void
@@ -220,7 +222,6 @@ usb_init(void)
 #endif
 
     usb_set_power(1);
-    timer_delay_msec(100);
 }
 
 void
@@ -230,7 +231,21 @@ usb_shutdown(void)
     tinyusb_shutdown();
 #endif
 #ifdef USE_STMCUBEUSB
-    cubeusb_init();
+    cubeusb_shutdown();
 #endif
     usb_set_power(0);
+}
+
+void
+usb_poll(void)
+{
+    if (usb_power_timer && !timer_tick_has_elapsed(usb_power_timer))
+        return;
+
+#ifdef USE_TINYUSB
+    tinyusb_poll();
+#endif
+#ifdef USE_STMCUBEUSB
+    cubeusb_poll();
+#endif
 }

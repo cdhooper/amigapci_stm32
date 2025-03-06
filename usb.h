@@ -22,6 +22,7 @@
 
 void usb_init(void);
 void usb_poll(void);
+void usb_ls(uint verbose);
 void usb_show_regs(void);
 void usb_show_stats(void);
 void usb_set_power(int state);
