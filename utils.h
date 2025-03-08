@@ -20,6 +20,13 @@
 
 #define ARRAY_SIZE(x) (int)((sizeof (x) / sizeof ((x)[0])))
 
+#define IO_BASE              0x40000000
+#define BND_IO_BASE          0x42000000
+#define GPIO_IDR_OFFSET      0x10  // Input Data Register offset
+#define GPIO_ODR_OFFSET      0x14  // Output Data Register offset
+#define BND_IO(byte, bit)    (BND_IO_BASE + ((byte) - IO_BASE) * 32 + (bit) * 4)
+#define BND_ODR_TO_IDR(addr) ((addr) + (GPIO_IDR_OFFSET - GPIO_ODR_OFFSET) * 32)
+
 /*
  * Compile-time asserts
  */

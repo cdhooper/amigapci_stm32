@@ -381,6 +381,11 @@ static USBH_StatusTypeDef USBH_HID_KeybdDecode(USBH_HandleTypeDef *phost)
   uint8_t x;
 
   HID_HandleTypeDef *HID_Handle = (HID_HandleTypeDef *) phost->pActiveClass->pData;
+  if (HID_Handle == NULL)
+  {
+    return USBH_FAIL;
+  }
+
   if (HID_Handle->length == 0U)
   {
     return USBH_FAIL;

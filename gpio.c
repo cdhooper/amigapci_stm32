@@ -243,6 +243,7 @@ static const gpio_names_t gpio_names[] = {
     { "D16",        GPIO_B, 4 },
     { "D17",        GPIO_B, 5 },
     { "D18",        GPIO_B, 6 },
+    { "D19",        GPIO_B, 7 },
     { "FANPWM",     GPIO_B, 8 },
     { "FANTACH",    GPIO_B, 9 },
     { "STMRSTA",    GPIO_C, 13 },
@@ -793,17 +794,22 @@ gpio_init(void)
 
     gpio_setmode(STMRSTA_PORT, STMRSTA_PIN, GPIO_SETMODE_INPUT_PU);
 
+    gpio_setv(FORWARD_PORT,
+              FORWARD_PIN | BACK_PIN | LEFT_PIN | RIGHT_PIN | FIRE_PIN, 1);
     gpio_setmode(FORWARD_PORT, FORWARD_PIN | BACK_PIN | LEFT_PIN | RIGHT_PIN |
-                 FIRE_PIN, GPIO_SETMODE_INPUT_PU);
-    gpio_setmode(PotX_PORT, PotX_PIN | PotY_PIN, GPIO_SETMODE_INPUT_PU);
+                 FIRE_PIN, GPIO_SETMODE_OUTPUT_ODRAIN_25 | GPIO_SETMODE_PU);
+
+    gpio_setv(PotX_PORT, PotX_PIN | PotY_PIN, 1);
+    gpio_setmode(PotX_PORT, PotX_PIN | PotY_PIN,
+                 GPIO_SETMODE_OUTPUT_ODRAIN_25 | GPIO_SETMODE_PU);
 
     gpio_setv(KBRST_PORT, KBRST_PIN | KBDATA_PIN | KBCLK_PIN, 1);
     gpio_setmode(KBRST_PORT, KBRST_PIN | KBDATA_PIN | KBCLK_PIN,
                  GPIO_SETMODE_OUTPUT_ODRAIN_25 | GPIO_SETMODE_PU);
 
     gpio_setmode(VMON5_PORT, VMON5_PIN | VMON5SB_PIN | VMON3V3_PIN |
-                 VMON1V2_PIN | VMONx_PIN | VMONy_PIN | VMON12_PIN |
-                 VMONNEG12_PIN, GPIO_SETMODE_INPUT);
+                 VMON1V2_PIN | VMONx_PIN | VMONy_PIN, GPIO_SETMODE_INPUT);
+    gpio_setmode(VMON12_PORT, VMON12_PIN | VMONNEG12_PIN, GPIO_SETMODE_INPUT);
 
     gpio_setmode(RTCEN_PORT, RTCEN_PIN | R_WA_PIN, GPIO_SETMODE_INPUT_PU);
 

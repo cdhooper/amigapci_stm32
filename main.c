@@ -20,7 +20,9 @@
 #include "clock.h"
 #include "config.h"
 #include "fan.h"
+#include "kbrst.h"
 #include "keyboard.h"
+#include "mouse.h"
 #include "power.h"
 #include "readline.h"
 #include "sensor.h"
@@ -40,6 +42,8 @@ main_poll(void)
     power_poll();
     fan_poll();
     keyboard_poll();
+    kbrst_poll();
+    mouse_poll();
 }
 
 int

@@ -440,7 +440,7 @@ process_generic_report(uint8_t dev_addr, uint8_t instance,
             case HID_USAGE_DESKTOP_KEYBOARD:
                 TU_LOG1("HID receive keyboard report\n");
                 /* Assume keyboard follows boot report layout */
-                usb_keyboard_input((usb_keyboard_report_t *)report);
+                keyboard_usb_input((usb_keyboard_report_t *)report);
                 break;
 
             case HID_USAGE_DESKTOP_MOUSE:
@@ -464,7 +464,7 @@ tuh_hid_report_received_cb(uint8_t dev_addr, uint8_t instance,
 
     switch (proto) {
         case HID_ITF_PROTOCOL_KEYBOARD:
-            usb_keyboard_input((usb_keyboard_report_t *)report);
+            keyboard_usb_input((usb_keyboard_report_t *)report);
             break;
         case HID_ITF_PROTOCOL_MOUSE:
             printf("Mouse\n");

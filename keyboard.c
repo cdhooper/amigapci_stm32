@@ -20,6 +20,7 @@
 #include "uart.h"
 #include "usb.h"
 #include "gpio.h"
+#include "kbrst.h"
 #include <libopencm3/stm32/gpio.h>
 
 #undef DEBUG_KEYBOARD
@@ -125,10 +126,12 @@
 #define AS_CAPSLOCK    (0x62)  // Caps Lock
 #define AS_CTRL        (0x63)  // Ctrl
 #define AS_LEFTALT     (0x64)  // Left Alt
-#define AS_RIGHTALT    (0x64)  // Right Alt  (SAME as Left Alt??)
+#define AS_RIGHTALT    (0x65)  // Right Alt
 #define AS_LEFTAMIGA   (0x66)  // Left Amiga
 #define AS_RIGHTAMIGA  (0x67)  // Right Amiga
+#define AS_RESET_WAEN  (0x78)  // Reset warning
 #define AS_LOST_SYNC   (0xf9)  // Keyboard lost sync with Amiga
+#define AS_BUFOVERFLOW (0xfa)  // Keyboard output buffer overflow
 #define AS_POST_FAIL   (0xfc)  // Keyboard selftest failed
 #define AS_POWER_INIT  (0xfd)  // Keyboard powerup start key stream
 #define AS_POWER_DONE  (0xfe)  // Keyboard powerup done key stream
@@ -854,13 +857,7 @@ static uint    ak_rb_consumer;
 static uint8_t ak_rb[16];
 static uint8_t ak_has_sync;
 static uint8_t ak_lost_sync;
-
-#define IO_BASE              0x40000000
-#define BND_IO_BASE          0x42000000
-#define GPIO_IDR_OFFSET      0x10  // Input Data Register offset
-#define GPIO_ODR_OFFSET      0x14  // Output Data Register offset
-#define BND_IO(byte, bit)    (BND_IO_BASE + ((byte) - IO_BASE) * 32 + (bit) * 4)
-#define BND_ODR_TO_IDR(addr) ((addr) + (GPIO_IDR_OFFSET - GPIO_ODR_OFFSET) * 32)
+static uint8_t ak_ctrl_amiga_amiga;
 
 static inline void
 set_kbclk_0(void)
@@ -1016,12 +1013,34 @@ amiga_keyboard_send(void)
 static void
 amiga_keyboard_put(uint8_t code)
 {
-    uint new_prod = ((ak_rb_producer + 1) % sizeof (ak_rb));
+    uint new_prod;
+
+    switch (code) {
+        case AS_CTRL:
+            ak_ctrl_amiga_amiga |= BIT(0);
+            break;
+        case AS_CTRL | 0x80:
+            ak_ctrl_amiga_amiga &= ~BIT(0);
+            break;
+        case AS_LEFTAMIGA:
+            ak_ctrl_amiga_amiga |= BIT(1);
+            break;
+        case AS_LEFTAMIGA | 0x80:
+            ak_ctrl_amiga_amiga &= ~BIT(1);
+            break;
+        case AS_RIGHTAMIGA:
+            ak_ctrl_amiga_amiga |= BIT(2);
+            break;
+        case AS_RIGHTAMIGA | 0x80:
+            ak_ctrl_amiga_amiga &= ~BIT(2);
+            break;
+    }
 
     printf("[%02x]", code);
+    new_prod = ((ak_rb_producer + 1) % sizeof (ak_rb));
     if (new_prod == ak_rb_consumer) {
         /* Ring buffer full! */
-        printf("!%02x!", code);
+//      printf("!%02x!", code);
         return;
     }
 
@@ -1029,6 +1048,7 @@ amiga_keyboard_put(uint8_t code)
     ak_rb[ak_rb_producer] = ~((code << 1) | (code >> 7));
     __sync_synchronize();  // Memory barrier
     ak_rb_producer = new_prod;
+
 }
 
 /*
@@ -1103,7 +1123,7 @@ amiga_keyboard_sync(void)
 
 /* Handle input from USB keyboard */
 void
-usb_keyboard_input(usb_keyboard_report_t *report)
+keyboard_usb_input(usb_keyboard_report_t *report)
 {
     static usb_keyboard_report_t prev_report;
     static uint8_t capslock;
@@ -1501,11 +1521,79 @@ handle_code:
 void
 keyboard_poll(void)
 {
+    static uint8_t last_ctrl_amiga_amiga;
+    if (last_ctrl_amiga_amiga != ak_ctrl_amiga_amiga) {
+        uint8_t last = last_ctrl_amiga_amiga;
+        last_ctrl_amiga_amiga = ak_ctrl_amiga_amiga;
+        if (ak_ctrl_amiga_amiga == (BIT(0) | BIT(1) | BIT(2))) {
+            /* Ctrl-Amiga-Amiga is being pressed */
+            keyboard_reset_warning();
+            kbrst_amiga(1, 0);  // Assert and hold KBRST
+        } else if (last == (BIT(0) | BIT(1) | BIT(2))) {
+            /* Ctrl-Amiga-Amiga has been released */
+            kbrst_amiga(0, 0);  // Release KBRST
+        }
+    }
+
     if (ak_has_sync == 0) {
         amiga_keyboard_sync();
         return;
     }
     amiga_keyboard_send();
+}
+
+/*
+ * keyboard_reset_warning() issues a reset warning (reset is pending) to
+ * the Amiga. The warnings will be sent. If the Amiga doesn't immediately
+ * ack the first warning, this function will return a non-zero value.
+ * Otherwise, the second warning is sent. The Amiga must ack that message
+ * within 250 milliseconds, but it may hold KBDAT low for up to 10 seconds.
+ * Once KBDAT goes high, the Amiga may be reset (via KBRST).
+ */
+uint
+keyboard_reset_warning(void)
+{
+    uint64_t timeout;
+    uint64_t start;
+    ak_rb_consumer = ak_rb_producer;  // Flush the ring buffer
+    amiga_keyboard_put(AS_RESET_WAEN);
+start = timer_tick_get();
+    timeout = timer_tick_plus_msec(200);
+    while (ak_rb_consumer != ak_rb_producer) {
+        keyboard_poll();
+        main_poll();
+        if (timer_tick_has_elapsed(timeout)) {
+            ak_rb_consumer = ak_rb_producer;  // Flush the ring buffer
+            return (1);
+        }
+    }
+printf("1: %llu usec\n", timer_tick_to_usec(timer_tick_get() - start));
+start = timer_tick_get();
+
+    /* First warning was received; send second warning. */
+    amiga_keyboard_put(AS_RESET_WAEN);
+    timeout = timer_tick_plus_msec(250);
+    while (ak_rb_consumer != ak_rb_producer) {
+        keyboard_poll();
+        main_poll();
+        if (timer_tick_has_elapsed(timeout)) {
+            ak_rb_consumer = ak_rb_producer;  // Flush the ring buffer
+            return (1);
+        }
+    }
+printf("2: %llu usec\n", timer_tick_to_usec(timer_tick_get() - start));
+start = timer_tick_get();
+
+    /* Second warning was received. Wait up to 10 seconds */
+    timeout = timer_tick_plus_msec(10000);
+    while (get_kbdat() == 0) {
+        main_poll();
+        if (timer_tick_has_elapsed(timeout)) {
+            return (1);
+        }
+    }
+printf("3: %llu usec\n", timer_tick_to_usec(timer_tick_get() - start));
+    return (0);
 }
 
 void

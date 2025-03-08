@@ -17,6 +17,7 @@
 #include "timer.h"
 #include "clock.h"
 #include "keyboard.h"
+#include "mouse.h"
 #include "cubeusb.h"
 #include <usbh_cdc.h>  // CDC
 #include <usbh_hid.h>  // HID
@@ -209,18 +210,19 @@ USBH_HID_EventCallback(USBH_HandleTypeDef *phost)
 {
     uint port = get_port(phost);
     HID_TypeTypeDef devtype = USBH_HID_GetDeviceType(phost);
+// printf("ecb:%x ", devtype);
     if (devtype == HID_MOUSE) {  // Mouse
         HID_MOUSE_Info_TypeDef *Mouse_Info;
         Mouse_Info = USBH_HID_GetMouseInfo(phost);  // Get the info
-        int X_Val = Mouse_Info->x;  // get the x value
-        int Y_Val = Mouse_Info->y;  // get the y value
-        if (X_Val > 127)
-            X_Val -= 255;
-        if (Y_Val > 127)
-            Y_Val -= 255;
-        printf("X=%d, Y=%d, Button1=%d, Button2=%d, Button3=%d\n",
-               X_Val, Y_Val, Mouse_Info->buttons[0],
+        int x_val = (int8_t)Mouse_Info->x;  // get the x value
+        int y_val = (int8_t)Mouse_Info->y;  // get the y value
+#if 0
+        printf("X=%d, Y=%d, B1=%d, B2=%d, B3=%d\n",
+               x_val, y_val, Mouse_Info->buttons[0],
                Mouse_Info->buttons[1], Mouse_Info->buttons[2]);
+#endif
+        mouse_action(x_val, y_val, Mouse_Info->buttons[0],
+                     Mouse_Info->buttons[1], Mouse_Info->buttons[2]);
     } else if (devtype == HID_KEYBOARD) {  // Keyboard
         HID_KEYBD_Info_TypeDef *kinfo;
         kinfo = USBH_HID_GetKeybdInfo(phost);  // get the info
@@ -245,7 +247,7 @@ USBH_HID_EventCallback(USBH_HandleTypeDef *phost)
         kinput.keycode[3] = kinfo->keys[3];
         kinput.keycode[4] = kinfo->keys[4];
         kinput.keycode[5] = kinfo->keys[5];
-        usb_keyboard_input(&kinput);
+        keyboard_usb_input(&kinput);
     } else {
         printf("USB%u Event\n", port);
     }
@@ -255,13 +257,14 @@ static void
 handle_dev(USBH_HandleTypeDef *dev, uint port, uint devnum)
 {
     if (usb[port][devnum].appstate == APPLICATION_READY) {
-        HID_TypeTypeDef type = USBH_HID_GetDeviceType(dev);
-        if (usb[port][devnum].hid_devtype != type) {
-            usb[port][devnum].hid_devtype = type;
+        HID_TypeTypeDef devtype = USBH_HID_GetDeviceType(dev);
+// printf("hd:%x ", devtype);
+        if (usb[port][devnum].hid_devtype != devtype) {
+            usb[port][devnum].hid_devtype = devtype;
 #if 1
-            printf("USB%u type %x %s\n", devnum, type,
-                   (type == HID_KEYBOARD) ? "Keyboard" :
-                   (type == HID_MOUSE) ? "Mouse" : "Unknown");
+            printf("USB%u type %x %s\n", devnum, devtype,
+                   (devtype == HID_KEYBOARD) ? "Keyboard" :
+                   (devtype == HID_MOUSE) ? "Mouse" : "Unknown");
 #endif
             usb[port][devnum].hid_ready_timer = timer_tick_plus_msec(500);
         }
@@ -270,7 +273,7 @@ handle_dev(USBH_HandleTypeDef *dev, uint port, uint devnum)
                 return;
             usb[port][devnum].hid_ready_timer = 0;
         }
-        if (type == HID_KEYBOARD) {
+        if (devtype == HID_KEYBOARD) {
             HID_KEYBD_Info_TypeDef *info;
             info = USBH_HID_GetKeybdInfo(dev);
             if (info != NULL) {
@@ -282,9 +285,21 @@ handle_dev(USBH_HandleTypeDef *dev, uint port, uint devnum)
                        info->ralt, info->rgui);
                 // info->keys[]
             }
+// XXX: No need to process here, as it can be handled by even callback
         }
-        if (type == HID_MOUSE) {
+#if 0
+        if (devtype == HID_MOUSE) {
+            HID_MOUSE_Info_TypeDef *Mouse_Info;
+            Mouse_Info = USBH_HID_GetMouseInfo(dev);  // Get the info
+            int x_val = (int8_t)Mouse_Info->x;  // get the x value
+            int y_val = (int8_t)Mouse_Info->y;  // get the y value
+            printf("X=%d, Y=%d, B1=%d, B2=%d, B3=%d\n",
+                   x_val, y_val, Mouse_Info->buttons[0],
+                   Mouse_Info->buttons[1], Mouse_Info->buttons[2]);
+            mouse_action(x_val, y_val, Mouse_Info->buttons[0],
+                         Mouse_Info->buttons[1], Mouse_Info->buttons[2]);
         }
+#endif
     }
 }
 
@@ -351,7 +366,7 @@ hub_process(uint port)
                 break;
         }
 
-#if 0
+#if 1
         if ((phost->valid == 1) && (phost->busy == 0)) {
             HID_MOUSE_Info_TypeDef *minfo;
             minfo = USBH_HID_GetMouseInfo(phost);

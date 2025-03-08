@@ -15,7 +15,6 @@
 #include "printf.h"
 #include "timer.h"
 #include "kbrst.h"
-#include "pin_tests.h"
 
 uint8_t         amiga_not_in_reset     = 0xff;
 static uint8_t  amiga_powered_off      = 0;
@@ -44,7 +43,11 @@ amiga_is_powered_on(void)
     uint saw_1 = 0;
 
     for (count = 0; count < 100; count++) {
+#if 0
         got = gpio_get(SOCKET_D31_PORT, SOCKET_D31_PIN);
+#else
+        got = 1;
+#endif
         if (got)
             saw_1++;
         else
@@ -62,13 +65,9 @@ kbrst_poll(void)
 {
     uint8_t kbrst;
 
-    if (!board_is_standalone && !kbrst_in_amiga) {
-        /* Board is in Amiga and KBRST is not connected */
-        return;  // Leave at default state of "not in reset"
-    }
     if ((amiga_reset_timer != 0) && timer_tick_has_elapsed(amiga_reset_timer)) {
         amiga_reset_timer = 0;
-        gpio_setmode(KBRST_PORT, KBRST_PIN, GPIO_SETMODE_INPUT_PULLUPDOWN);
+        gpio_setv(KBRST_PORT, KBRST_PIN, 1);
     }
 
     kbrst = !!gpio_get(KBRST_PORT, KBRST_PIN);
@@ -82,9 +81,7 @@ kbrst_poll(void)
 
         if (kbrst == 0) {
             /* In reset: update ROM bank if requested by user (at reset) */
-            void ee_update_bank_at_reset(void);
             printf("Amiga in reset\n");
-            ee_update_bank_at_reset();
             if (amiga_long_reset_timer == 0)
                 amiga_long_reset_timer = timer_tick_plus_msec(2000);
         } else {
@@ -105,13 +102,9 @@ kbrst_poll(void)
             if (amiga_not_in_reset == 0) {
                 if (amiga_is_powered_on()) {
                     /* Still in reset at timer expiration */
-                    void ee_update_bank_at_longreset(void);
-                    ee_update_bank_at_longreset();
                 } else {
-                    void ee_update_bank_at_poweron(void);
                     printf("Amiga powered off\n");
                     amiga_powered_off++;
-                    ee_update_bank_at_poweron();
                 }
             }
         }
@@ -122,7 +115,6 @@ void
 kbrst_amiga(uint hold, uint longreset)
 {
     gpio_setv(KBRST_PORT, KBRST_PIN, 0);
-    gpio_setmode(KBRST_PORT, KBRST_PIN, GPIO_SETMODE_OUTPUT_PPULL_2);
     if (hold) {
         amiga_reset_timer = 0;
         amiga_long_reset_timer = 0xffffffffffffffff;

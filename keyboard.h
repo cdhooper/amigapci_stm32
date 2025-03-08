@@ -29,11 +29,11 @@ typedef struct {
     uint8_t keycode[6]; // Key codes of the currently pressed keys
 } usb_keyboard_report_t;
 
-/* Handle input from USB keyboard */
-void usb_keyboard_input(usb_keyboard_report_t *report);
+void keyboard_usb_input(usb_keyboard_report_t *report);  // USB keyboard input
+void keyboard_term(void);  // ASCII terminal input to Amiga
 void keyboard_set_defaults(void);
+uint keyboard_reset_warning(void);
 void keyboard_poll(void);
 void keyboard_init(void);
-void keyboard_term(void);
 
 #endif /* _KEYBOARD_H */
