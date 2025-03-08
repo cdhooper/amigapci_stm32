@@ -174,17 +174,17 @@ static USBH_StatusTypeDef USBH_HID_InterfaceInit(USBH_HandleTypeDef *phost)
   /*Decode Bootclass Protocol: Mouse or Keyboard*/
   if (phost->device.CfgDesc.Itf_Desc[interface].bInterfaceProtocol == HID_KEYBRD_BOOT_CODE)
   {
-    USBH_UsrLog("KeyBoard device found!");
+    USBH_UsrLog("USB%u.%u Keyboard device found!", phost->address, interface);
     HID_Handle->Init = USBH_HID_KeybdInit;
   }
   else if (phost->device.CfgDesc.Itf_Desc[interface].bInterfaceProtocol  == HID_MOUSE_BOOT_CODE)
   {
-    USBH_UsrLog("Mouse device found!");
+    USBH_UsrLog("USB%u.%u Mouse device found!", phost->address, interface);
     HID_Handle->Init = USBH_HID_MouseInit;
   }
   else
   {
-    USBH_UsrLog("Protocol not supported.");
+    USBH_UsrLog("USB%u.%u Protocol not supported.", phost->address, interface);
     return USBH_FAIL;
   }
 

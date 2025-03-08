@@ -367,6 +367,7 @@ __weak void  HAL_HCD_MspDeInit(HCD_HandleTypeDef *hhcd)
   * @{
   */
 
+#include "printf.h"
 /**
   * @brief  Submit a new URB for processing.
   * @param  hhcd HCD handle
@@ -400,6 +401,14 @@ HAL_StatusTypeDef HAL_HCD_HC_SubmitRequest(HCD_HandleTypeDef *hhcd,
                                            uint16_t length,
                                            uint8_t do_ping)
 {
+#if 0
+if (ep_type != EP_TYPE_INTR) {
+    // Transfer rate is too high for this debug output to be useful
+    extern HCD_HandleTypeDef _hHCD[2];
+    int port = (hhcd == &_hHCD[0]) ? 0 : (hhcd == &_hHCD[1]) ? 1 : -1;
+    printf("USB%d sr %u(%x) ", port, ep_type, pbuff);
+}
+#endif
   hhcd->hc[ch_num].ep_is_in = direction;
   hhcd->hc[ch_num].ep_type  = ep_type;
 

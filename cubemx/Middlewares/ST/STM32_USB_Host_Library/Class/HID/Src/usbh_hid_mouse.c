@@ -182,6 +182,7 @@ USBH_StatusTypeDef USBH_HID_MouseInit(USBH_HandleTypeDef *phost)
 {
   uint32_t i;
   HID_HandleTypeDef *HID_Handle = (HID_HandleTypeDef *) phost->pActiveClass->pData;
++printf("USB%u mouseinit class=%lu\n", phost->id, phost->ClassNumber);
 
   mouse_info.x = 0U;
   mouse_info.y = 0U;

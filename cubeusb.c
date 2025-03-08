@@ -31,7 +31,6 @@ void otg_hs_ep1_out_isr(void);
 void otg_hs_ep1_in_isr(void);
 void otg_hs_wkup_isr(void);
 void otg_hs_isr(void);
-void usb_poll(void);
 
 struct {
     uint otg_fs_ints;
@@ -58,6 +57,10 @@ static usb_t usb[2][MAX_HUB_PORTS + 1];
 
 USBH_HandleTypeDef usb_handle[2][MAX_HUB_PORTS + 1];
 
+/*
+ * _hHCD[0] is the Full speed (OTG_FS) port
+ * _hHCD[1] is the High speed (OTG_HS) port
+ */
 HCD_HandleTypeDef _hHCD[2];  // FS and HS device handles
 
 /*
@@ -85,24 +88,28 @@ static const char * const host_user_types[] = {
 };
 
 static uint
-get_port(USBH_HandleTypeDef *phost)
+get_port(USBH_HandleTypeDef *phost, uint *portdev)
 {
     uint cur;
     uint port;
     for (cur = 0; cur < MAX_HUB_PORTS + 1; cur++)
         for (port = 0; port < 2; port++)
-            if (phost == &usb_handle[port][cur])
+            if (phost == &usb_handle[port][cur]) {
+                *portdev = cur;
                 return (port);
+            }
     printf("[Can't find]");
+    *portdev = 0;
     return (0);
 }
 
 static void
 USBH_UserProcess(USBH_HandleTypeDef *phost, uint8_t id)
 {
-    uint port = get_port(phost);
-    uint devnum = 0;
-    printf("USB%u %x %s\n", port, id, (id < ARRAY_SIZE(host_user_types)) ?
+    uint devnum;
+    uint port = get_port(phost, &devnum);
+    printf("USB%u.%u %x %s\n", port, devnum, id,
+           (id < ARRAY_SIZE(host_user_types)) ?
            host_user_types[id] : "Unknown");
     switch (id) {
         case HOST_USER_SELECT_CONFIGURATION:
@@ -208,7 +215,8 @@ usb_ls(void)
 void
 USBH_HID_EventCallback(USBH_HandleTypeDef *phost)
 {
-    uint port = get_port(phost);
+    uint devnum;
+    uint port = get_port(phost, &devnum);
     HID_TypeTypeDef devtype = USBH_HID_GetDeviceType(phost);
 // printf("ecb:%x ", devtype);
     if (devtype == HID_MOUSE) {  // Mouse
@@ -262,7 +270,7 @@ handle_dev(USBH_HandleTypeDef *dev, uint port, uint devnum)
         if (usb[port][devnum].hid_devtype != devtype) {
             usb[port][devnum].hid_devtype = devtype;
 #if 1
-            printf("USB%u type %x %s\n", devnum, devtype,
+            printf("USB%u.%u type %x %s\n", port, devnum, devtype,
                    (devtype == HID_KEYBOARD) ? "Keyboard" :
                    (devtype == HID_MOUSE) ? "Mouse" : "Unknown");
 #endif
@@ -285,7 +293,7 @@ handle_dev(USBH_HandleTypeDef *dev, uint port, uint devnum)
                        info->ralt, info->rgui);
                 // info->keys[]
             }
-// XXX: No need to process here, as it can be handled by even callback
+// XXX: No need to process here, as it can be handled by event callback
         }
 #if 0
         if (devtype == HID_MOUSE) {
@@ -304,39 +312,43 @@ handle_dev(USBH_HandleTypeDef *dev, uint port, uint devnum)
 }
 
 /**
-  * @brief  USBH_LL_SetupEP0
+  * @brief  host_switch_to_dev
   *         Setup endpoint with selected device info
   * @param  phost: Host handle
   * @retval Status
   */
-HAL_StatusTypeDef USBH_LL_SetupEP0(USBH_HandleTypeDef *phost)
+static HAL_StatusTypeDef
+host_switch_to_dev(USBH_HandleTypeDef *phost)
 {
-        HCD_HandleTypeDef *phHCD =  &_hHCD[phost->id];
+    HCD_HandleTypeDef *hhcd = &_hHCD[phost->id];
+    uint pipe_out = phost->Control.pipe_out;
+    uint pipe_in  = phost->Control.pipe_in;
 
-__HAL_LOCK(phHCD);
+// printf("USB%u host_switch_to_dev id=%u\n", phost->address, phost->id);
+    __HAL_LOCK(hhcd);
 
-        phHCD->hc[phost->Control.pipe_out].dev_addr   = phost->device.address;
-        phHCD->hc[phost->Control.pipe_out].max_packet = phost->Control.pipe_size;
-        phHCD->hc[phost->Control.pipe_out].speed      = phost->device.speed;
+    hhcd->hc[pipe_out].dev_addr   = phost->device.address;
+    hhcd->hc[pipe_out].max_packet = phost->Control.pipe_size;
+    hhcd->hc[pipe_out].speed      = phost->device.speed;
 
-//phHCD->hc[phost->Control.pipe_out].ch_num     = phost->Control.pipe_out;
-//phHCD->hc[phost->Control.pipe_out].toggle_out = phost->Control.toggle_out;
-//phHCD->hc[phost->Control.pipe_out].data_pid = phost->Control.data_pid_out;
+//  hhcd->hc[pipe_out].ch_num     = phost->Control.pipe_out;
+//  hhcd->hc[pipe_out].toggle_out = phost->Control.toggle_out;
+//  hhcd->hc[pipe_out].data_pid   = phost->Control.data_pid_out;
 
-        phHCD->hc[phost->Control.pipe_in].dev_addr    = phost->device.address;
-        phHCD->hc[phost->Control.pipe_in].max_packet  = phost->Control.pipe_size;
-        phHCD->hc[phost->Control.pipe_in].speed       = phost->device.speed;
+    hhcd->hc[pipe_in].dev_addr    = phost->device.address;
+    hhcd->hc[pipe_in].max_packet  = phost->Control.pipe_size;
+    hhcd->hc[pipe_in].speed       = phost->device.speed;
 
-//phHCD->hc[phost->Control.pipe_in].ch_num      = phost->Control.pipe_in;
-//phHCD->hc[phost->Control.pipe_in].toggle_in   = phost->Control.toggle_in;
-//phHCD->hc[phost->Control.pipe_in].data_pid   = phost->Control.data_pid_in;
+//  hhcd->hc[pipe_in].ch_num      = phost->Control.pipe_in;
+//  hhcd->hc[pipe_in].toggle_in   = phost->Control.toggle_in;
+//  hhcd->hc[pipe_in].data_pid    = phost->Control.data_pid_in;
 
-        phHCD->pData = phost;
-        phost->pData = phHCD;
+    hhcd->pData = phost;
+    phost->pData = hhcd;
 
-__HAL_UNLOCK(phHCD);
+    __HAL_UNLOCK(hhcd);
 
-        return HAL_OK;
+    return HAL_OK;
 }
 
 #define LOG(...) printf(__VA_ARGS__)
@@ -353,6 +365,7 @@ hub_process(uint port)
                 break;
             case 1:
 // printf("p[%u,%u]", port, cur[port]);
+                host_switch_to_dev(phost);
                 USBH_Process(phost);
                 break;
             case 3:
@@ -366,7 +379,7 @@ hub_process(uint port)
                 break;
         }
 
-#if 1
+#if 0
         if ((phost->valid == 1) && (phost->busy == 0)) {
             HID_MOUSE_Info_TypeDef *minfo;
             minfo = USBH_HID_GetMouseInfo(phost);
@@ -404,7 +417,7 @@ hub_process(uint port)
 
         if (hUSBHost[current_loop].valid) {
             _phost = &hUSBHost[current_loop];
-            USBH_LL_SetupEP0(_phost);
+            host_switch_to_dev(_phost);
 
             if (_phost->valid == 3) {
                 LOG("PROCESSING ATTACH %d", _phost->address);
@@ -442,8 +455,6 @@ cubeusb_poll(void)
         handle_dev(&usb_handle[port][0], port, 0);
         hub_process(port);
     }
-// extern TIM_HandleTypeDef htim1;
-// HAL_TIM_IRQHandler(&htim1);
 }
 
 #if 0
@@ -501,13 +512,13 @@ HAL_GPIO_Init(GPIO_TypeDef *GPIOx, GPIO_InitTypeDef *GPIO_Init)
 #endif
 
 void
-HAL_HCD_MspInit(HCD_HandleTypeDef* hcdHandle)
+HAL_HCD_MspInit(HCD_HandleTypeDef *hhcd)
 {
 //  printf("HAL_HCD_MspInit\n");
 }
 
 void
-HAL_HCD_MspDeInit(HCD_HandleTypeDef* hcdHandle)
+HAL_HCD_MspDeInit(HCD_HandleTypeDef *hhcd)
 {
     printf("HAL_HCD_MspDeInit\n");
 }
@@ -520,15 +531,15 @@ HAL_HCD_SOF_Callback(HCD_HandleTypeDef *hhcd)
 void
 HAL_HCD_Connect_Callback(HCD_HandleTypeDef *hhcd)
 {
-    uint port = (hhcd == &_hHCD[0]) ? 0 : 1;
-    printf("HAL_HCD_Connect_Callback %u\n", port);
+    int port = (hhcd == &_hHCD[0]) ? 0 : (hhcd == &_hHCD[1]) ? 1 : -1;
+    printf("USB%d HAL_HCD_Connect\n", port);
     USBH_LL_Connect(hhcd->pData);
 }
 void
 HAL_HCD_Disconnect_Callback(HCD_HandleTypeDef *hhcd)
 {
-    uint port = (hhcd == &_hHCD[0]) ? 0 : 1;
-    printf("HAL_HCD_Disconnect_Callback %u\n", port);
+    int port = (hhcd == &_hHCD[0]) ? 0 : (hhcd == &_hHCD[1]) ? 1 : -1;
+    printf("USB%d HAL_HCD_Disconnect\n", port);
     USBH_LL_Disconnect(hhcd->pData);
 }
 void
@@ -544,15 +555,15 @@ HAL_HCD_HC_NotifyURBChange_Callback(HCD_HandleTypeDef *hhcd, uint8_t chnum,
 void
 HAL_HCD_PortEnabled_Callback(HCD_HandleTypeDef *hhcd)
 {
-    uint port = (hhcd == &_hHCD[0]) ? 0 : 1;
-    printf("HAL_HCD_PortEnabled_Callback %u\n", port);
+    int port = (hhcd == &_hHCD[0]) ? 0 : (hhcd == &_hHCD[1]) ? 1 : -1;
+    printf("USB%d HAL_HCD_PortEnabled\n", port);
     USBH_LL_PortEnabled(hhcd->pData);
 }
 void
 HAL_HCD_PortDisabled_Callback(HCD_HandleTypeDef *hhcd)
 {
-    uint port = (hhcd == &_hHCD[0]) ? 0 : 1;
-    printf("HAL_HCD_PortDisabled_Callback %u\n", port);
+    int port = (hhcd == &_hHCD[0]) ? 0 : (hhcd == &_hHCD[1]) ? 1 : -1;
+    printf("USB%d HAL_HCD_PortDisabled\n", port);
     USBH_LL_PortDisabled(hhcd->pData);
 }
 USBH_StatusTypeDef
@@ -560,27 +571,19 @@ USBH_LL_Init(USBH_HandleTypeDef *phost)
 {
     /* Init USB_IP */
     if (phost->id == HOST_FS) {
-        /* Link the driver to the stack. */
+        /* Link the OTG_FS driver to the stack */
         _hHCD[0].pData = phost;
-        phost->pData = &_hHCD[0];
-
         _hHCD[0].Instance = USB_OTG_FS;
         _hHCD[0].Init.Host_channels = 8;
         _hHCD[0].Init.speed = HCD_SPEED_FULL;
         _hHCD[0].Init.dma_enable = DISABLE;
         _hHCD[0].Init.phy_itface = HCD_PHY_EMBEDDED;
         _hHCD[0].Init.Sof_enable = DISABLE;
-        if (HAL_HCD_Init(&_hHCD[0]) != HAL_OK) {
-            printf("HAL_HCD_Init error\n");
-            return (USBH_FAIL);
-        }
-        USBH_LL_SetTimer(phost, HAL_HCD_GetCurrentFrame(&_hHCD[0]));
-    }
-    if (phost->id == HOST_HS) {
-        /* Link the driver to the stack. */
-        _hHCD[1].pData = phost;
-        phost->pData = &_hHCD[1];
+        phost->pData = &_hHCD[0];
 
+    } else if (phost->id == HOST_HS) {
+        /* Link the OTG_HS driver to the stack */
+        _hHCD[1].pData = phost;
         _hHCD[1].Instance = USB_OTG_HS;
         _hHCD[1].Init.Host_channels = 12;
         _hHCD[1].Init.speed = HCD_SPEED_FULL;
@@ -590,12 +593,16 @@ USBH_LL_Init(USBH_HandleTypeDef *phost)
         _hHCD[1].Init.low_power_enable = DISABLE;
         _hHCD[1].Init.vbus_sensing_enable = DISABLE;
         _hHCD[1].Init.use_external_vbus = DISABLE;
-        if (HAL_HCD_Init(&_hHCD[1]) != HAL_OK) {
-            printf("HAL_HCD_Init OTG_HS error\n");
-            return (USBH_FAIL);
-        }
-        USBH_LL_SetTimer(phost, HAL_HCD_GetCurrentFrame(&_hHCD[1]));
+        phost->pData = &_hHCD[1];
+
+    } else {
+        return (USBH_FAIL);
     }
+    if (HAL_HCD_Init(phost->pData) != HAL_OK) {
+        printf("HAL_HCD_Init OTG_HS error\n");
+        return (USBH_FAIL);
+    }
+    USBH_LL_SetTimer(phost, HAL_HCD_GetCurrentFrame(phost->pData));
     return (USBH_OK);
 }
 
@@ -614,13 +621,12 @@ USBH_LL_DriverVBUS(USBH_HandleTypeDef *phost, uint8_t state)
 USBH_StatusTypeDef
 USBH_LL_SetToggle(USBH_HandleTypeDef *phost, uint8_t pipe, uint8_t toggle)
 {
-    HCD_HandleTypeDef *pHandle;
-    pHandle = phost->pData;
+    HCD_HandleTypeDef *hhcd = phost->pData;
 
-    if (pHandle->hc[pipe].ep_is_in) {
-        pHandle->hc[pipe].toggle_in = toggle;
+    if (hhcd->hc[pipe].ep_is_in) {
+        hhcd->hc[pipe].toggle_in = toggle;
     } else {
-        pHandle->hc[pipe].toggle_out = toggle;
+        hhcd->hc[pipe].toggle_out = toggle;
     }
     return (USBH_OK);
 }
@@ -629,13 +635,12 @@ uint8_t
 USBH_LL_GetToggle(USBH_HandleTypeDef *phost, uint8_t pipe)
 {
     uint8_t toggle = 0;
-    HCD_HandleTypeDef *pHandle;
-    pHandle = phost->pData;
+    HCD_HandleTypeDef *hhcd = phost->pData;
 
-    if (pHandle->hc[pipe].ep_is_in) {
-        toggle = pHandle->hc[pipe].toggle_in;
+    if (hhcd->hc[pipe].ep_is_in) {
+        toggle = hhcd->hc[pipe].toggle_in;
     } else {
-        toggle = pHandle->hc[pipe].toggle_out;
+        toggle = hhcd->hc[pipe].toggle_out;
     }
     return (toggle);
 }
@@ -680,6 +685,12 @@ USBH_LL_OpenPipe(USBH_HandleTypeDef *phost, uint8_t pipe_num, uint8_t epnum,
     HAL_StatusTypeDef hal_status = HAL_OK;
     USBH_StatusTypeDef usb_status = USBH_OK;
 
+#if 0
+uint devnum;
+uint port = get_port(phost, &devnum);
+printf("USB%u.%u OpenPipe\n", port, devnum);
+#endif
+
     hal_status = HAL_HCD_HC_Init(phost->pData, pipe_num, epnum,
                                  dev_address, speed, ep_type, mps);
 
@@ -693,6 +704,10 @@ USBH_LL_ClosePipe(USBH_HandleTypeDef *phost, uint8_t pipe)
 {
     HAL_StatusTypeDef hal_status = HAL_OK;
 
+uint devnum;
+uint port = get_port(phost, &devnum);
+printf("USB%u.%u ClosePipe\n", port, devnum);
+
     hal_status = HAL_HCD_HC_Halt(phost->pData, pipe);
 
     return (USBH_Get_USB_Status(hal_status));
@@ -704,7 +719,11 @@ USBH_LL_SubmitURB(USBH_HandleTypeDef *phost, uint8_t pipe, uint8_t direction,
                   uint16_t length, uint8_t do_ping)
 {
     HAL_StatusTypeDef hal_status;
-
+#if 0
+uint devnum;
+uint port = get_port(phost, &devnum);
+printf("USB%u.%u SubmitURB\n", port, devnum);
+#endif
     hal_status = HAL_HCD_HC_SubmitRequest(phost->pData, pipe, direction,
                                           ep_type, token, pbuff, length,
                                           do_ping);
@@ -774,6 +793,14 @@ USBH_Delay(uint32_t Delay)
  *    USBH_HID_SetReport()
  */
 
+static USBH_StatusTypeDef
+register_class(USBH_HandleTypeDef *handle, USBH_ClassTypeDef *class, uint size)
+{
+    USBH_ClassTypeDef *nclass = malloc(size);
+    memcpy(nclass, class, size);
+    return (USBH_RegisterClass(handle, nclass));
+}
+
 void
 cubeusb_init(void)
 {
@@ -793,26 +820,26 @@ cubeusb_init(void)
         const char *pname = (port == 0) ? "FS" : "HS";
         uint     host_dev = (port == 0) ? HOST_FS : HOST_HS;
         int rc;
-        usb_handle[port][0].valid = 1;
-        usb_handle[port][0].address = port;
-        usb_handle[port][0].Pipes =
-                    malloc(sizeof (uint32_t) * USBH_MAX_PIPES_NBR);
+        USBH_HandleTypeDef *handle = &usb_handle[port][0];
+        handle->valid = 1;
+        handle->address = port;  // XXX: Same as id??
+        handle->Pipes = malloc(sizeof (uint32_t) * USBH_MAX_PIPES_NBR);
 
-        rc = USBH_Init(&usb_handle[port][0], USBH_UserProcess, host_dev);
+        rc = USBH_Init(handle, USBH_UserProcess, host_dev);
         if (rc != USBH_OK) {
-            printf("USB %s init fail: %d\n", pname, rc);
+            printf("USB%u %s init fail: %d\n", port, pname, rc);
             continue;
         }
-        if ((USBH_RegisterClass(&usb_handle[port][0], USBH_CDC_CLASS)) ||
-            (USBH_RegisterClass(&usb_handle[port][0], USBH_MSC_CLASS)) ||
-            (USBH_RegisterClass(&usb_handle[port][0], USBH_HID_CLASS)) ||
-            (USBH_RegisterClass(&usb_handle[port][0], USBH_HUB_CLASS)) ||
-            (USBH_RegisterClass(&usb_handle[port][0], USBH_MTP_CLASS))) {
-            printf("USB %s register fail\n", pname);
+        if (register_class(handle, USBH_CDC_CLASS, sizeof (*USBH_CDC_CLASS)) ||
+            register_class(handle, USBH_MSC_CLASS, sizeof (*USBH_MSC_CLASS)) ||
+            register_class(handle, USBH_HID_CLASS, sizeof (*USBH_HID_CLASS)) ||
+            register_class(handle, USBH_HUB_CLASS, sizeof (*USBH_HUB_CLASS)) ||
+            register_class(handle, USBH_MTP_CLASS, sizeof (*USBH_MTP_CLASS))) {
+            printf("USB%u %s register fail\n", port, pname);
             continue;
         }
         if (USBH_Start(&usb_handle[port][0]) != USBH_OK) {
-            printf("USB %s start fail\n", pname);
+            printf("USB%u %s start fail\n", port, pname);
             continue;
         }
     }

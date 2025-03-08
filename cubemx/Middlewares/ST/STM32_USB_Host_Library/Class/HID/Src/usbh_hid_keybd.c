@@ -329,6 +329,7 @@ USBH_StatusTypeDef USBH_HID_KeybdInit(USBH_HandleTypeDef *phost)
 {
   uint32_t x;
   HID_HandleTypeDef *HID_Handle = (HID_HandleTypeDef *) phost->pActiveClass->pData;
+printf("USB%u kbdinit class=%lu\n", phost->id, phost->ClassNumber);
 
   keybd_info.lctrl = keybd_info.lshift = 0U;
   keybd_info.lalt = keybd_info.lgui = 0U;

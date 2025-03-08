@@ -82,16 +82,17 @@
 /*----------   -----------*/
 #define USBH_MAX_DATA_BUFFER      512U
 
+#include "printf.h"
 /*----------   -----------*/
-#define USBH_DEBUG_LEVEL      0U
+#define USBH_DEBUG_LEVEL      4U
 
 /*----------   -----------*/
 #define USBH_USE_OS      0U
 
 /****************************************/
 /* #define for FS and HS identification */
-#define HOST_HS 		0
-#define HOST_FS 		1
+#define HOST_FS 		0
+#define HOST_HS 		1
 
 #if (USBH_USE_OS == 1)
   #include "cmsis_os.h"
