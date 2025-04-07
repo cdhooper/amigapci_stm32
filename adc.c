@@ -315,6 +315,18 @@ adc_update_scale(uint16_t adc0_value)
         adc_scale = tscale;  // wildly different, just take new value
     else
         adc_scale += (tscale - adc_scale) / 16;
+// printf("[%x,%x,%x]", adc0_value, tscale, adc_scale);
+}
+
+static uint16_t
+adc_average_vref(uint16_t vref)
+{
+    static uint16_t adc_vref;
+    if (adc_vref == 0)
+        adc_vref = vref;
+    else
+        adc_vref += (vref - adc_vref) / 2;
+    return (adc_vref);
 }
 
 int
@@ -329,35 +341,42 @@ adc_get_reading(uint cur)
         printf("ADC scale=%u\n", adc_scale);
 #endif
     }
-    if (adc_channels[cur] == ADC_CHANNEL_VBAT) {
-        static uint64_t vbat_refresh_timer;
-        static uint16_t vbat_cache;
-        static uint8_t  vbat_mode;
-        /*
-         * Special handling for battery channel, as it should be read
-         * infrequently to avoid draining the battery.
-         *
-         * When vbat_mode is 0
-         *      If the timer has elapsed, update the cached timer value.
-         *      and set vbat_mode to 0. Set a timer-until-next enable.
-         * When vbat_mode is 1,
-         *      The timer tells when it's time to read the sensor again.
-         *      Once the timer has elapsed, then enable the VBAT sensor,
-         *      set vbat_mode to 1, and start a timer-until-ready
-         */
-        if (vbat_mode == 0) {
-            if (timer_tick_has_elapsed(vbat_refresh_timer)) {
-                vbat_cache = adc_snapshot[cur];
-                adc_disable_vbat_sensor();
-                vbat_mode = 1;
-                vbat_refresh_timer = timer_tick_plus_msec(VBAT_READ_INTERVAL);
+    switch (adc_channels[cur]) {
+        case ADC_CHANNEL_VBAT: {
+            static uint64_t vbat_refresh_timer;
+            static uint16_t vbat_cache;
+            static uint8_t  vbat_mode;
+            /*
+             * Special handling for battery channel, as it should be read
+             * infrequently to avoid draining the battery.
+             *
+             * When vbat_mode is 0
+             *      If the timer has elapsed, update the cached timer value.
+             *      and set vbat_mode to 0. Set a timer-until-next enable.
+             * When vbat_mode is 1,
+             *      The timer tells when it's time to read the sensor again.
+             *      Once the timer has elapsed, then enable the VBAT sensor,
+             *      set vbat_mode to 1, and start a timer-until-ready
+             */
+            if (vbat_mode == 0) {
+                if (timer_tick_has_elapsed(vbat_refresh_timer)) {
+                    vbat_cache = adc_snapshot[cur];
+                    adc_disable_vbat_sensor();
+                    vbat_mode = 1;
+                    vbat_refresh_timer = timer_tick_plus_msec(VBAT_READ_INTERVAL);
+                }
+            } else if (timer_tick_has_elapsed(vbat_refresh_timer)) {
+                adc_enable_vbat_sensor();
+                vbat_mode = 0;
+                vbat_refresh_timer = timer_tick_plus_msec(1);  // until good
             }
-        } else if (timer_tick_has_elapsed(vbat_refresh_timer)) {
-            adc_enable_vbat_sensor();
-            vbat_mode = 0;
-            vbat_refresh_timer = timer_tick_plus_msec(1);  // until good
+            adc_snapshot[cur] = vbat_cache;
+            break;
         }
-        adc_snapshot[cur] = vbat_cache;
+        case ADC_CHANNEL_VREF:
+//          adc_snapshot[cur] = SCALE_VREF * 4096 / 3.3 / adc_scale;
+            adc_snapshot[cur] = adc_average_vref(adc_snapshot[cur]);
+            break;
     }
 
     calc = adc_snapshot[cur] * adc_scale * 33 / 4096;

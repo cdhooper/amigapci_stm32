@@ -99,7 +99,12 @@ static void dmb(void)
 void
 reset_check(void)
 {
+#if 0
     if (system_reset_to_dfu_magic == RESET_TO_DFU_ROM_MAGIC) {
+#else
+    if ((system_reset_to_dfu_magic == RESET_TO_DFU_ROM_MAGIC) ||
+        (system_reset_to_dfu_magic == RESET_TO_DFU_MAGIC)) {
+#endif
         system_reset_to_dfu_magic = 1;
 
         uint32_t  addr = SYSTEM_MEMORY_BASE;
@@ -113,6 +118,7 @@ reset_check(void)
         __asm__("MSR msp, %0" : : "r" (ADDR32(base)[0]));   // SP = base[0]
         /* Set the program counter (jump) */
         __asm__("BX %0\n\t" : : "r" (ADDR32(base)[1]));     // PC = base[1]
+#if 0
     } else if (system_reset_to_dfu_magic == RESET_TO_DFU_MAGIC) {
         system_reset_to_dfu_magic = 3;
 
@@ -132,6 +138,7 @@ reset_check(void)
         __asm__("MSR msp, %0" : : "r" (ADDR32(base)[0]));   // SP = base[0]
         /* Set the program counter (jump) */
         __asm__("BX %0\n\t" : : "r" (ADDR32(base)[1]));     // PC = base[1]
+#endif
     } else {
         system_reset_to_dfu_magic = 2;
 

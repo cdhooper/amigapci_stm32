@@ -50,7 +50,7 @@ int
 main(void)
 {
 //  reset_periphs();
-//  reset_check();
+    reset_check();
     get_reset_reason();     // Must be done very early
     gpio_init_early();
     clock_init();
