@@ -84,7 +84,7 @@ EndBSPDependencies */
 /** @defgroup USBH_HID_KEYBD_Private_FunctionPrototypes
 * @{
 */
-static USBH_StatusTypeDef USBH_HID_KeybdDecode(USBH_HandleTypeDef *phost);
+static USBH_StatusTypeDef USBH_HID_KeybdDecode(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle);
 /**
 * @}
 */
@@ -325,10 +325,9 @@ static  const  uint8_t  HID_KEYBRD_Codes[] =
   * @param  phost: Host handle
   * @retval USBH Status
   */
-USBH_StatusTypeDef USBH_HID_KeybdInit(USBH_HandleTypeDef *phost)
+USBH_StatusTypeDef USBH_HID_KeybdInit(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle)
 {
   uint32_t x;
-  HID_HandleTypeDef *HID_Handle = (HID_HandleTypeDef *) phost->pActiveClass->pData;
 printf("USB%u kbdinit class=%lu\n", phost->id, phost->ClassNumber);
 
   keybd_info.lctrl = keybd_info.lshift = 0U;
@@ -359,9 +358,9 @@ printf("USB%u kbdinit class=%lu\n", phost->id, phost->ClassNumber);
   * @param  phost: Host handle
   * @retval keyboard information
   */
-HID_KEYBD_Info_TypeDef *USBH_HID_GetKeybdInfo(USBH_HandleTypeDef *phost)
+HID_KEYBD_Info_TypeDef *USBH_HID_GetKeybdInfo(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle)
 {
-  if (USBH_HID_KeybdDecode(phost) == USBH_OK)
+  if (USBH_HID_KeybdDecode(phost, HID_Handle) == USBH_OK)
   {
     return &keybd_info;
   }
@@ -377,11 +376,10 @@ HID_KEYBD_Info_TypeDef *USBH_HID_GetKeybdInfo(USBH_HandleTypeDef *phost)
   * @param  phost: Host handle
   * @retval USBH Status
   */
-static USBH_StatusTypeDef USBH_HID_KeybdDecode(USBH_HandleTypeDef *phost)
+static USBH_StatusTypeDef USBH_HID_KeybdDecode(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle)
 {
   uint8_t x;
 
-  HID_HandleTypeDef *HID_Handle = (HID_HandleTypeDef *) phost->pActiveClass->pData;
   if (HID_Handle == NULL)
   {
     return USBH_FAIL;

@@ -104,8 +104,8 @@ static USBH_StatusTypeDef USBH_HID_Process(USBH_HandleTypeDef *phost);
 static USBH_StatusTypeDef USBH_HID_SOFProcess(USBH_HandleTypeDef *phost);
 static void  USBH_HID_ParseHIDDesc(HID_DescTypeDef *desc, uint8_t *buf);
 
-extern USBH_StatusTypeDef USBH_HID_MouseInit(USBH_HandleTypeDef *phost);
-extern USBH_StatusTypeDef USBH_HID_KeybdInit(USBH_HandleTypeDef *phost);
+extern USBH_StatusTypeDef USBH_HID_MouseInit(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle);
+extern USBH_StatusTypeDef USBH_HID_KeybdInit(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle);
 
 USBH_ClassTypeDef  HID_Class =
 {
@@ -128,27 +128,12 @@ USBH_ClassTypeDef  HID_Class =
 */
 
 
-/**
-  * @brief  USBH_HID_InterfaceInit
-  *         The function init the HID class.
-  * @param  phost: Host handle
-  * @retval USBH Status
-  */
-static USBH_StatusTypeDef USBH_HID_InterfaceInit(USBH_HandleTypeDef *phost)
+static USBH_StatusTypeDef USBH_HID_InterfaceInit_ll(USBH_HandleTypeDef *phost, uint8_t interface)
 {
   USBH_StatusTypeDef status;
   HID_HandleTypeDef *HID_Handle;
   uint8_t max_ep;
   uint8_t num = 0U;
-  uint8_t interface;
-
-  interface = USBH_FindInterface(phost, phost->pActiveClass->ClassCode, HID_BOOT_CODE, 0xFFU);
-
-  if ((interface == 0xFFU) || (interface >= USBH_MAX_NUM_INTERFACES)) /* No Valid Interface */
-  {
-    USBH_DbgLog("Cannot Find the interface for %s class.", phost->pActiveClass->Name);
-    return USBH_FAIL;
-  }
 
   status = USBH_SelectInterface(phost, interface);
 
@@ -157,21 +142,41 @@ static USBH_StatusTypeDef USBH_HID_InterfaceInit(USBH_HandleTypeDef *phost)
     return USBH_FAIL;
   }
 
-  phost->pActiveClass->pData = (HID_HandleTypeDef *)USBH_malloc(sizeof(HID_HandleTypeDef));
-  HID_Handle = (HID_HandleTypeDef *) phost->pActiveClass->pData;
-
+  HID_Handle = (HID_HandleTypeDef *)USBH_malloc(sizeof(HID_HandleTypeDef));
   if (HID_Handle == NULL)
   {
     USBH_DbgLog("Cannot allocate memory for HID Handle");
     return USBH_FAIL;
   }
+  printf("CDH: Alloc %p\n", (void *) HID_Handle);
 
   /* Initialize hid handler */
   USBH_memset(HID_Handle, 0, sizeof(HID_HandleTypeDef));
 
+#if 1
+  HID_Handle->next = phost->pActiveClass->pData;
+  phost->pActiveClass->pData = HID_Handle;
+#else
+  // XXX: TEMPORARY TO DEBUG ORDER OF PDATA LIST
+  HID_HandleTypeDef *thh;
+  thh = (HID_HandleTypeDef *) phost->pActiveClass->pData;
+
+  HID_Handle->next = NULL;
+
+  if (thh == NULL)
+      phost->pActiveClass->pData = HID_Handle;
+  else {
+    while (thh->next != NULL)
+        thh = thh->next;
+    thh->next = HID_Handle;
+  }
+#endif
+
+  HID_Handle->interface = interface;
   HID_Handle->state = HID_ERROR;
 
   /*Decode Bootclass Protocol: Mouse or Keyboard*/
+  printf("USB%u IF=%u protocol=%u numcfg=%u\n", phost->id, interface, phost->device.CfgDesc.Itf_Desc[interface].bInterfaceProtocol, phost->device.CfgDesc.bNumInterfaces);
   if (phost->device.CfgDesc.Itf_Desc[interface].bInterfaceProtocol == HID_KEYBRD_BOOT_CODE)
   {
     USBH_UsrLog("USB%u.%u Keyboard device found!", phost->address, interface);
@@ -237,14 +242,36 @@ static USBH_StatusTypeDef USBH_HID_InterfaceInit(USBH_HandleTypeDef *phost)
 }
 
 /**
-  * @brief  USBH_HID_InterfaceDeInit
-  *         The function DeInit the Pipes used for the HID class.
+  * @brief  USBH_HID_InterfaceInit
+  *         The function init the HID class.
   * @param  phost: Host handle
   * @retval USBH Status
   */
-static USBH_StatusTypeDef USBH_HID_InterfaceDeInit(USBH_HandleTypeDef *phost)
+static USBH_StatusTypeDef USBH_HID_InterfaceInit(USBH_HandleTypeDef *phost)
+{
+  uint8_t interface;
+  USBH_StatusTypeDef status = USBH_FAIL;
+
+  interface = USBH_FindInterface(phost, phost->pActiveClass->ClassCode, HID_BOOT_CODE, HID_KEYBRD_BOOT_CODE);
+  if (interface < USBH_MAX_NUM_INTERFACES)
+      status = USBH_HID_InterfaceInit_ll(phost, interface);
+
+  interface = USBH_FindInterface(phost, phost->pActiveClass->ClassCode, HID_BOOT_CODE, HID_MOUSE_BOOT_CODE);
+  if (interface < USBH_MAX_NUM_INTERFACES)
+      status = USBH_HID_InterfaceInit_ll(phost, interface);
+
+  if (status == USBH_FAIL) { /* No Valid Interface */
+    USBH_DbgLog("Cannot Find the interface for %s class.", phost->pActiveClass->Name);
+  }
+  return (status);
+}
+
+static USBH_StatusTypeDef USBH_HID_InterfaceDeInit_ll(USBH_HandleTypeDef *phost)
 {
   HID_HandleTypeDef *HID_Handle = (HID_HandleTypeDef *) phost->pActiveClass->pData;
+
+  if (HID_Handle == NULL)
+    return USBH_FAIL;
 
   if (HID_Handle->InPipe != 0x00U)
   {
@@ -260,13 +287,28 @@ static USBH_StatusTypeDef USBH_HID_InterfaceDeInit(USBH_HandleTypeDef *phost)
     HID_Handle->OutPipe = 0U;     /* Reset the pipe as Free */
   }
 
-  if (phost->pActiveClass->pData)
-  {
-    USBH_free(phost->pActiveClass->pData);
-    phost->pActiveClass->pData = 0U;
-  }
+  printf("CDH: Dealloc %p\n", (void *)HID_Handle);
+
+  phost->pActiveClass->pData = HID_Handle->next;
+  USBH_free(HID_Handle);
 
   return USBH_OK;
+}
+
+/**
+  * @brief  USBH_HID_InterfaceDeInit
+  *         The function DeInit the Pipes used for the HID class.
+  * @param  phost: Host handle
+  * @retval USBH Status
+  */
+static USBH_StatusTypeDef USBH_HID_InterfaceDeInit(USBH_HandleTypeDef *phost)
+{
+  USBH_StatusTypeDef status = USBH_FAIL;
+
+  while (phost->pActiveClass->pData != NULL)
+    status = USBH_HID_InterfaceDeInit_ll(phost);
+
+  return status;
 }
 
 /**
@@ -276,12 +318,11 @@ static USBH_StatusTypeDef USBH_HID_InterfaceDeInit(USBH_HandleTypeDef *phost)
   * @param  phost: Host handle
   * @retval USBH Status
   */
-static USBH_StatusTypeDef USBH_HID_ClassRequest(USBH_HandleTypeDef *phost)
+static USBH_StatusTypeDef USBH_HID_ClassRequest_ll(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle)
 {
 
   USBH_StatusTypeDef status         = USBH_BUSY;
   USBH_StatusTypeDef classReqStatus = USBH_BUSY;
-  HID_HandleTypeDef *HID_Handle = (HID_HandleTypeDef *) phost->pActiveClass->pData;
 
   /* Switch HID state machine */
   switch (HID_Handle->ctl_state)
@@ -350,21 +391,33 @@ static USBH_StatusTypeDef USBH_HID_ClassRequest(USBH_HandleTypeDef *phost)
 }
 
 /**
-  * @brief  USBH_HID_Process
-  *         The function is for managing state machine for HID data transfers
+  * @brief  USBH_HID_ClassRequest
+  *         The function is responsible for handling Standard requests
+  *         for HID class.
   * @param  phost: Host handle
   * @retval USBH Status
   */
-static USBH_StatusTypeDef USBH_HID_Process(USBH_HandleTypeDef *phost)
+static USBH_StatusTypeDef USBH_HID_ClassRequest(USBH_HandleTypeDef *phost)
+{
+  USBH_StatusTypeDef status = USBH_FAIL;
+  HID_HandleTypeDef *HID_Handle = (HID_HandleTypeDef *) phost->pActiveClass->pData;
+
+  while (HID_Handle != NULL) {
+    status = USBH_HID_ClassRequest_ll(phost, HID_Handle);
+    HID_Handle = HID_Handle->next;
+  }
+  return status;
+}
+
+static USBH_StatusTypeDef USBH_HID_Process_ll(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle)
 {
   USBH_StatusTypeDef status = USBH_OK;
-  HID_HandleTypeDef *HID_Handle = (HID_HandleTypeDef *) phost->pActiveClass->pData;
   uint32_t XferSize;
 
   switch (HID_Handle->state)
   {
     case HID_INIT:
-      HID_Handle->Init(phost);
+      HID_Handle->Init(phost, HID_Handle);
       HID_Handle->state = HID_IDLE;
 
 #if (USBH_USE_OS == 1U)
@@ -445,7 +498,7 @@ static USBH_StatusTypeDef USBH_HID_Process(USBH_HandleTypeDef *phost)
         {
           USBH_HID_FifoWrite(&HID_Handle->fifo, HID_Handle->pData, HID_Handle->length);
           HID_Handle->DataReady = 1U;
-          USBH_HID_EventCallback(phost);
+          USBH_HID_EventCallback(phost, HID_Handle);
 
 #if (USBH_USE_OS == 1U)
           phost->os_msg = (uint32_t)USBH_URB_EVENT;
@@ -480,15 +533,25 @@ static USBH_StatusTypeDef USBH_HID_Process(USBH_HandleTypeDef *phost)
 }
 
 /**
-  * @brief  USBH_HID_SOFProcess
-  *         The function is for managing the SOF Process
+  * @brief  USBH_HID_Process
+  *         The function is for managing state machine for HID data transfers
   * @param  phost: Host handle
   * @retval USBH Status
   */
-static USBH_StatusTypeDef USBH_HID_SOFProcess(USBH_HandleTypeDef *phost)
+static USBH_StatusTypeDef USBH_HID_Process(USBH_HandleTypeDef *phost)
 {
+  USBH_StatusTypeDef status = USBH_FAIL;
   HID_HandleTypeDef *HID_Handle = (HID_HandleTypeDef *) phost->pActiveClass->pData;
 
+  while (HID_Handle != NULL) {
+    status = USBH_HID_Process_ll(phost, HID_Handle);
+    HID_Handle = HID_Handle->next;
+  }
+  return status;
+}
+
+static USBH_StatusTypeDef USBH_HID_SOFProcess_ll(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle)
+{
   if (HID_Handle->state == HID_POLL)
   {
     if ((phost->Timer - HID_Handle->timer) >= HID_Handle->poll)
@@ -506,6 +569,24 @@ static USBH_StatusTypeDef USBH_HID_SOFProcess(USBH_HandleTypeDef *phost)
     }
   }
   return USBH_OK;
+}
+
+/**
+  * @brief  USBH_HID_SOFProcess
+  *         The function is for managing the SOF Process
+  * @param  phost: Host handle
+  * @retval USBH Status
+  */
+static USBH_StatusTypeDef USBH_HID_SOFProcess(USBH_HandleTypeDef *phost)
+{
+  USBH_StatusTypeDef status = USBH_FAIL;
+  HID_HandleTypeDef *HID_Handle = (HID_HandleTypeDef *) phost->pActiveClass->pData;
+
+  while (HID_Handle != NULL) {
+    status = USBH_HID_SOFProcess_ll(phost, HID_Handle);
+    HID_Handle = HID_Handle->next;
+  }
+  return status;
 }
 
 /**
@@ -703,24 +784,18 @@ static void  USBH_HID_ParseHIDDesc(HID_DescTypeDef *desc, uint8_t *buf)
   * @param  phost: Host handle
   * @retval HID function: HID_MOUSE / HID_KEYBOARD
   */
-HID_TypeTypeDef USBH_HID_GetDeviceType(USBH_HandleTypeDef *phost)
+HID_TypeTypeDef USBH_HID_GetDeviceType(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle)
 {
   HID_TypeTypeDef   type = HID_UNKNOWN;
   uint8_t InterfaceProtocol;
 
   if (phost->gState == HOST_CLASS)
   {
-    InterfaceProtocol = phost->device.CfgDesc.Itf_Desc[phost->device.current_interface].bInterfaceProtocol;
-    if (InterfaceProtocol == HID_KEYBRD_BOOT_CODE)
-    {
+    InterfaceProtocol = phost->device.CfgDesc.Itf_Desc[HID_Handle->interface].bInterfaceProtocol;
+    if (InterfaceProtocol == HID_KEYBRD_BOOT_CODE) {
       type = HID_KEYBOARD;
-    }
-    else
-    {
-      if (InterfaceProtocol == HID_MOUSE_BOOT_CODE)
-      {
-        type = HID_MOUSE;
-      }
+    } else if (InterfaceProtocol == HID_MOUSE_BOOT_CODE) {
+      type = HID_MOUSE;
     }
   }
   return type;
@@ -861,10 +936,11 @@ uint16_t USBH_HID_FifoWrite(FIFO_TypeDef *f, void *buf, uint16_t  nbytes)
 *  @param  phost: Selected device
 * @retval None
 */
-__weak void USBH_HID_EventCallback(USBH_HandleTypeDef *phost)
+__weak void USBH_HID_EventCallback(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle)
 {
   /* Prevent unused argument(s) compilation warning */
   UNUSED(phost);
+  UNUSED(HID_Handle);
 }
 /**
 * @}

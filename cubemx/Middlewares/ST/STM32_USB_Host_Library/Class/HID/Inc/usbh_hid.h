@@ -27,6 +27,8 @@ extern "C" {
 
 /* Includes ------------------------------------------------------------------*/
 #include "usbh_core.h"
+
+typedef struct _HID_Process HID_HandleTypeDef;
 #include "usbh_hid_mouse.h"
 #include "usbh_hid_keybd.h"
 
@@ -207,8 +209,9 @@ typedef struct
 
 
 /* Structure for HID process */
-typedef struct _HID_Process
+struct _HID_Process
 {
+  uint8_t              interface;  // USB device interface for this handle
   uint8_t              OutPipe;
   uint8_t              InPipe;
   HID_StateTypeDef     state;
@@ -223,9 +226,9 @@ typedef struct _HID_Process
   uint32_t             timer;
   uint8_t              DataReady;
   HID_DescTypeDef      HID_Desc;
-  USBH_StatusTypeDef(* Init)(USBH_HandleTypeDef *phost);
-}
-HID_HandleTypeDef;
+  USBH_StatusTypeDef(* Init)(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle);
+  struct _HID_Process *next;
+};
 
 /**
   * @}
@@ -303,9 +306,9 @@ USBH_StatusTypeDef USBH_HID_SetIdle(USBH_HandleTypeDef *phost,
 USBH_StatusTypeDef USBH_HID_SetProtocol(USBH_HandleTypeDef *phost,
                                         uint8_t protocol);
 
-void USBH_HID_EventCallback(USBH_HandleTypeDef *phost);
+void USBH_HID_EventCallback(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle);
 
-HID_TypeTypeDef USBH_HID_GetDeviceType(USBH_HandleTypeDef *phost);
+HID_TypeTypeDef USBH_HID_GetDeviceType(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle);
 
 uint8_t USBH_HID_GetPollInterval(USBH_HandleTypeDef *phost);
 

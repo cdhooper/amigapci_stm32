@@ -285,8 +285,8 @@ typedef struct
 }
 HID_KEYBD_Info_TypeDef;
 
-USBH_StatusTypeDef USBH_HID_KeybdInit(USBH_HandleTypeDef *phost);
-HID_KEYBD_Info_TypeDef *USBH_HID_GetKeybdInfo(USBH_HandleTypeDef *phost);
+USBH_StatusTypeDef USBH_HID_KeybdInit(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle);
+HID_KEYBD_Info_TypeDef *USBH_HID_GetKeybdInfo(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle);
 uint8_t USBH_HID_GetASCIICode(HID_KEYBD_Info_TypeDef *info);
 
 /**

@@ -647,11 +647,20 @@ USBH_StatusTypeDef  USBH_Process(USBH_HandleTypeDef *phost)
       {
         phost->pActiveClass = NULL;
 
+        /*
+         * XXX CDH: Only looking at Itf_Desc[0] here.
+         *          Maybe need to walk through CfgDesc.bNumInterfaces and
+         *          call the class for each one
+         *          phost->ClassNumber is used to index phost->pClass[] to locate
+         *          the appropriate class to manage this device.
+         *          Does phost->pActiveClass need to become an array?
+         */
         for (idx = 0U; idx < USBH_MAX_NUM_SUPPORTED_CLASS; idx++)
         {
           if (phost->pClass[idx]->ClassCode == phost->device.CfgDesc.Itf_Desc[0].bInterfaceClass)
           {
             phost->pActiveClass = phost->pClass[idx];
+            break;
           }
         }
 

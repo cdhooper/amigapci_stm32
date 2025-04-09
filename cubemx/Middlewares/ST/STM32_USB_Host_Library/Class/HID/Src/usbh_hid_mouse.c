@@ -72,7 +72,7 @@ EndBSPDependencies */
 /** @defgroup USBH_HID_MOUSE_Private_FunctionPrototypes
   * @{
   */
-static USBH_StatusTypeDef USBH_HID_MouseDecode(USBH_HandleTypeDef *phost);
+static USBH_StatusTypeDef USBH_HID_MouseDecode(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle);
 
 /**
   * @}
@@ -178,10 +178,9 @@ static const HID_Report_ItemTypedef prop_y =
   * @param  phost: Host handle
   * @retval USBH Status
   */
-USBH_StatusTypeDef USBH_HID_MouseInit(USBH_HandleTypeDef *phost)
+USBH_StatusTypeDef USBH_HID_MouseInit(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle)
 {
   uint32_t i;
-  HID_HandleTypeDef *HID_Handle = (HID_HandleTypeDef *) phost->pActiveClass->pData;
 +printf("USB%u mouseinit class=%lu\n", phost->id, phost->ClassNumber);
 
   mouse_info.x = 0U;
@@ -212,9 +211,9 @@ USBH_StatusTypeDef USBH_HID_MouseInit(USBH_HandleTypeDef *phost)
   * @param  phost: Host handle
   * @retval mouse information
   */
-HID_MOUSE_Info_TypeDef *USBH_HID_GetMouseInfo(USBH_HandleTypeDef *phost)
+HID_MOUSE_Info_TypeDef *USBH_HID_GetMouseInfo(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle)
 {
-  if (USBH_HID_MouseDecode(phost) == USBH_OK)
+  if (USBH_HID_MouseDecode(phost, HID_Handle) == USBH_OK)
   {
     return &mouse_info;
   }
@@ -230,9 +229,8 @@ HID_MOUSE_Info_TypeDef *USBH_HID_GetMouseInfo(USBH_HandleTypeDef *phost)
   * @param  phost: Host handle
   * @retval USBH Status
   */
-static USBH_StatusTypeDef USBH_HID_MouseDecode(USBH_HandleTypeDef *phost)
+static USBH_StatusTypeDef USBH_HID_MouseDecode(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle)
 {
-  HID_HandleTypeDef *HID_Handle = (HID_HandleTypeDef *) phost->pActiveClass->pData;
   if (HID_Handle == NULL)
   {
     return USBH_FAIL;

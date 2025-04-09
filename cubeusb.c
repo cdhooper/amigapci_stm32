@@ -98,7 +98,7 @@ get_port(USBH_HandleTypeDef *phost, uint *portdev)
                 *portdev = cur;
                 return (port);
             }
-    printf("[Can't find]");
+    printf("[Can't find phost %p]", (void *) phost);
     *portdev = 0;
     return (0);
 }
@@ -213,15 +213,15 @@ usb_ls(void)
 }
 
 void
-USBH_HID_EventCallback(USBH_HandleTypeDef *phost)
+USBH_HID_EventCallback(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle)
 {
     uint devnum;
     uint port = get_port(phost, &devnum);
-    HID_TypeTypeDef devtype = USBH_HID_GetDeviceType(phost);
-// printf("ecb:%x ", devtype);
+    HID_TypeTypeDef devtype = USBH_HID_GetDeviceType(phost, HID_Handle);
+//  printf("ecb:%x ", (uintptr_t)HID_Handle);
     if (devtype == HID_MOUSE) {  // Mouse
         HID_MOUSE_Info_TypeDef *Mouse_Info;
-        Mouse_Info = USBH_HID_GetMouseInfo(phost);  // Get the info
+        Mouse_Info = USBH_HID_GetMouseInfo(phost, HID_Handle);  // Get the info
         int x_val = (int8_t)Mouse_Info->x;  // get the x value
         int y_val = (int8_t)Mouse_Info->y;  // get the y value
 #if 0
@@ -233,7 +233,7 @@ USBH_HID_EventCallback(USBH_HandleTypeDef *phost)
                      Mouse_Info->buttons[1], Mouse_Info->buttons[2]);
     } else if (devtype == HID_KEYBOARD) {  // Keyboard
         HID_KEYBD_Info_TypeDef *kinfo;
-        kinfo = USBH_HID_GetKeybdInfo(phost);  // get the info
+        kinfo = USBH_HID_GetKeybdInfo(phost, HID_Handle);  // get the info
 #if 0
         uint8_t key = USBH_HID_GetASCIICode(kinfo);  // get the key pressed
         printf("Key Pressed = %c %04x\n", key, key);
@@ -264,8 +264,11 @@ USBH_HID_EventCallback(USBH_HandleTypeDef *phost)
 static void
 handle_dev(USBH_HandleTypeDef *dev, uint port, uint devnum)
 {
+    HID_HandleTypeDef *HID_Handle;
+    HID_Handle = (HID_HandleTypeDef *) dev->pActiveClass->pData;
+
     if (usb[port][devnum].appstate == APPLICATION_READY) {
-        HID_TypeTypeDef devtype = USBH_HID_GetDeviceType(dev);
+        HID_TypeTypeDef devtype = USBH_HID_GetDeviceType(dev, HID_Handle);
 // printf("hd:%x ", devtype);
         if (usb[port][devnum].hid_devtype != devtype) {
             usb[port][devnum].hid_devtype = devtype;
@@ -283,7 +286,7 @@ handle_dev(USBH_HandleTypeDef *dev, uint port, uint devnum)
         }
         if (devtype == HID_KEYBOARD) {
             HID_KEYBD_Info_TypeDef *info;
-            info = USBH_HID_GetKeybdInfo(dev);
+            info = USBH_HID_GetKeybdInfo(dev, HID_Handle);
             if (info != NULL) {
                 printf("lctrl = %d lshift = %d lalt   = %d\r\n"
                        "lgui  = %d rctrl  = %d rshift = %d\r\n"
