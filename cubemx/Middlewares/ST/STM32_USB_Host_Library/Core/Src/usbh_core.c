@@ -305,7 +305,7 @@ USBH_StatusTypeDef USBH_SelectInterface(USBH_HandleTypeDef *phost, uint8_t inter
   return status;
 }
 
-
+#if 0
 /**
   * @brief  USBH_GetActiveClass
   *         Return Device Class.
@@ -317,6 +317,7 @@ uint8_t USBH_GetActiveClass(USBH_HandleTypeDef *phost)
 {
   return (phost->device.CfgDesc.Itf_Desc[0].bInterfaceClass);
 }
+#endif
 
 
 /**
@@ -683,7 +684,8 @@ USBH_StatusTypeDef  USBH_Process(USBH_HandleTypeDef *phost)
         else
         {
           phost->gState = HOST_ABORT_STATE;
-          USBH_UsrLog("USB%u No registered class for this device.", phost->address);
+          USBH_UsrLog("USB%u No registered class (%x) for this device.", phost->address,
+                      phost->device.CfgDesc.Itf_Desc[0].bInterfaceClass);
         }
       }
 
@@ -780,6 +782,19 @@ USBH_StatusTypeDef  USBH_Process(USBH_HandleTypeDef *phost)
   return USBH_OK;
 }
 
+static void
+trim_spaces(char *str)
+{
+    char *ptr;
+    char *eptr = str + strlen(str);
+
+    for (ptr = eptr - 1; ptr >= str; ptr--) {
+        if (*ptr == ' ')
+            *ptr = '\0';
+        else
+            break;
+    }
+}
 
 /**
   * @brief  USBH_HandleEnum
@@ -895,6 +910,10 @@ static USBH_StatusTypeDef USBH_HandleEnum(USBH_HandleTypeDef *phost)
           /* User callback for Manufacturing string */
           USBH_UsrLog("USB%u Manufacturer : %s", phost->address, (char *)(void *)phost->device.Data);
           phost->EnumState = ENUM_GET_PRODUCT_STRING_DESC;
+          strncpy(phost->device.manufacturer_string, (char *)(void *)phost->device.Data,
+                  sizeof (phost->device.manufacturer_string));
+          phost->device.manufacturer_string[sizeof (phost->device.manufacturer_string) - 1] = '\0';
+          trim_spaces(phost->device.manufacturer_string);
 
 #if (USBH_USE_OS == 1U)
           phost->os_msg = (uint32_t)USBH_STATE_CHANGED_EVENT;
@@ -934,6 +953,10 @@ static USBH_StatusTypeDef USBH_HandleEnum(USBH_HandleTypeDef *phost)
           /* User callback for Product string */
           USBH_UsrLog("USB%u Product : %s", phost->address, (char *)(void *)phost->device.Data);
           phost->EnumState = ENUM_GET_SERIALNUM_STRING_DESC;
+          strncpy(phost->device.product_string, (char *)(void *)phost->device.Data,
+                  sizeof (phost->device.product_string));
+          phost->device.product_string[sizeof (phost->device.product_string) - 1] = '\0';
+          trim_spaces(phost->device.product_string);
         }
       }
       else
@@ -1116,6 +1139,10 @@ USBH_StatusTypeDef  USBH_LL_Disconnect(USBH_HandleTypeDef *phost)
   phost->device.is_disconnected = 1U;
   phost->device.is_connected = 0U;
   phost->device.PortEnabled = 0U;
+  memset(&phost->device.DevDesc, 0, sizeof (phost->device.DevDesc));
+  memset(&phost->device.CfgDesc, 0, sizeof (phost->device.CfgDesc));
+  memset(&phost->device.manufacturer_string, 0, sizeof (phost->device.manufacturer_string));
+  memset(&phost->device.product_string, 0, sizeof (phost->device.product_string));
 
   /* Stop Host */
   USBH_LL_Stop(phost);

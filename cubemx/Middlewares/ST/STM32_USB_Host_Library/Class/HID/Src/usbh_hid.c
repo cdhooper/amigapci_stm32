@@ -148,7 +148,6 @@ static USBH_StatusTypeDef USBH_HID_InterfaceInit_ll(USBH_HandleTypeDef *phost, u
     USBH_DbgLog("Cannot allocate memory for HID Handle");
     return USBH_FAIL;
   }
-  printf("CDH: Alloc %p\n", (void *) HID_Handle);
 
   /* Initialize hid handler */
   USBH_memset(HID_Handle, 0, sizeof(HID_HandleTypeDef));
@@ -286,8 +285,6 @@ static USBH_StatusTypeDef USBH_HID_InterfaceDeInit_ll(USBH_HandleTypeDef *phost)
     USBH_FreePipe(phost, HID_Handle->OutPipe);
     HID_Handle->OutPipe = 0U;     /* Reset the pipe as Free */
   }
-
-  printf("CDH: Dealloc %p\n", (void *)HID_Handle);
 
   phost->pActiveClass->pData = HID_Handle->next;
   USBH_free(HID_Handle);
@@ -605,7 +602,7 @@ USBH_StatusTypeDef USBH_HID_GetHIDReportDescriptor(USBH_HandleTypeDef *phost,
 
   status = USBH_GetDescriptor(phost,
                               USB_REQ_RECIPIENT_INTERFACE | USB_REQ_TYPE_STANDARD,
-                              USB_DESC_HID_REPORT,
+                              USB_DESC_HID_REPORT, 0,
                               phost->device.Data,
                               length);
 
@@ -634,7 +631,7 @@ USBH_StatusTypeDef USBH_HID_GetHIDDescriptor(USBH_HandleTypeDef *phost,
 
   status = USBH_GetDescriptor(phost,
                               USB_REQ_RECIPIENT_INTERFACE | USB_REQ_TYPE_STANDARD,
-                              USB_DESC_HID,
+                              USB_DESC_HID, 0,
                               phost->device.Data,
                               length);
 

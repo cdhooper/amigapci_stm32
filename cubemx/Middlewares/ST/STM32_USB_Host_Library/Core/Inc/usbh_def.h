@@ -172,7 +172,10 @@ extern "C" {
 #endif /* USBH_MAX_PIPES_NBR */
 
 #define USBH_DEVICE_ADDRESS_DEFAULT                        0x00U
-#define USBH_DEVICE_ADDRESS                                0x01U
+
+// #define USBH_DEVICE_ADDRESS                                0x01U
+// XXX: CDH - I don't know why STM32F4HUB changes this to 5
+#define USBH_DEVICE_ADDRESS                                0x05U
 
 #define USBH_MAX_ERROR_COUNT                               0x02U
 
@@ -436,6 +439,8 @@ typedef struct
   uint8_t                           current_interface;
   USBH_DevDescTypeDef               DevDesc;
   USBH_CfgDescTypeDef               CfgDesc;
+  char                              manufacturer_string[64];
+  char                              product_string[64];
 } USBH_DeviceTypeDef;
 
 struct _USBH_HandleTypeDef;

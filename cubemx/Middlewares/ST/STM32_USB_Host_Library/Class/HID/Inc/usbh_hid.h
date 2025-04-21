@@ -54,7 +54,8 @@ typedef struct _HID_Process HID_HandleTypeDef;
   * @{
   */
 
-#define HID_MIN_POLL                                10U
+// #define HID_MIN_POLL                                10U
+#define HID_MIN_POLL                                2U  // with 1ms pooling we have too many babble errors
 #define HID_REPORT_SIZE                             16U
 #define HID_MAX_USAGE                               10U
 #define HID_MAX_NBR_REPORT_FMT                      10U

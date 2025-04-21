@@ -25,7 +25,7 @@ static uint64_t amiga_reboot_detect_timeout = 0;
 /*
  * amiga_is_powered_on
  * -------------------
- * This function determines if the Amiga is poweered on or off based on
+ * This function determines if the Amiga is powered on or off based on
  * whether the D31 pin is high or low. The STM32 will be configured with
  * a weak pull-up on this pin, but Amiga pull-ups are significantly stronger
  * and will always override the STM32. If the Amiga is off, D31 should always

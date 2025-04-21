@@ -1968,6 +1968,15 @@ static void HCD_Port_IRQHandler(HCD_HandleTypeDef *hhcd)
     }
     else
     {
+      extern HCD_HandleTypeDef _hHCD[2];
+      int port = (hhcd == &_hHCD[0]) ? 0 : (hhcd == &_hHCD[1]) ? 1 : -1;
+      printf("USB%d dropped port enable: hprt0=%08lx HCFG=%08lx HAINT=%08lx\n",
+             port, hprt0, USBx_HOST->HCFG, USBx_HOST->HAINT);
+      printf("    HCINTx:");
+      for (int i = 0U; i < hhcd->Init.Host_channels; i++) {
+        printf(" %u=%04lx", i, USBx_HC(i)->HCINT);
+      }
+      printf("\n");
 #if (USE_HAL_HCD_REGISTER_CALLBACKS == 1U)
       hhcd->PortDisabledCallback(hhcd);
 #else

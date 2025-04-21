@@ -111,11 +111,16 @@
 
 /* Memory management macros */
 
+#if 0
 /** Alias for memory allocation. */
 #define USBH_malloc         malloc
 
 /** Alias for memory release. */
 #define USBH_free           free
+#else
+void *USBH_malloc(size_t size);
+void USBH_free(void *ptr);
+#endif
 
 /** Alias for memory set. */
 #define USBH_memset         memset

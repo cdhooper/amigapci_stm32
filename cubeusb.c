@@ -19,6 +19,7 @@
 #include "keyboard.h"
 #include "mouse.h"
 #include "cubeusb.h"
+#include "usb.h"
 #include <usbh_cdc.h>  // CDC
 #include <usbh_hid.h>  // HID
 #include <usbh_msc.h>  // MSC
@@ -48,14 +49,24 @@ typedef enum {
     APPLICATION_DISCONNECT
 } appstate_type;
 
-typedef struct {
+static struct {
     HID_TypeTypeDef    hid_devtype;
     uint64_t           hid_ready_timer;
     appstate_type      appstate;
-} usb_t;
-static usb_t usb[2][MAX_HUB_PORTS + 1];
+} usbdev[2][MAX_HUB_PORTS + 1];
+
+static struct {
+    uint64_t           recovery_timer;
+    uint8_t            recovery_state;
+    uint8_t            disabled;
+    uint8_t            connected;
+    volatile uint      frame;
+} usbport[2];
 
 USBH_HandleTypeDef usb_handle[2][MAX_HUB_PORTS + 1];
+
+static void cubeusb_init_port(uint port);
+static void cubeusb_shutdown_port(uint port);
 
 /*
  * _hHCD[0] is the Full speed (OTG_FS) port
@@ -115,15 +126,15 @@ USBH_UserProcess(USBH_HandleTypeDef *phost, uint8_t id)
         case HOST_USER_SELECT_CONFIGURATION:
             break;
         case HOST_USER_CLASS_ACTIVE:
-            usb[port][devnum].appstate = APPLICATION_READY;
+            usbdev[port][devnum].appstate = APPLICATION_READY;
             break;
         case HOST_USER_CLASS_SELECTED:
             break;
         case HOST_USER_CONNECTION:
-            usb[port][devnum].appstate = APPLICATION_START;
+            usbdev[port][devnum].appstate = APPLICATION_START;
             break;
         case HOST_USER_DISCONNECTION:
-            usb[port][devnum].appstate = APPLICATION_DISCONNECT;
+            usbdev[port][devnum].appstate = APPLICATION_DISCONNECT;
             break;
         case HOST_USER_UNRECOVERED_ERROR:
             break;
@@ -172,9 +183,6 @@ otg_hs_isr(void)
     HAL_HCD_IRQHandler(&_hHCD[1]);
 }
 
-void usb_ls(void);
-void usb_show_stats(void);
-
 void
 usb_show_stats(void)
 {
@@ -188,26 +196,121 @@ usb_show_stats(void)
            usb_stats.otg_hs_wkup_ints);
 }
 
+static const char *const usb_class_codes[] =
+{
+    "IF",       // 0x00
+    "Audio",    // 0x01 AC_CLASS
+    "CDC",      // 0x02 USB_CDC_CLASS
+    "HID",      // 0x03 USB_HID_CLASS
+    "Unknown",  // 0x04
+    "PID",      // 0x05
+    "IMG",      // 0x06 USB_MTP_CLASS
+    "Printer",  // 0x07
+    "Storage",  // 0x08 USB_MSC_CLASS
+    "HUB",      // 0x09
+    "CDC-Data", // 0x0a DATA_INTERFACE_CLASS_CODE
+    "SmartCrd", // 0x0b
+    "Eth",      // 0x0c
+    "Security", // 0x0d
+    "Video",    // 0x0e
+    "PHealth",  // 0x0f
+    "AV",       // 0x10
+    "Bboard",   // 0x11
+    "C-Bridge", // 0x12
+    "USB-Bulk", // 0x13
+    "MCTP",     // 0x14
+};
+
+static void
+usb_ls_classes(USBH_HandleTypeDef *phost)
+{
+    uint ifnum;
+    uint numif = phost->device.CfgDesc.bNumInterfaces;
+    uint ifclass;
+    uint ifsclass;
+    uint ifproto;
+    char *protostr;
+
+    if (numif > USBH_MAX_NUM_INTERFACES)
+        numif = USBH_MAX_NUM_INTERFACES;
+
+    for (ifnum = 0; ifnum < numif; ifnum++) {
+        void *data = phost->pClass[phost->ClassNumber]->pData;
+        ifclass = phost->device.CfgDesc.Itf_Desc[ifnum].bInterfaceClass;
+        if (ifclass == 0)
+            continue;
+        ifsclass = phost->device.CfgDesc.Itf_Desc[ifnum].bInterfaceSubClass;
+        ifproto  = phost->device.CfgDesc.Itf_Desc[ifnum].bInterfaceProtocol;
+        protostr = "";
+        if (ifclass == USB_HID_CLASS) {
+            switch (ifproto) {
+                case HID_MOUSE_BOOT_CODE:
+                    protostr = "Mouse";
+                    break;
+                case HID_KEYBRD_BOOT_CODE:
+                    protostr = "Keyboard";
+                    break;
+                default:
+                    protostr = "Unknown";
+                    break;
+            }
+        }
+        printf("    IF %u: class=%x %s subclass=%02x protocol=%02x %s\n",
+               ifnum, ifclass,
+               (ifclass < ARRAY_SIZE(usb_class_codes)) ?
+                                     usb_class_codes[ifclass] : "Unknown",
+               ifsclass, ifproto, protostr);
+        if (ifclass == USB_HID_CLASS) {
+            HID_HandleTypeDef *HID_Handle = data;
+            for (; HID_Handle != NULL; HID_Handle = HID_Handle->next) {
+                if (HID_Handle->interface != ifnum)
+                    continue;
+                printf("          OutEp=%x InEp=%x ep=%x\n",
+                       HID_Handle->OutEp,
+                       HID_Handle->InEp,
+                       HID_Handle->ep_addr);
+            }
+        }
+    }
+}
+
 void
-usb_ls(void)
+usb_ls(uint verbose)
 {
     uint port;
     uint hubport;
     for (port = 0; port < 2; port++) {
         for (hubport = 0; hubport < MAX_HUB_PORTS + 1; hubport++) {
             USBH_HandleTypeDef *phost = &usb_handle[port][hubport];
-            printf("%u.%u %s ", port, hubport,
-                   phost->valid ? "valid" : "invalid");
-            if (phost->valid) {
-                if (phost->busy)
-                    printf(" busy");
-                printf(" gstate=%x estate=%x rstate=%x",
-                       phost->gState, phost->EnumState, phost->RequestState);
-                printf(" hub=%x addr=%x class=%lx interfaces=%x connected=%x",
-                       phost->hub, phost->address, phost->ClassNumber,
-                       phost->interfaces, phost->device.is_connected);
+            USBH_ClassTypeDef  *cl;
+            if (phost->valid == 0)
+                continue;
+            cl = phost->pClass[phost->ClassNumber];
+            printf("%u.%u %04x.%04x ",
+                   port, hubport,
+                   phost->device.DevDesc.idProduct,
+                   phost->device.DevDesc.idVendor);
+
+            if (phost->device.is_connected == 0) {
+                printf("No device\n");
+                continue;
             }
+            printf("%s: %s", phost->device.manufacturer_string,
+                   phost->device.product_string);
+
+            printf("\n          class=%x %s gstate=%x estate=%x ifs=%u ",
+                   (cl == NULL) ? 0 : cl->ClassCode,
+                   (cl == NULL) ? "?" : cl->Name,
+                   phost->gState, phost->EnumState,
+                   phost->device.CfgDesc.bNumInterfaces);
+            printf("rstate=%x hub=%x hubifs=%x",
+                   phost->RequestState,
+                   phost->hub,
+                   phost->interfaces);
+            if (phost->busy)
+                printf(" busy");
             printf("\n");
+            usb_ls_classes(phost);
         }
     }
 }
@@ -267,22 +370,22 @@ handle_dev(USBH_HandleTypeDef *dev, uint port, uint devnum)
     HID_HandleTypeDef *HID_Handle;
     HID_Handle = (HID_HandleTypeDef *) dev->pActiveClass->pData;
 
-    if (usb[port][devnum].appstate == APPLICATION_READY) {
+    if (usbdev[port][devnum].appstate == APPLICATION_READY) {
         HID_TypeTypeDef devtype = USBH_HID_GetDeviceType(dev, HID_Handle);
 // printf("hd:%x ", devtype);
-        if (usb[port][devnum].hid_devtype != devtype) {
-            usb[port][devnum].hid_devtype = devtype;
+        if (usbdev[port][devnum].hid_devtype != devtype) {
+            usbdev[port][devnum].hid_devtype = devtype;
 #if 1
             printf("USB%u.%u type %x %s\n", port, devnum, devtype,
                    (devtype == HID_KEYBOARD) ? "Keyboard" :
                    (devtype == HID_MOUSE) ? "Mouse" : "Unknown");
 #endif
-            usb[port][devnum].hid_ready_timer = timer_tick_plus_msec(500);
+            usbdev[port][devnum].hid_ready_timer = timer_tick_plus_msec(500);
         }
-        if (usb[port][devnum].hid_ready_timer) {
-            if (!timer_tick_has_elapsed(usb[port][devnum].hid_ready_timer))
+        if (usbdev[port][devnum].hid_ready_timer) {
+            if (!timer_tick_has_elapsed(usbdev[port][devnum].hid_ready_timer))
                 return;
-            usb[port][devnum].hid_ready_timer = 0;
+            usbdev[port][devnum].hid_ready_timer = 0;
         }
         if (devtype == HID_KEYBOARD) {
             HID_KEYBD_Info_TypeDef *info;
@@ -373,6 +476,7 @@ hub_process(uint port)
                 break;
             case 3:
                 LOG("PROCESSING ATTACH %d\n", phost->address);
+
                 phost->valid = 1;
                 phost->busy  = 1;
                 break;
@@ -449,11 +553,96 @@ hub_process(uint port)
 #endif
 }
 
+#if 0
+static void
+wait_sof(uint port)
+{
+    uint frame = usbport[port].frame;
+    uint64_t timeout = timer_tick_plus_msec(1000);
+    while (frame == usbport[port].frame) {
+        if (timer_tick_has_elapsed(timeout)) {
+            printf("USB%u SOF timeout\n", port);
+            break;
+        }
+    }
+}
+#endif
+
 void
 cubeusb_poll(void)
 {
     /* USB Host Background task */
     for (uint port = 0; port < 2; port++) {
+        if ((usbport[port].recovery_state != 0) &&
+            timer_tick_has_elapsed(usbport[port].recovery_timer)) {
+            const uint usb_retry_fast_limit = 10;
+            const uint usb_retry_slow_limit = 20;
+            if (usbport[port].connected == 0) {
+                /* Port is no longer connected (device pull?) */
+                printf("USB is not connected\n");
+                USBH_LL_Disconnect(_hHCD[port].pData);
+                usbport[port].recovery_state = 0;
+                break;
+            }
+            if (usbport[port].disabled == 0) {
+                /* Port has recovered */
+                printf("Recovered USB%u in %u tries\n",
+                       port, usbport[port].recovery_state - 1);
+                usbport[port].recovery_state = 0;
+                break;
+            }
+            if (usbport[port].recovery_state++ < usb_retry_slow_limit) {
+                uint msec;
+                printf("\n\nUSB%u port disabled\n", port);
+                usbport[port].disabled = 0;
+#if 0
+                cubeusb_shutdown();
+                cubeusb_init();
+#else
+                cubeusb_shutdown_port(port);
+
+#if 0
+                if (port == 0) {
+                    __HAL_RCC_USB_OTG_FS_FORCE_RESET();
+                    __HAL_RCC_USB_OTG_FS_RELEASE_RESET();
+                } else {
+                    __HAL_RCC_USB_OTG_HS_FORCE_RESET();
+                    __HAL_RCC_USB_OTG_HS_RELEASE_RESET();
+                }
+#endif
+//              wait_sof(port);
+
+#if 0
+                /* Disable USB core clock */
+                if (port == 0)
+                    __HAL_RCC_USB_OTG_FS_CLK_DISABLE();
+                else
+                    __HAL_RCC_USB_OTG_HS_CLK_DISABLE();
+                timer_delay_usec(32 * usbport[port].recovery_state);
+
+                /* Enable USB core clock */
+                if (port == 0)
+                    __HAL_RCC_USB_OTG_FS_CLK_ENABLE();
+                else
+                    __HAL_RCC_USB_OTG_HS_CLK_ENABLE();
+                timer_delay_usec(32 * usbport[port].recovery_state);
+#endif
+
+                cubeusb_init_port(port);
+#endif
+                if (usbport[port].recovery_state++ < usb_retry_fast_limit) {
+                    msec = 512 * usbport[port].recovery_state;
+                } else {
+                    msec = 10000 + 1024 * usbport[port].recovery_state;
+                }
+                usbport[port].recovery_timer = timer_tick_plus_msec(msec);
+            } else {
+                /* Give up */
+                printf("USB%u port recovery failed after %u attempts\n",
+                       port, usbport[port].recovery_state);
+                usbport[port].recovery_state = 0;
+            }
+        }
         USBH_Process(&usb_handle[port][0]);
         handle_dev(&usb_handle[port][0], port, 0);
         hub_process(port);
@@ -528,6 +717,8 @@ HAL_HCD_MspDeInit(HCD_HandleTypeDef *hhcd)
 void
 HAL_HCD_SOF_Callback(HCD_HandleTypeDef *hhcd)
 {
+    int port = (hhcd == &_hHCD[0]) ? 0 : 1;
+    usbport[port].frame++;
     USBH_LL_IncTimer(hhcd->pData);
 }
 
@@ -536,15 +727,19 @@ HAL_HCD_Connect_Callback(HCD_HandleTypeDef *hhcd)
 {
     int port = (hhcd == &_hHCD[0]) ? 0 : (hhcd == &_hHCD[1]) ? 1 : -1;
     printf("USB%d HAL_HCD_Connect\n", port);
+    usbport[port].connected = 1;
     USBH_LL_Connect(hhcd->pData);
 }
+
 void
 HAL_HCD_Disconnect_Callback(HCD_HandleTypeDef *hhcd)
 {
     int port = (hhcd == &_hHCD[0]) ? 0 : (hhcd == &_hHCD[1]) ? 1 : -1;
     printf("USB%d HAL_HCD_Disconnect\n", port);
+    usbport[port].connected = 0;
     USBH_LL_Disconnect(hhcd->pData);
 }
+
 void
 HAL_HCD_HC_NotifyURBChange_Callback(HCD_HandleTypeDef *hhcd, uint8_t chnum,
                                     HCD_URBStateTypeDef urb_state)
@@ -555,6 +750,7 @@ HAL_HCD_HC_NotifyURBChange_Callback(HCD_HandleTypeDef *hhcd, uint8_t chnum,
     USBH_LL_NotifyURBChange(hhcd->pData);
 #endif
 }
+
 void
 HAL_HCD_PortEnabled_Callback(HCD_HandleTypeDef *hhcd)
 {
@@ -562,13 +758,23 @@ HAL_HCD_PortEnabled_Callback(HCD_HandleTypeDef *hhcd)
     printf("USB%d HAL_HCD_PortEnabled\n", port);
     USBH_LL_PortEnabled(hhcd->pData);
 }
+
 void
 HAL_HCD_PortDisabled_Callback(HCD_HandleTypeDef *hhcd)
 {
     int port = (hhcd == &_hHCD[0]) ? 0 : (hhcd == &_hHCD[1]) ? 1 : -1;
     printf("USB%d HAL_HCD_PortDisabled\n", port);
     USBH_LL_PortDisabled(hhcd->pData);
+    if (usbport[port].connected) {
+        usbport[port].disabled = 1;  // Mark it as (unexpected) disabled
+
+        if (usbport[port].recovery_state == 0) {
+            usbport[port].recovery_state = 1;  // Kickstart recovery
+            usbport[port].recovery_timer = timer_tick_plus_msec(10);
+        }
+    }
 }
+
 USBH_StatusTypeDef
 USBH_LL_Init(USBH_HandleTypeDef *phost)
 {
@@ -618,6 +824,9 @@ USBH_LL_GetURBState(USBH_HandleTypeDef *phost, uint8_t pipe)
 USBH_StatusTypeDef
 USBH_LL_DriverVBUS(USBH_HandleTypeDef *phost, uint8_t state)
 {
+    uint devnum;
+    uint port = get_port(phost, &devnum);
+printf("USBH_LL_DriverVBUS %u.%u = %u\n", port, devnum, state);
     return (USBH_OK);
 }
 
@@ -685,14 +894,8 @@ USBH_LL_OpenPipe(USBH_HandleTypeDef *phost, uint8_t pipe_num, uint8_t epnum,
                  uint8_t dev_address, uint8_t speed, uint8_t ep_type,
                  uint16_t mps)
 {
-    HAL_StatusTypeDef hal_status = HAL_OK;
-    USBH_StatusTypeDef usb_status = USBH_OK;
-
-#if 0
-uint devnum;
-uint port = get_port(phost, &devnum);
-printf("USB%u.%u OpenPipe\n", port, devnum);
-#endif
+    HAL_StatusTypeDef hal_status;
+    USBH_StatusTypeDef usb_status;
 
     hal_status = HAL_HCD_HC_Init(phost->pData, pipe_num, epnum,
                                  dev_address, speed, ep_type, mps);
@@ -705,12 +908,7 @@ printf("USB%u.%u OpenPipe\n", port, devnum);
 USBH_StatusTypeDef
 USBH_LL_ClosePipe(USBH_HandleTypeDef *phost, uint8_t pipe)
 {
-    HAL_StatusTypeDef hal_status = HAL_OK;
-
-uint devnum;
-uint port = get_port(phost, &devnum);
-printf("USB%u.%u ClosePipe\n", port, devnum);
-
+    HAL_StatusTypeDef hal_status;
     hal_status = HAL_HCD_HC_Halt(phost->pData, pipe);
 
     return (USBH_Get_USB_Status(hal_status));
@@ -722,11 +920,6 @@ USBH_LL_SubmitURB(USBH_HandleTypeDef *phost, uint8_t pipe, uint8_t direction,
                   uint16_t length, uint8_t do_ping)
 {
     HAL_StatusTypeDef hal_status;
-#if 0
-uint devnum;
-uint port = get_port(phost, &devnum);
-printf("USB%u.%u SubmitURB\n", port, devnum);
-#endif
     hal_status = HAL_HCD_HC_SubmitRequest(phost->pData, pipe, direction,
                                           ep_type, token, pbuff, length,
                                           do_ping);
@@ -771,6 +964,32 @@ USBH_LL_GetSpeed(USBH_HandleTypeDef *phost)
     return (speed);
 }
 
+void *
+USBH_malloc(size_t size)
+{
+    void *ptr = malloc(size);
+#undef MALLOC_DEBUG
+#ifdef MALLOC_DEBUG
+    printf("+ MALLOC(%x %x)\n", size, (uintptr_t) ptr);
+#endif
+    return (ptr);
+}
+
+void
+USBH_free(void *ptr)
+{
+#ifdef MALLOC_DEBUG
+    size_t size = 0;
+    if (ptr != NULL) {
+        size = ((uint32_t *)ptr)[-1];
+        size = (size & ~1) - 8;
+    }
+    printf("- FREE(%x %x)\n", size, (uintptr_t) ptr);
+#endif
+    free(ptr);
+}
+
+
 USBH_StatusTypeDef
 USBH_LL_ResetPort(USBH_HandleTypeDef *phost)
 {
@@ -799,19 +1018,47 @@ USBH_Delay(uint32_t Delay)
 static USBH_StatusTypeDef
 register_class(USBH_HandleTypeDef *handle, USBH_ClassTypeDef *class, uint size)
 {
-    USBH_ClassTypeDef *nclass = malloc(size);
+    USBH_ClassTypeDef *nclass = USBH_malloc(size);
     memcpy(nclass, class, size);
     return (USBH_RegisterClass(handle, nclass));
+}
+
+void
+cubeusb_init_port(uint port)
+{
+    memset(&usb_handle[port], 0, sizeof (usb_handle[port]));
+
+    const char *pname = (port == 0) ? "FS" : "HS";
+    uint     host_dev = (port == 0) ? HOST_FS : HOST_HS;
+    int rc;
+    USBH_HandleTypeDef *handle = &usb_handle[port][0];
+    handle->valid = 1;
+    handle->address = port;  // XXX: Same as id??
+    handle->Pipes = USBH_malloc(sizeof (uint32_t) * USBH_MAX_PIPES_NBR);
+
+    rc = USBH_Init(handle, USBH_UserProcess, host_dev);
+    if (rc != USBH_OK) {
+        printf("USB%u %s init fail: %d\n", port, pname, rc);
+        return;
+    }
+    if (register_class(handle, USBH_CDC_CLASS, sizeof (*USBH_CDC_CLASS)) ||
+        register_class(handle, USBH_MSC_CLASS, sizeof (*USBH_MSC_CLASS)) ||
+        register_class(handle, USBH_HID_CLASS, sizeof (*USBH_HID_CLASS)) ||
+        register_class(handle, USBH_HUB_CLASS, sizeof (*USBH_HUB_CLASS)) ||
+        register_class(handle, USBH_MTP_CLASS, sizeof (*USBH_MTP_CLASS))) {
+        printf("USB%u %s register fail\n", port, pname);
+        return;
+    }
+    if (USBH_Start(&usb_handle[port][0]) != USBH_OK) {
+        printf("USB%u %s start fail\n", port, pname);
+        return;
+    }
 }
 
 void
 cubeusb_init(void)
 {
     uint port;
-//    HAL_InitTick(TICK_INT_PRIORITY);
-//    XXX: Instead just figure out what the HAL tick function is
-//    doing and copy that in my own code.
-//    Need a 1ms timer base
     printf("cubeusb_init\n");
 
     __HAL_RCC_SYSCFG_CLK_ENABLE();
@@ -819,39 +1066,31 @@ cubeusb_init(void)
 
     memset(usb_handle, 0, sizeof (usb_handle));
 
-    for (port = 0; port < 2; port++) {
-        const char *pname = (port == 0) ? "FS" : "HS";
-        uint     host_dev = (port == 0) ? HOST_FS : HOST_HS;
-        int rc;
-        USBH_HandleTypeDef *handle = &usb_handle[port][0];
-        handle->valid = 1;
-        handle->address = port;  // XXX: Same as id??
-        handle->Pipes = malloc(sizeof (uint32_t) * USBH_MAX_PIPES_NBR);
+    for (port = 0; port < 2; port++)
+        cubeusb_init_port(port);
+}
 
-        rc = USBH_Init(handle, USBH_UserProcess, host_dev);
-        if (rc != USBH_OK) {
-            printf("USB%u %s init fail: %d\n", port, pname, rc);
-            continue;
-        }
-        if (register_class(handle, USBH_CDC_CLASS, sizeof (*USBH_CDC_CLASS)) ||
-            register_class(handle, USBH_MSC_CLASS, sizeof (*USBH_MSC_CLASS)) ||
-            register_class(handle, USBH_HID_CLASS, sizeof (*USBH_HID_CLASS)) ||
-            register_class(handle, USBH_HUB_CLASS, sizeof (*USBH_HUB_CLASS)) ||
-            register_class(handle, USBH_MTP_CLASS, sizeof (*USBH_MTP_CLASS))) {
-            printf("USB%u %s register fail\n", port, pname);
-            continue;
-        }
-        if (USBH_Start(&usb_handle[port][0]) != USBH_OK) {
-            printf("USB%u %s start fail\n", port, pname);
-            continue;
-        }
-    }
+static void
+cubeusb_shutdown_port(uint port)
+{
+    USBH_HandleTypeDef *handle = &usb_handle[port][0];
+    if (handle->Pipes == NULL)
+        return;
+    USBH_DeInit(handle);
+
+// XXX: if this code is called from the user input handler (interrupt), then the USB interrupt can't run until the command returns.
+    while (handle->ClassNumber-- > 0)
+        USBH_free(handle->pClass[handle->ClassNumber]);
+    USBH_free(handle->Pipes);
+    handle->Pipes = NULL;
+    handle->valid = 0;
 }
 
 void
 cubeusb_shutdown(void)
 {
-    for (uint port = 0; port < 2; port++) {
-        USBH_DeInit(&usb_handle[port][0]);
-    }
+    for (uint port = 0; port < 2; port++)
+        cubeusb_shutdown_port(port);
+
+// XXX: need to deinit hub ports?
 }

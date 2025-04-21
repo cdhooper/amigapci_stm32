@@ -117,6 +117,7 @@ static uint8_t adc_channels[CHANNEL_MAX];
 volatile uint16_t adc_buffer[CHANNEL_MAX];
 uint16_t adc_snapshot[CHANNEL_MAX];
 static uint8_t channel_count = 0;
+static uint16_t vbat_cache;
 
 void
 adc_setup_sensor(uint which, uint gpio_pack, uint adc_channel)
@@ -344,7 +345,6 @@ adc_get_reading(uint cur)
     switch (adc_channels[cur]) {
         case ADC_CHANNEL_VBAT: {
             static uint64_t vbat_refresh_timer;
-            static uint16_t vbat_cache;
             static uint8_t  vbat_mode;
             /*
              * Special handling for battery channel, as it should be read

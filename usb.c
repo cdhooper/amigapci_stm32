@@ -89,8 +89,8 @@ usb_show_regs(void)
         uint start = usb_regs[pos].regs_start_end >> 4;
         uint end   = usb_regs[pos].regs_start_end & 0xf;
         uint off = 0;
-        snprintf(namebuf, sizeof (namebuf), usb_regs[pos].regs_name);
         for (cur = start; cur < end; cur++) {
+            snprintf(namebuf, sizeof (namebuf), usb_regs[pos].regs_name, cur);
             printf("  %-10s ", namebuf);
             for (host = 0; host < 2; host++) {
                 uint32_t base = (host == 0) ? USB_OTG_FS_BASE : USB_OTG_HS_BASE;

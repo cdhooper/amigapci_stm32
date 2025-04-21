@@ -12,8 +12,6 @@
 #ifndef _USB_H
 #define _USB_H
 
-#include <libopencm3/usb/usbd.h>
-
 #define USB0_BASE USB_OTG_FS_BASE
 #define USB1_BASE USB_OTG_HS_BASE
 

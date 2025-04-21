@@ -40,6 +40,7 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include "stm32f2xx_hal.h"
+#include "printf.h"
 
 /** @addtogroup STM32F2xx_LL_USB_DRIVER
   * @{
@@ -449,6 +450,7 @@ HAL_StatusTypeDef USB_FlushTxFifo(USB_OTG_GlobalTypeDef *USBx, uint32_t num)
 
     if (count > HAL_USB_TIMEOUT)
     {
+      printf("HAL timeout %u\n", 1);
       return HAL_TIMEOUT;
     }
   } while ((USBx->GRSTCTL & USB_OTG_GRSTCTL_AHBIDL) == 0U);
@@ -463,6 +465,7 @@ HAL_StatusTypeDef USB_FlushTxFifo(USB_OTG_GlobalTypeDef *USBx, uint32_t num)
 
     if (count > HAL_USB_TIMEOUT)
     {
+      printf("HAL timeout %u\n", 2);
       return HAL_TIMEOUT;
     }
   } while ((USBx->GRSTCTL & USB_OTG_GRSTCTL_TXFFLSH) == USB_OTG_GRSTCTL_TXFFLSH);
@@ -486,6 +489,7 @@ HAL_StatusTypeDef USB_FlushRxFifo(USB_OTG_GlobalTypeDef *USBx)
 
     if (count > HAL_USB_TIMEOUT)
     {
+      printf("HAL timeout %u\n", 3);
       return HAL_TIMEOUT;
     }
   } while ((USBx->GRSTCTL & USB_OTG_GRSTCTL_AHBIDL) == 0U);
@@ -500,6 +504,7 @@ HAL_StatusTypeDef USB_FlushRxFifo(USB_OTG_GlobalTypeDef *USBx)
 
     if (count > HAL_USB_TIMEOUT)
     {
+      printf("HAL timeout %u\n", 4);
       return HAL_TIMEOUT;
     }
   } while ((USBx->GRSTCTL & USB_OTG_GRSTCTL_RXFFLSH) == USB_OTG_GRSTCTL_RXFFLSH);
@@ -1382,6 +1387,7 @@ static HAL_StatusTypeDef USB_CoreReset(USB_OTG_GlobalTypeDef *USBx)
 
     if (count > HAL_USB_TIMEOUT)
     {
+      printf("HAL timeout %u\n", 5);
       return HAL_TIMEOUT;
     }
   } while ((USBx->GRSTCTL & USB_OTG_GRSTCTL_AHBIDL) == 0U);
@@ -1396,6 +1402,7 @@ static HAL_StatusTypeDef USB_CoreReset(USB_OTG_GlobalTypeDef *USBx)
 
     if (count > HAL_USB_TIMEOUT)
     {
+      printf("HAL timeout %u\n", 6);
       return HAL_TIMEOUT;
     }
   } while ((USBx->GRSTCTL & USB_OTG_GRSTCTL_CSRST) == USB_OTG_GRSTCTL_CSRST);
@@ -1544,6 +1551,7 @@ HAL_StatusTypeDef USB_ResetPort(const USB_OTG_GlobalTypeDef *USBx)
 
   __IO uint32_t hprt0 = 0U;
 
+  printf("USB%u ResetPort\n", (USBx == USB_OTG_FS) ? 0 : 1);
   hprt0 = USBx_HPRT0;
 
   hprt0 &= ~(USB_OTG_HPRT_PENA | USB_OTG_HPRT_PCDET |
