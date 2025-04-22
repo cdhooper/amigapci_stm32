@@ -129,13 +129,21 @@
 #define AS_RIGHTALT    (0x65)  // Right Alt
 #define AS_LEFTAMIGA   (0x66)  // Left Amiga
 #define AS_RIGHTAMIGA  (0x67)  // Right Amiga
-#define AS_RESET_WAEN  (0x78)  // Reset warning
+#define AS_RESET_WARN  (0x78)  // Reset warning
 #define AS_LOST_SYNC   (0xf9)  // Keyboard lost sync with Amiga
 #define AS_BUFOVERFLOW (0xfa)  // Keyboard output buffer overflow
 #define AS_POST_FAIL   (0xfc)  // Keyboard selftest failed
 #define AS_POWER_INIT  (0xfd)  // Keyboard powerup start key stream
 #define AS_POWER_DONE  (0xfe)  // Keyboard powerup done key stream
 #define AS_NONE        (0xff)  // Not a valid keycode
+
+/* Newmouse keycodes */
+#define NM_WHEEL_UP       (0x7A)
+#define NM_WHEEL_DOWN     (0x7B)
+#define NM_WHEEL_LEFT     (0x7C)
+#define NM_WHEEL_RIGHT    (0x7D)
+#define NM_BUTTON_FOURTH  (0x7E)
+
 
 #define SAF_ADD_SHIFT 0x01
 static const struct {
@@ -857,7 +865,7 @@ static uint    ak_rb_consumer;
 static uint8_t ak_rb[16];
 static uint8_t ak_has_sync;
 static uint8_t ak_lost_sync;
-static uint8_t ak_ctrl_amiga_amiga;
+static volatile uint8_t ak_ctrl_amiga_amiga;
 
 static inline void
 set_kbclk_0(void)
@@ -1522,17 +1530,23 @@ void
 keyboard_poll(void)
 {
     static uint8_t last_ctrl_amiga_amiga;
-    if (last_ctrl_amiga_amiga != ak_ctrl_amiga_amiga) {
-        uint8_t last = last_ctrl_amiga_amiga;
-        last_ctrl_amiga_amiga = ak_ctrl_amiga_amiga;
-        if (ak_ctrl_amiga_amiga == (BIT(0) | BIT(1) | BIT(2))) {
-            /* Ctrl-Amiga-Amiga is being pressed */
-            keyboard_reset_warning();
-            kbrst_amiga(1, 0);  // Assert and hold KBRST
-        } else if (last == (BIT(0) | BIT(1) | BIT(2))) {
-            /* Ctrl-Amiga-Amiga has been released */
-            kbrst_amiga(0, 0);  // Release KBRST
+    static uint8_t recursive;
+    if (recursive == 0) {
+        uint8_t cur_ctrl_amiga_amiga = ak_ctrl_amiga_amiga;
+        recursive = 1;
+        if (last_ctrl_amiga_amiga != cur_ctrl_amiga_amiga) {
+            uint8_t last = last_ctrl_amiga_amiga;
+            last_ctrl_amiga_amiga = cur_ctrl_amiga_amiga;
+            if (cur_ctrl_amiga_amiga == (BIT(0) | BIT(1) | BIT(2))) {
+                /* Ctrl-Amiga-Amiga is being pressed */
+                keyboard_reset_warning();
+                kbrst_amiga(1, 0);  // Assert and hold KBRST
+            } else if (last == (BIT(0) | BIT(1) | BIT(2))) {
+                /* Ctrl-Amiga-Amiga has been released */
+                kbrst_amiga(0, 0);  // Release KBRST
+            }
         }
+        recursive = 0;
     }
 
     if (ak_has_sync == 0) {
@@ -1556,14 +1570,14 @@ keyboard_reset_warning(void)
     uint64_t timeout;
     uint64_t start;
     ak_rb_consumer = ak_rb_producer;  // Flush the ring buffer
-    amiga_keyboard_put(AS_RESET_WAEN);
+    amiga_keyboard_put(AS_RESET_WARN);
 start = timer_tick_get();
     timeout = timer_tick_plus_msec(200);
     while (ak_rb_consumer != ak_rb_producer) {
         keyboard_poll();
         main_poll();
         if (timer_tick_has_elapsed(timeout)) {
-            ak_rb_consumer = ak_rb_producer;  // Flush the ring buffer
+//          ak_rb_consumer = ak_rb_producer;  // Flush the ring buffer
             return (1);
         }
     }
@@ -1571,13 +1585,13 @@ printf("1: %llu usec\n", timer_tick_to_usec(timer_tick_get() - start));
 start = timer_tick_get();
 
     /* First warning was received; send second warning. */
-    amiga_keyboard_put(AS_RESET_WAEN);
+    amiga_keyboard_put(AS_RESET_WARN);
     timeout = timer_tick_plus_msec(250);
     while (ak_rb_consumer != ak_rb_producer) {
         keyboard_poll();
         main_poll();
         if (timer_tick_has_elapsed(timeout)) {
-            ak_rb_consumer = ak_rb_producer;  // Flush the ring buffer
+//          ak_rb_consumer = ak_rb_producer;  // Flush the ring buffer
             return (1);
         }
     }
