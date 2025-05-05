@@ -1,0 +1,31 @@
+/*
+ * This is free and unencumbered software released into the public domain.
+ * See the LICENSE file for additional details.
+ *
+ * Designed by Chris Hooper in 2020.
+ *
+ * ---------------------------------------------------------------------
+ *
+ * STM32 Real-Time Clock handling.
+ */
+
+#ifndef _RTC_H
+#define _RTC_H
+
+void rtc_init(void);
+char *time_str(uint32_t secs, uint32_t msec, char *buf, size_t buflen);
+void rtc_allow_writes(int allow);
+void rtc_set_date(uint year, uint mon, uint day);
+void rtc_set_time(uint hour, uint min, uint sec);
+void rtc_set_datetime(uint year, uint mon, uint day,
+                      uint hour, uint min, uint sec);
+void rtc_get_time(uint *year, uint *mon, uint *day,
+                  uint *hour, uint *min, uint *sec, uint *msec);
+void utc_to_rtc(uint32_t secs, uint *year, uint *mon, uint *day, uint *hour,
+                uint *min, uint *sec);
+void rtc_print(uint newline);
+uint32_t rtc_read_nvram(uint reg);
+void rtc_write_nvram(uint reg, uint32_t value);
+void rtc_compare(void);
+
+#endif /* _RTC_H */

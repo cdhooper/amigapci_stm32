@@ -18,6 +18,7 @@ uint64_t timer_tick_get(void);
 void     timer_delay_msec(uint msec);
 void     timer_delay_usec(uint usec);
 void     timer_delay_ticks(uint32_t ticks);
+void     timer_show(void);
 bool     timer_tick_has_elapsed(uint64_t value);
 uint64_t timer_tick_plus_msec(uint msec);
 uint64_t timer_tick_plus_usec(uint usec);

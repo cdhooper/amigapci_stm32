@@ -555,6 +555,31 @@ printf(const char *fmt, ...)
 }
 
 /**
+ * dprintf() is wrapper for printf() which first checks if the debug flag(s)
+ *           presented is within the mask of config debug flags. If not,
+ *           nothing is printed.
+ *
+ * @param [in]  mask - Flag(s) which will be matched against the debug_flags
+ *                     global.
+ * @param [in]  fmt  - A string describing the format of the output.  This
+ *                     format string is compatible with that of printf().
+ * @param [in]  ...  - A variable list of arguments.
+ *
+ * @return      None.
+ */
+void __attribute__((format(__printf__, 2, 3)))
+dprintf(uint32_t mask, const char *fmt, ...)
+{
+    va_list args;
+
+    if (debug_flags & mask) {
+        va_start(args, fmt);
+        (void) vprintf(fmt, args);
+        va_end(args);
+    }
+}
+
+/**
  * warnx() is a stdio compatible function which operates on a format
  *        string and variable argument list.  Output is directed to
  *        the serial console.

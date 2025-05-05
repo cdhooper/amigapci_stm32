@@ -155,13 +155,19 @@ const char cmd_test_patterns[] =
     "<mode> may be one, zero, rand, walk0, walk1, or read\n";
 
 const char cmd_time_help[] =
-"time cmd <cmd> - measure command execution time\n"
+"time cmd <cmd>         - measure command execution time\n"
+#ifdef EMBEDDED_CMD
+"time compare           - continuously compare the RTC with timer\n"
+#endif
 #ifndef AMIGA
-"time now       - display the current time\n"
+"time now               - display the current time\n"
 #endif
 #ifdef EMBEDDED_CMD
-"time test      - test timers\n"
-"time watch     - watch the timer to verify tick is working correctly\n"
+"time set [yy]yy-mm-dd  - set date\n"
+"time set hh:mm:ss      - set time\n"
+"time show              - show hardware timers\n"
+"time test              - test timers\n"
+"time watch             - watch the timer to verify tick is working correctly\n"
 #endif
 ;
 

@@ -32,6 +32,7 @@
 #include "keyboard.h"
 #include "led.h"
 #include "power.h"
+#include "rtc.h"
 #include "sensor.h"
 
 #include <libopencm3/cm3/scb.h>
@@ -87,7 +88,8 @@ const char cmd_set_help[] =
 "set fan_temp_max <num>   - CPU temp for max fan speed\n"
 "set fan_temp_min <num>   - CPU temp for min fan speed\n"
 "set name <name>          - set board name\n"
-"set pson <num>           - set power on mode (1=On at AC restore)";
+"set pson <num>           - set power on mode (1=On at AC restore)\n"
+"set time <y/m/d>|<h:m:s> - set RTC time and/or date";
 
 const char cmd_power_help[] =
 "power cycle - cycle the power supply off/on\n"
@@ -255,6 +257,34 @@ timer_watch(void)
     return ((fail == TRUE) ? RC_FAILURE : RC_SUCCESS);
 }
 
+static rc_t
+cmd_time_set(int argc, char * const *argv)
+{
+    int arg;
+    for (arg = 1; arg < argc; arg++) {
+        uint year, mon, day;
+        uint hour, min, sec;
+        uint ch;
+
+        if (sscanf(argv[arg], "%u%1[-/]%u%1[-/]%u",
+                   &year, &ch, &mon, &ch, &day) == 5) {
+            rtc_allow_writes(TRUE);
+            rtc_set_date(year, mon, day);
+            rtc_allow_writes(FALSE);
+        } else if (sscanf(argv[arg], "%u:%u:%u", &hour, &min, &sec) == 3) {
+            rtc_allow_writes(TRUE);
+            rtc_set_time(hour, min, sec);
+            rtc_allow_writes(FALSE);
+        } else {
+            printf("Unknown time set argument %s\n", argv[arg]);
+            return (RC_BAD_PARAM);
+        }
+    }
+    rtc_print(1);
+
+    return (RC_SUCCESS);
+}
+
 rc_t
 cmd_time(int argc, char * const *argv)
 {
@@ -263,7 +293,7 @@ cmd_time(int argc, char * const *argv)
     if (argc <= 1)
         return (RC_USER_HELP);
 
-    if (strncmp(argv[1], "cmd", 1) == 0) {
+    if (strcmp(argv[1], "cmd") == 0) {
         uint64_t time_start;
         uint64_t time_diff;
 
@@ -277,12 +307,22 @@ cmd_time(int argc, char * const *argv)
         printf("%llu us\n", timer_tick_to_usec(time_diff));
         if (rc == RC_USER_HELP)
             rc = RC_FAILURE;
+    } else if (strncmp(argv[1], "compare", 4) == 0) {
+        rtc_compare();
+        rc = RC_SUCCESS;
     } else if (strncmp(argv[1], "now", 1) == 0) {
         uint64_t now = timer_tick_get();
-        printf("tick=0x%llx uptime=%llu usec\n", now, timer_tick_to_usec(now));
+        printf("tick=0x%llx uptime=%llu usec\ntime=",
+               now, timer_tick_to_usec(now));
+        rtc_print(1);
         rc = RC_SUCCESS;
     } else if (strncmp(argv[1], "watch", 1) == 0) {
         rc = timer_watch();
+    } else if (strcmp(argv[1], "set") == 0) {
+        rc = cmd_time_set(argc - 1, argv + 1);
+    } else if (strncmp(argv[1], "show", 2) == 0) {
+        timer_show();
+        rc = RC_SUCCESS;
     } else if (strncmp(argv[1], "test", 1) == 0) {
         rc = timer_test();
     } else {
@@ -889,6 +929,8 @@ cmd_set(int argc, char * const *argv)
             config.ps_on_mode = mode;
             config_updated();
         }
+    } else if (strcmp(argv[1], "time") == 0) {
+        return (cmd_time_set(argc - 1, argv + 1));
     } else {
         printf("set \"%s\" unknown argument\n", argv[1]);
         return (RC_USER_HELP);

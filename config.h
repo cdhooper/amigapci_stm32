@@ -14,6 +14,7 @@
 
 #define DF_KEYBOARD 0x00000001  // USB Keyboard debug
 #define DF_MOUSE    0x00000002  // USB Mouse debug
+#define DF_RTC      0x00000004  // Real-Time Clock debug
 
 typedef struct {
     uint32_t    magic;         // Structure magic

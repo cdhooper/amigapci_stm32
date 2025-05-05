@@ -442,3 +442,37 @@ time(time_t *ptr)
 {
     return (timer_tick_get());
 }
+
+/**
+ * timer_show() displays the current tick value of all STM32 timers.
+ *              It may be executed via the user "time timer" command.
+ *
+ * This function requires no arguments.
+ *
+ * @return      None.
+ */
+void
+timer_show(void)
+{
+    printf("TIM1=%08lx TIM4=%08lx TIM7=%08lx TIM10=%08lx TIM13=%08lx\n"
+           "TIM2=%08lx TIM5=%08lx TIM8=%08lx TIM11=%08lx TIM14=%08lx\n"
+           "TIM3=%08lx TIM6=%08lx TIM9=%08lx TIM12=%08lx T=%012llx\n",
+           timer_get_counter(TIM1),
+           timer_get_counter(TIM4),
+           timer_get_counter(TIM7),
+           timer_get_counter(TIM10),
+           timer_get_counter(TIM13),
+           timer_get_counter(TIM2),
+           timer_get_counter(TIM5),
+           timer_get_counter(TIM8),
+           timer_get_counter(TIM11),
+           timer_get_counter(TIM14),
+           timer_get_counter(TIM3),
+           timer_get_counter(TIM6),
+           timer_get_counter(TIM9),
+           timer_get_counter(TIM12),
+           (long long) timer_tick_get());
+    printf("HSE=%lu MHz  APB1=%lu MHz  APB2=%lu MHz\n",
+           clock_get_hclk() / 1000000, rcc_apb1_frequency / 100000,
+           rcc_apb2_frequency / 1000000);
+}

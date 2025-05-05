@@ -14,6 +14,7 @@
 #include "printf.h"
 #include "led.h"
 #include "gpio.h"
+#include "rtc.h"
 #include "timer.h"
 #include "uart.h"
 #include "cmdline.h"
@@ -68,6 +69,7 @@ main(void)
     config_read();
     sensor_init();          // also starts adc_init()
     fan_init();
+    rtc_init();
     keyboard_init();
     usb_init();
 
