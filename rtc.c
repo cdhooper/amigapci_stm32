@@ -1,5 +1,4 @@
 #include <stdint.h>
-#include <libopencm3/stm32/usart.h>
 #include <libopencm3/stm32/pwr.h>
 
 #include <libopencm3/stm32/timer.h>
@@ -39,7 +38,7 @@
 
 #define TIME_STR_NO_MSEC     ((uint) -1)   // Do not display milliseconds
 
-#define DAYS_2025            20088       // Number of days between 1970 and 2025
+#define DAYS_2024            19722       // Number of days between 1970 and 2024
 
 /* Do-nothing function provided by libopencm3 */
 void     null_handler(void);
@@ -69,7 +68,7 @@ static uint rtc_prediv_sync;   // Will be calculated
  *
  * @return      Two-digit BCD value.
  */
-static uint8_t
+uint8_t
 rtc_binary_to_bcd(uint value)
 {
     return ((uint8_t)((value / 10) << 4) + (value % 10));
@@ -84,7 +83,7 @@ rtc_binary_to_bcd(uint value)
  *
  * @return      Unsigned integer.
  */
-static uint8_t
+uint8_t
 rtc_bcd_to_binary(uint8_t value)
 {
     return (((value >> 4) * 10) + (value & 0xf));
@@ -188,23 +187,22 @@ rtc_check_time(uint hour, uint min, uint sec)
  * @param [in]  day  - The day number (1..31).  Depending on the month number,
  *                     some day numbers are invalid (for example day 30 in
  *                     month 2).
+ * @param [in]  dow  - The day-of-week number (1..7).
  *
  * @return      None.
  */
 void
-rtc_set_date(uint year, uint mon, uint day)
+rtc_set_date(uint year, uint mon, uint day, uint dow)
 {
-    uint dow   = 1;  // Monday
-
     if (rtc_check_date(&year, mon, day) != RC_SUCCESS)
         return;      // error printed
 
     if (rtc_init_mode(TRUE) != RC_SUCCESS)
         return;
 
-    RTC_DR = (rtc_binary_to_bcd(year)  << 16) |
-             (dow << 13)                      |
-             (rtc_binary_to_bcd(mon) << 8)  |
+    RTC_DR = (rtc_binary_to_bcd(year) << 16) |
+             (dow << 13)                     |
+             (rtc_binary_to_bcd(mon) << 8)   |
              (rtc_binary_to_bcd(day));
 
     (void) rtc_init_mode(FALSE);
@@ -213,22 +211,27 @@ rtc_set_date(uint year, uint mon, uint day)
 /**
  * rtc_set_time() sets the current time in the STM32F2 Real-Time Clock.
  *
- * @param [in]  hour - The hour number in 24-hour format (0..23).
- * @param [in]  min  - The minute number (0..59).
- * @param [in]  sec  - The second number (0..59).
+ * @param [in]  hour      - The hour number in 24-hour format (0..23).
+ * @param [in]  min       - The minute number (0..59).
+ * @param [in]  sec       - The second number (0..59).
+ * @param [in]  is_24hour - 1 = 24-hour mode
+ * @param [in]  ampm      - 12-hour AM / PM status (1 = PM).
  *
  * @return      None.
  */
 void
-rtc_set_time(uint hour, uint min, uint sec)
+rtc_set_time(uint hour, uint min, uint sec, uint is_24hour, uint ampm)
 {
-    uint ampm = 0;  // 24-hour notation
-
     if (rtc_check_time(hour, min, sec) != RC_SUCCESS)
         return;     // error printed
 
     if (rtc_init_mode(TRUE) != RC_SUCCESS)
         return;
+
+    if (is_24hour)
+        RTC_CR &= ~RTC_CR_FMT;
+    else
+        RTC_CR |= RTC_CR_FMT;
 
     RTC_TR = (rtc_binary_to_bcd(hour) << 16) |
              (rtc_binary_to_bcd(min)  << 8)  |
@@ -462,7 +465,7 @@ rtc_clock_config(uint clk_source, uint *prediv_async, uint *prediv_sync)
         dr = RTC_DR;
         dprintf(DF_RTC, "tr=%06lx dr=%06lx\n", tr, dr);
         rcc_backupdomain_reset();
-        RCC_BDCR = clk_source;      // Select RTC clock source
+        RCC_BDCR = clk_source;       // Select RTC clock source
         RCC_BDCR |= RCC_BDCR_RTCEN;  // Enable RTC
         rtc_allow_writes(TRUE);
         RTC_TR = tr;
@@ -525,7 +528,10 @@ rtc_get_time(uint *year, uint *mon, uint *day,
     if (*sec > 59)
         *sec = 0;
     if (*year < 12 || *year > 99)
-        *year = 25;  // Assume 2025
+{
+printf("y=%u ?\n", *year);
+        *year = 24;  // Assume 2024
+}
     if (*mon < 1 || *mon > 12)
         *mon = 1;
     if (*day < 1 || *day > 31)
@@ -657,27 +663,29 @@ utc_to_rtc(uint32_t secs, uint *year, uint *mon, uint *day, uint *hour,
     days  = secs / 24;  // Days since 1970
 
     /* Extract year. Optimize for dates after 2025. */
-    if (days >= DAYS_2025) {
-        *year = 2025;
+    if (days >= DAYS_2024) {
+        *year = 2024;
         leap = 1;
-        days -= DAYS_2025;
+        days -= DAYS_2024;
     } else {
         *year = 1970;
         leap = 0;
     }
     while (days >= 365 + leap) {
         days -= 365 + leap;
-        leap = is_leap_year(++*year) ? 1 : 0;
+        leap = is_leap_year(*year) ? 1 : 0;
+        (*year)++;
     }
+    leap = is_leap_year(*year);
 
     /* Locate current month */
     for (month = 1; month < 12; month++)
-        if (month_doy[month] + ((month >= 2) ? leap : 0) > days)
+        if (month_doy[month] + ((month >= 2) ? leap : 0) >= days)
             break;
     *mon = month;
 
     /* Current day is remainder (one-based, not zero-based) */
-    *day = days - month_doy[month - 1] + 1 - ((month > 2) ? leap : 0);
+    *day = days - month_doy[month - 1] - ((month > 2) ? leap : 0);
 }
 
 /*
@@ -1006,11 +1014,53 @@ rtc_init(void)
         return;
 
     /* Set the time format to 24-hour */
-    RTC_CR   &= ~RTC_CR_FMT;
+    RTC_CR &= ~RTC_CR_FMT;
+
+    RTC_CR &= ~(RTC_CR_WUTIE | RTC_CR_WUTE);
+    RTC_CR &= ~(RTC_CR_ALRAIE | RTC_CR_ALRAE);
+    RTC_CR &= ~(RTC_CR_ALRBIE | RTC_CR_ALRBE);
+
+    /* Wait for ALRAWF, ALRBWF, and WUTWF to be set */
+    uint count = 0;
+    while ((RTC_ISR & 7) != 7)
+        if (count++ > 10000000)
+            break;
+    if ((RTC_ISR & 7) != 7) {
+        printf("RTC_ISR=%lx\n", RTC_ISR);
+    }
+    // Alarm values can now be changed
+
+    /* Set up wake-up timer */
+    RTC_CR = (RTC_CR & ~7) | 4;      // RTC clock selected
+    RTC_WUTR = 0x0001;               // Wakeup each second
+
+    RTC_ALRMAR =  // RTC_ALRMXR_MSK1 |  // Ignore seconds
+                  RTC_ALRMXR_MSK2 |  // Ignore minutes
+                  RTC_ALRMXR_MSK3 |  // Ignore hours
+                  RTC_ALRMXR_MSK4;   // Ignore day
+
+    RTC_ALRMBR =  // RTC_ALRMXR_MSK1 |  // Ignore seconds
+                  RTC_ALRMXR_MSK2 |  // Ignore minutes
+                  RTC_ALRMXR_MSK3 |  // Ignore hours
+                  RTC_ALRMXR_MSK4;   // Ignore day
+
+    RTC_CR |= RTC_CR_WUTIE | RTC_CR_WUTE;
+
+    RTC_CR |= RTC_CR_TSIE;    // Timestamp interrupt enable
+    RTC_CR |= RTC_CR_WUTIE;   // Wake up interrupt enable
+    RTC_CR |= RTC_CR_ALRAIE;  // Alarm A interrupt enable
+    RTC_CR |= RTC_CR_ALRBIE;  // Alarm B interrupt enable
+
+    RTC_CR |= RTC_CR_TSE;     // Timestamp enable
+    RTC_CR |= RTC_CR_WUTE;    // Wake up timer enablke
+    RTC_CR |= RTC_CR_ALRAE;   // Alarm A enable
+    RTC_CR |= RTC_CR_ALRBE;   // Alarm B enable
+
 
     /* Configure the RTC prescaler (MUST be done as two separate writes) */
     RTC_PRER  = ((prediv_async - 1) << 16);
     RTC_PRER |= (rtc_prediv_sync - 1);
+
 
     /* Exit Initialization mode */
     (void) rtc_init_mode(FALSE);
@@ -1025,13 +1075,20 @@ rtc_init(void)
     /* Enable write protection for RTC registers */
     rtc_allow_writes(FALSE);
 
-#ifdef RTC_INTERRUPT
-    /* Setup the RTC interrupt. */
+    /* Setup the RTC interrupts */
+    nvic_set_priority(NVIC_RTC_WKUP_IRQ, 0x30);
     nvic_enable_irq(NVIC_RTC_WKUP_IRQ);
-    nvic_set_priority(NVIC_RTC_WKUP_IRQ, 0x10);
-
-    /* Enable the RTC interrupt to occur off the SEC flag. */
-    rtc_interrupt_enable(RTC_SEC);
+#if 0
+    nvic_set_priority(NVIC_RTC_ALARM_IRQ, 0x30);
+    nvic_enable_irq(NVIC_RTC_ALARM_IRQ);
 #endif
+
+    /* Clear interrupt status */
+    RTC_ISR &= ~(RTC_ISR_TSOVF | RTC_ISR_TSF | RTC_ISR_WUTF |
+                 RTC_ISR_ALRAF | RTC_ISR_ALRBF);
+
+    /* Enable battery backup of SRAM */
+    PWR_CSR |= PWR_CSR_BRE;
+
     rtc_print(1);
 }

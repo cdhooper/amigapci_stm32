@@ -454,7 +454,7 @@ host_switch_to_dev(USBH_HandleTypeDef *phost)
 
     __HAL_UNLOCK(hhcd);
 
-    return HAL_OK;
+    return (HAL_OK);
 }
 
 #define LOG(...) printf(__VA_ARGS__)
@@ -864,19 +864,19 @@ USBH_Get_USB_Status(HAL_StatusTypeDef hal_status)
     USBH_StatusTypeDef usb_status = USBH_OK;
 
     switch (hal_status) {
-        case HAL_OK :
+        case HAL_OK:
             usb_status = USBH_OK;
             break;
-        case HAL_ERROR :
+        case HAL_ERROR:
             usb_status = USBH_FAIL;
             break;
-        case HAL_BUSY :
+        case HAL_BUSY:
             usb_status = USBH_BUSY;
             break;
-        case HAL_TIMEOUT :
+        case HAL_TIMEOUT:
             usb_status = USBH_FAIL;
             break;
-        default :
+        default:
             usb_status = USBH_FAIL;
             break;
     }
@@ -948,13 +948,13 @@ USBH_LL_GetSpeed(USBH_HandleTypeDef *phost)
     USBH_SpeedTypeDef speed = USBH_SPEED_FULL;
 
     switch (HAL_HCD_GetCurrentSpeed(phost->pData)) {
-        case 0 :
+        case 0:
             speed = USBH_SPEED_HIGH;
             break;
-        case 1 :
+        case 1:
             speed = USBH_SPEED_FULL;
             break;
-        case 2 :
+        case 2:
             speed = USBH_SPEED_LOW;
             break;
         default:

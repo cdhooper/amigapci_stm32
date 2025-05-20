@@ -202,11 +202,11 @@ usb_init(void)
     gpio_setmode(USB2_DM_PORT, USB2_DM_PIN | USB2_DP_PIN,
                  GPIO_SETMODE_ALTFUNC_100 | GPIO_SETMODE_AF_AF12);
 
-    nvic_set_priority(NVIC_OTG_FS_IRQ, 0x00);
-    nvic_set_priority(NVIC_OTG_HS_IRQ, 0x00);
-    nvic_set_priority(NVIC_OTG_HS_WKUP_IRQ, 0x00);
-    nvic_set_priority(NVIC_OTG_HS_EP1_IN_IRQ, 0x00);
-    nvic_set_priority(NVIC_OTG_HS_EP1_OUT_IRQ, 0x00);
+    nvic_set_priority(NVIC_OTG_FS_IRQ, 0x40);
+    nvic_set_priority(NVIC_OTG_HS_IRQ, 0x40);
+    nvic_set_priority(NVIC_OTG_HS_WKUP_IRQ, 0x40);
+    nvic_set_priority(NVIC_OTG_HS_EP1_IN_IRQ, 0x40);
+    nvic_set_priority(NVIC_OTG_HS_EP1_OUT_IRQ, 0x40);
 
     nvic_enable_irq(NVIC_OTG_FS_IRQ);    // USB0 ISR
     nvic_enable_irq(NVIC_OTG_HS_IRQ);    // USB1 ISR

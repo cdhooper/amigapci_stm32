@@ -6,7 +6,8 @@ SRCS	:= main.c gpio.c led.c timer.c printf.c uart.c \
 	   mem_access.c readline.c cmdline.c cmds.c pcmds.c \
 	   utils.c scanf.c stm32flash.c version.c config.c \
 	   clock.c crc32.c usb.c kbrst.c keyboard.c mouse.c \
-	   adc.c fan.c irq.c power.c rtc.c sensor.c
+	   adc.c fan.c irq.c power.c rtc.c sensor.c amigartc.c \
+	   hiden.c
 SRCS    += libopencm3_stm32f2/adc_common_v1.c \
 	   libopencm3_stm32f2/adc_common_v1_multi.c \
 	   libopencm3_stm32f2/adc_common_f47.c

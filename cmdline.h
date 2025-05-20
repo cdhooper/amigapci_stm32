@@ -52,4 +52,3 @@ char const *skip(const char *str, const char *skip);
 #define MAX_ARGS 64
 
 #endif
-

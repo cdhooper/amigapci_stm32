@@ -17,6 +17,7 @@
 #include "rtc.h"
 #include "timer.h"
 #include "uart.h"
+#include "amigartc.h"
 #include "cmdline.h"
 #include "clock.h"
 #include "config.h"
@@ -45,6 +46,7 @@ main_poll(void)
     keyboard_poll();
     kbrst_poll();
     mouse_poll();
+    amigartc_poll();
 }
 
 int
@@ -68,9 +70,10 @@ main(void)
     show_reset_reason();
     config_read();
     sensor_init();          // also starts adc_init()
-    fan_init();
     rtc_init();
+    amigartc_init();
     keyboard_init();
+    fan_init();
     usb_init();
 
     rl_initialize();        // Enable command editing and history

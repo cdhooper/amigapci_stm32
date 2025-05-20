@@ -23,8 +23,11 @@
 
 /*
  * STM32F205 timer usage
+ *   TIM1     - (maybe) power LED
  *   TIM2     - bits 0-31 of tick timer (bits 32-63 are in global timer_high)
- *   TIM4     - Fan speed measurement
+ *   TIM4     - Fan speed measurement (TIM4_CH4 AF2)
+ *   TIM8     - _RTCEN (TIM8_CN2N)
+ *   TIM10    - Fan PWM to set speed (TIM10_CH1 AF3)
  *
  * STM32F1 timer usage
  *   TIM1     - bits 0-15 of tick timer, OVF trigger to TIM3
@@ -179,7 +182,7 @@ timer_init(void)
 
     /* Enable TIM3 rollover interrupt, but not TIE (interrupt on trigger) */
     TIM_DIER(TIM3) |= TIM_DIER_UIE | TIM_DIER_TDE;
-    nvic_set_priority(NVIC_TIM3_IRQ, 0x11);
+    nvic_set_priority(NVIC_TIM3_IRQ, 0x20);
     nvic_enable_irq(NVIC_TIM3_IRQ);
 }
 
@@ -265,7 +268,7 @@ timer_init(void)
 
     /* Enable TIM2 rollover interrupt */
     TIM_DIER(TIM2) |= TIM_DIER_TIE | TIM_DIER_UIE | TIM_DIER_TDE;
-    nvic_set_priority(NVIC_TIM2_IRQ, 0x11);
+    nvic_set_priority(NVIC_TIM2_IRQ, 0x20);
     nvic_enable_irq(NVIC_TIM2_IRQ);
 }
 

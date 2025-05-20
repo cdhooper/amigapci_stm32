@@ -47,7 +47,7 @@ typedef struct {
 
 static const sensor_t sensors[] = {
 //  { "VrefInt", ADC_CHANNEL_VREF, 0x00, 0, 1, 1, 0, 1200, 1220 },
-    { "VrefInt", ADC_CHANNEL_VREF, 0x00, 0, 1, 1, 0, 1190, 1230 },
+    { "VrefInt", ADC_CHANNEL_VREF, 0x00, 0, 1, 1, 0, 1180, 1240 },
     { "TEMP",    ADC_CHANNEL_TEMP, 0x00, 0, 10000 / TEMP_AVGSLOPE, 1,
             -1 * TEMP_V25 * 10000 / TEMP_AVGSLOPE + 25 * 100000, 0, 60000 },
     { "VBAT",    ADC_CHANNEL_VBAT, 0x00, 0, 2, 1, 0, 2000, 5100 },

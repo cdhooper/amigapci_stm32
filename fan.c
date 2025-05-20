@@ -250,7 +250,7 @@ fan_init_tach(void)
     timer_enable_counter(TIM4);  // Start timer
 
     /* Enable timer interrupt on fan tach pulse */
-    nvic_set_priority(NVIC_TIM4_IRQ, 0x30);
+    nvic_set_priority(NVIC_TIM4_IRQ, 0x50);
     nvic_enable_irq(NVIC_TIM4_IRQ);
     timer_enable_irq(TIM4, TIM_DIER_CC4IE);
 
@@ -316,12 +316,12 @@ fan_poll(void)
     }
     if (power_state == POWER_STATE_ON) {
         if (fan_percent_min != fan_percent) {
-   printf("[%u,%u,%llx]", fan_percent_min, fan_percent, timer_fan_limit_change);
+           printf("Fan [%u,%u,%llx]",
+                  fan_percent_min, fan_percent, timer_fan_limit_change);
             if (timer_tick_has_elapsed(timer_fan_limit_change)) {
                 int diff = fan_percent - fan_percent_min;
                 if (diff > 20)  // Maximum 20% change per second
                     diff = 20;
-    printf("lc %d\n", diff);
                 fan_percent_min += diff;
                 if (fan_percent_min != fan_percent)
                     timer_fan_limit_change = timer_tick_plus_msec(1000);

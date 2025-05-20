@@ -18,6 +18,7 @@
 #include "printf.h"
 #include "timer.h"
 #include "utils.h"
+#include "hiden.h"
 
 #define B0_GPIO ADDR32(BND_IO(FIRE_PORT + GPIO_ODR_OFFSET, low_bit(FIRE_PIN)))
 #define B1_GPIO ADDR32(BND_IO(PotY_PORT + GPIO_ODR_OFFSET, low_bit(PotY_PIN)))
@@ -45,6 +46,9 @@ void
 mouse_action(int off_x, int off_y, uint button0, uint button1, uint button2)
 {
 printf("M");
+    if (hiden_is_set == 0)
+        hiden_set(1);
+
     mouse_x += off_x;
     mouse_y += off_y;
     *B0_GPIO = !button0;

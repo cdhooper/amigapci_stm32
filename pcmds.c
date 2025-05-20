@@ -21,6 +21,7 @@
 #include "uart.h"
 #include "cmds.h"
 #include "gpio.h"
+#include "amigartc.h"
 #include "pcmds.h"
 #include "adc.h"
 #include "utils.h"
@@ -151,6 +152,7 @@ static const memmap_t memmap[] = {
     { "RTC",    RTC_BASE },
     { "SCB",    SCB_BASE },
     { "SRAM",   SRAM_BASE },
+    { "SYSCFG", SYSCFG_BASE },
     { "TIM1",   TIM1_BASE },
     { "TIM2",   TIM2_BASE },
     { "TIM3",   TIM3_BASE },
@@ -269,11 +271,11 @@ cmd_time_set(int argc, char * const *argv)
         if (sscanf(argv[arg], "%u%1[-/]%u%1[-/]%u",
                    &year, &ch, &mon, &ch, &day) == 5) {
             rtc_allow_writes(TRUE);
-            rtc_set_date(year, mon, day);
+            rtc_set_date(year, mon, day, 0);
             rtc_allow_writes(FALSE);
         } else if (sscanf(argv[arg], "%u:%u:%u", &hour, &min, &sec) == 3) {
             rtc_allow_writes(TRUE);
-            rtc_set_time(hour, min, sec);
+            rtc_set_time(hour, min, sec, 0, 0);
             rtc_allow_writes(FALSE);
         } else {
             printf("Unknown time set argument %s\n", argv[arg]);
@@ -315,16 +317,23 @@ cmd_time(int argc, char * const *argv)
         printf("tick=0x%llx uptime=%llu usec\ntime=",
                now, timer_tick_to_usec(now));
         rtc_print(1);
+        amigartc_print();
         rc = RC_SUCCESS;
-    } else if (strncmp(argv[1], "watch", 1) == 0) {
-        rc = timer_watch();
     } else if (strcmp(argv[1], "set") == 0) {
         rc = cmd_time_set(argc - 1, argv + 1);
     } else if (strncmp(argv[1], "show", 2) == 0) {
         timer_show();
         rc = RC_SUCCESS;
+    } else if (strncmp(argv[1], "snoop", 2) == 0) {
+        int debug = 0;
+        if ((argc > 2) && (*argv[2] == 'd'))
+            debug = 1;
+        amigartc_snoop(debug);
+        rc = RC_USR_ABORT;
     } else if (strncmp(argv[1], "test", 1) == 0) {
         rc = timer_test();
+    } else if (strncmp(argv[1], "watch", 1) == 0) {
+        rc = timer_watch();
     } else {
         printf("Unknown argument %s\n", argv[1]);
         return (RC_USER_HELP);

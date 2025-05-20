@@ -21,6 +21,7 @@
 #include "usb.h"
 #include "gpio.h"
 #include "kbrst.h"
+#include "hiden.h"
 #include <libopencm3/stm32/gpio.h>
 
 #undef DEBUG_KEYBOARD
@@ -1022,6 +1023,8 @@ static void
 amiga_keyboard_put(uint8_t code)
 {
     uint new_prod;
+    if (hiden_is_set == 0)
+        hiden_set(1);
 
     switch (code) {
         case AS_CTRL:

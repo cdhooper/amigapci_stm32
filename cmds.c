@@ -166,6 +166,7 @@ const char cmd_time_help[] =
 "time set [yy]yy-mm-dd  - set date\n"
 "time set hh:mm:ss      - set time\n"
 "time show              - show hardware timers\n"
+"time snoop             - snoop RTC bus\n"
 "time test              - test timers\n"
 "time watch             - watch the timer to verify tick is working correctly\n"
 #endif

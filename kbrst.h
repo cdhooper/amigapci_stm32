@@ -18,4 +18,3 @@ extern uint8_t amiga_not_in_reset;
 extern uint    amiga_reboot_detect;
 
 #endif /* _KBRST_H */
-

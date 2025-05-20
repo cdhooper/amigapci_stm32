@@ -76,7 +76,7 @@
  *
  * VMON-12 divider is 1K / 5.1K, giving -1.9672131148 + 3.3V = 1.3327868852
  *        At -12V. The fraction -833 / 625 is -1.332, which is close
-*/
+ */
 
 /*
  * STM32F2xx ADC pins from STM32F205 datasheet

@@ -389,7 +389,7 @@ CONSOLE_IRQHandler(void)
 static void
 uart_init_irq(void)
 {
-    nvic_set_priority(CONSOLE_IRQn, 0);
+    nvic_set_priority(CONSOLE_IRQn, 0x21);
     nvic_enable_irq(CONSOLE_IRQn);
 
     USART_CR1(CONSOLE_USART) |= USART_CR1_RXNEIE;
