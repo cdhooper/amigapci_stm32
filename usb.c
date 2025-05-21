@@ -31,6 +31,8 @@
 
 uint usb_debug_mask;
 uint usb_keyboard_terminal;
+uint8_t usb_keyboard_count;
+uint8_t usb_mouse_count;
 static uint64_t usb_power_timer;
 
 typedef struct {

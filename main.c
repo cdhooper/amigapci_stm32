@@ -30,6 +30,7 @@
 #include "sensor.h"
 #include "usb.h"
 #include "utils.h"
+#include "hiden.h"
 #include "version.h"
 #include <libopencm3/stm32/rcc.h>
 #include <libopencm3/stm32/gpio.h>
@@ -47,6 +48,7 @@ main_poll(void)
     kbrst_poll();
     mouse_poll();
     amigartc_poll();
+    hiden_poll();
 }
 
 int

@@ -46,9 +46,6 @@ void
 mouse_action(int off_x, int off_y, uint button0, uint button1, uint button2)
 {
 printf("M");
-    if (hiden_is_set == 0)
-        hiden_set(1);
-
     mouse_x += off_x;
     mouse_y += off_y;
     *B0_GPIO = !button0;
@@ -76,6 +73,10 @@ void
 mouse_poll(void)
 {
     static uint64_t mouse_timer;
+
+    if (hiden_is_set == 0)
+        return;
+
     if (!timer_tick_has_elapsed(mouse_timer))
         return;
     mouse_timer = timer_tick_plus_usec(250);

@@ -15,5 +15,6 @@
 extern uint8_t hiden_is_set;
 
 void hiden_set(unsigned int enable);
+void hiden_poll(void);
 
 #endif /* _HIDEN_H */

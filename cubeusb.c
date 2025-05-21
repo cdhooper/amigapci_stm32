@@ -16,6 +16,7 @@
 #include "utils.h"
 #include "timer.h"
 #include "clock.h"
+#include "hiden.h"
 #include "keyboard.h"
 #include "mouse.h"
 #include "cubeusb.h"
@@ -135,6 +136,15 @@ USBH_UserProcess(USBH_HandleTypeDef *phost, uint8_t id)
             break;
         case HOST_USER_DISCONNECTION:
             usbdev[port][devnum].appstate = APPLICATION_DISCONNECT;
+            if (usbdev[port][devnum].hid_devtype == HID_KEYBOARD)
+                usb_keyboard_count--;
+            else if (usbdev[port][devnum].hid_devtype == HID_MOUSE)
+                usb_mouse_count--;
+
+            if (usb_keyboard_count + usb_mouse_count == 0)
+                hiden_set(0);
+
+            usbdev[port][devnum].hid_devtype = 0;
             break;
         case HOST_USER_UNRECOVERED_ERROR:
             break;
@@ -374,7 +384,23 @@ handle_dev(USBH_HandleTypeDef *dev, uint port, uint devnum)
         HID_TypeTypeDef devtype = USBH_HID_GetDeviceType(dev, HID_Handle);
 // printf("hd:%x ", devtype);
         if (usbdev[port][devnum].hid_devtype != devtype) {
+            uint prevcount = usb_keyboard_count + usb_mouse_count;
+            if (usbdev[port][devnum].hid_devtype == HID_KEYBOARD)
+                usb_keyboard_count--;
+            else if (usbdev[port][devnum].hid_devtype == HID_MOUSE)
+                usb_mouse_count--;
+
             usbdev[port][devnum].hid_devtype = devtype;
+
+            if (devtype == HID_KEYBOARD)
+                usb_keyboard_count++;
+            else if (devtype == HID_MOUSE)
+                usb_mouse_count++;
+
+            if ((prevcount == 0) &&
+                (usb_keyboard_count + usb_mouse_count == 1)) {
+                hiden_set(1);
+            }
 #if 1
             printf("USB%u.%u type %x %s\n", port, devnum, devtype,
                    (devtype == HID_KEYBOARD) ? "Keyboard" :

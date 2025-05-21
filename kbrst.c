@@ -15,6 +15,7 @@
 #include "printf.h"
 #include "timer.h"
 #include "kbrst.h"
+#include "power.h"
 
 uint8_t         amiga_not_in_reset     = 0xff;
 static uint8_t  amiga_powered_off      = 0;
@@ -65,6 +66,14 @@ kbrst_poll(void)
 {
     uint8_t kbrst;
 
+    if (power_state != POWER_STATE_ON) {
+        if (amiga_not_in_reset) {
+            amiga_not_in_reset = 0;
+            gpio_setv(KBRST_PORT, KBRST_PIN, 0);
+        }
+        return;
+    }
+
     if ((amiga_reset_timer != 0) && timer_tick_has_elapsed(amiga_reset_timer)) {
         amiga_reset_timer = 0;
         gpio_setv(KBRST_PORT, KBRST_PIN, 1);
@@ -85,7 +94,7 @@ kbrst_poll(void)
             if (amiga_long_reset_timer == 0)
                 amiga_long_reset_timer = timer_tick_plus_msec(2000);
         } else {
-            /* Out of reet */
+            /* Out of reset */
             if (amiga_powered_off) {
                 amiga_powered_off = 0;
                 printf("Amiga powered on\n");

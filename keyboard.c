@@ -15,12 +15,13 @@
 #include "config.h"
 #include "printf.h"
 #include "keyboard.h"
+#include "kbrst.h"
+#include "power.h"
 #include "timer.h"
 #include "utils.h"
 #include "uart.h"
 #include "usb.h"
 #include "gpio.h"
-#include "kbrst.h"
 #include "hiden.h"
 #include <libopencm3/stm32/gpio.h>
 
@@ -1023,8 +1024,6 @@ static void
 amiga_keyboard_put(uint8_t code)
 {
     uint new_prod;
-    if (hiden_is_set == 0)
-        hiden_set(1);
 
     switch (code) {
         case AS_CTRL:
@@ -1132,6 +1131,60 @@ amiga_keyboard_sync(void)
     }
 }
 
+/*
+ * keyboard_handle_magic
+ * ---------------------
+ * Handle magic keystroke sequences from USB Keyboard
+ */
+static void
+keyboard_handle_magic(uint8_t keycode, uint modifier)
+{
+    static const uint8_t power_seq[] = { 'p', 'o', 'w', 'e', 'r' };
+    static const uint8_t reset_seq[] = { 'r', 'e', 's', 'e', 't' };
+    static const uint8_t stm32_seq[] = { 's', 't', 'm' };
+    static uint8_t       power_pos;
+    static uint8_t       reset_pos;
+    static uint8_t       stm32_pos;
+    uint8_t              ascii = scancode_to_ascii_ext[keycode];
+    if ((modifier & (KEYBOARD_MODIFIER_LEFTCTRL |
+                    KEYBOARD_MODIFIER_RIGHTCTRL)) == 0) {
+        power_pos = 0;
+        reset_pos = 0;
+        stm32_pos = 0;
+        return;
+    }
+    if (ascii == power_seq[power_pos]) {
+        if (++power_pos == ARRAY_SIZE(power_seq)) {
+            if (power_state == POWER_STATE_OFF)
+                power_set(POWER_STATE_ON);
+            else
+                power_set(POWER_STATE_OFF);
+            kbrst_amiga(0, 0);
+            power_pos = 0;
+        }
+    } else {
+        power_pos = 0;
+    }
+    if (ascii == reset_seq[reset_pos]) {
+        if (++reset_pos == ARRAY_SIZE(reset_seq)) {
+            kbrst_amiga(0, 0);
+            reset_pos = 0;
+        }
+    } else {
+        reset_pos = 0;
+    }
+    if (ascii == stm32_seq[stm32_pos]) {
+        if (++stm32_pos == ARRAY_SIZE(stm32_seq)) {
+            usb_keyboard_terminal = !usb_keyboard_terminal;
+            printf("%s STM32 keyboard\n",
+                   usb_keyboard_terminal ? "Become" : "Leave");
+            reset_pos = 0;
+        }
+    } else {
+        stm32_pos = 0;
+    }
+}
+
 /* Handle input from USB keyboard */
 void
 keyboard_usb_input(usb_keyboard_report_t *report)
@@ -1164,6 +1217,7 @@ keyboard_usb_input(usb_keyboard_report_t *report)
                 /* Current key is being held */
             } else {
                 /* New keypress */
+                keyboard_handle_magic(keycode, modifier);
                 if (usb_keyboard_terminal) {
                     uint16_t conv = scancode_to_ascii_ext[keycode];
                     if ((conv >> 8) == 0) {
@@ -1297,6 +1351,7 @@ keyboard_term(void)
 
     printf("Press ^Q to exit\n");
     while (1) {
+        hiden_set(1);
         main_poll();
         ch = getchar();
         if (ch <= 0) {
@@ -1534,6 +1589,21 @@ keyboard_poll(void)
 {
     static uint8_t last_ctrl_amiga_amiga;
     static uint8_t recursive;
+    static uint8_t sent_kbd_wake;
+
+    if (usb_keyboard_count == 0) {
+        sent_kbd_wake = 0;  // No USB keyboard
+        return;
+    }
+    if (hiden_is_set == 0)
+        return;             // Don't send
+
+    if (sent_kbd_wake == 0) {
+        amiga_keyboard_put(AS_POWER_INIT);
+        amiga_keyboard_put(AS_POWER_DONE);
+        sent_kbd_wake = 1;
+    }
+
     if (recursive == 0) {
         uint8_t cur_ctrl_amiga_amiga = ak_ctrl_amiga_amiga;
         recursive = 1;
@@ -1571,12 +1641,12 @@ uint
 keyboard_reset_warning(void)
 {
     uint64_t timeout;
-    uint64_t start;
+    uint64_t start = timer_tick_get();
     ak_rb_consumer = ak_rb_producer;  // Flush the ring buffer
     amiga_keyboard_put(AS_RESET_WARN);
-start = timer_tick_get();
     timeout = timer_tick_plus_msec(200);
     while (ak_rb_consumer != ak_rb_producer) {
+        hiden_set(1);
         keyboard_poll();
         main_poll();
         if (timer_tick_has_elapsed(timeout)) {
@@ -1584,13 +1654,14 @@ start = timer_tick_get();
             return (1);
         }
     }
-printf("1: %llu usec\n", timer_tick_to_usec(timer_tick_get() - start));
-start = timer_tick_get();
+    printf("WARN1: %llu usec\n", timer_tick_to_usec(timer_tick_get() - start));
+    start = timer_tick_get();
 
     /* First warning was received; send second warning. */
     amiga_keyboard_put(AS_RESET_WARN);
     timeout = timer_tick_plus_msec(250);
     while (ak_rb_consumer != ak_rb_producer) {
+        hiden_set(1);
         keyboard_poll();
         main_poll();
         if (timer_tick_has_elapsed(timeout)) {
@@ -1598,12 +1669,13 @@ start = timer_tick_get();
             return (1);
         }
     }
-printf("2: %llu usec\n", timer_tick_to_usec(timer_tick_get() - start));
-start = timer_tick_get();
+    printf("WARN2: %llu usec\n", timer_tick_to_usec(timer_tick_get() - start));
+    start = timer_tick_get();
 
     /* Second warning was received. Wait up to 10 seconds */
     timeout = timer_tick_plus_msec(10000);
     while (get_kbdat() == 0) {
+        hiden_set(1);
         main_poll();
         if (timer_tick_has_elapsed(timeout)) {
             return (1);
@@ -1617,8 +1689,6 @@ void
 keyboard_init(void)
 {
     ak_rb_producer = ak_rb_consumer = 0;
-    amiga_keyboard_put(AS_POWER_INIT);
-    amiga_keyboard_put(AS_POWER_DONE);
 #if 0
     printf("BND KBCLK_IN=%x KBCLK_OUT=%x KBDAT_IN=%x KBDAT_OUT=%x\n",
            BND_IO(KBCLK_PORT + GPIO_IDR_OFFSET, low_bit(KBCLK_PIN)),
