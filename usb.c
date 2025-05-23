@@ -187,8 +187,9 @@ usb_show_regs(void)
 void
 usb_set_power(int state)
 {
+    // XXX: need config override for this
     gpio_setv(USB_ENABLE_PORT, USB_ENABLE_PIN,
-              (state == USB_SET_POWER_ON) ? 0 : 1);
+              (state == USB_SET_POWER_ON) ? 1 : 0);
     usb_power_timer = timer_tick_plus_msec(500);
 }
 
