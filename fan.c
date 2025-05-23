@@ -316,8 +316,6 @@ fan_poll(void)
     }
     if (power_state == POWER_STATE_ON) {
         if (fan_percent_min != fan_percent) {
-           printf("Fan [%u,%u,%llx]",
-                  fan_percent_min, fan_percent, timer_fan_limit_change);
             if (timer_tick_has_elapsed(timer_fan_limit_change)) {
                 int diff = fan_percent - fan_percent_min;
                 if (diff > 20)  // Maximum 20% change per second
@@ -325,6 +323,7 @@ fan_poll(void)
                 fan_percent_min += diff;
                 if (fan_percent_min != fan_percent)
                     timer_fan_limit_change = timer_tick_plus_msec(1000);
+                printf("Fan [%u->%u]", fan_percent_min, fan_percent);
             }
         }
     } else {
