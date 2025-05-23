@@ -304,7 +304,7 @@ clean clean-all:
 UDEV_DIR        := /etc/udev/rules.d
 UDEV_FILENAMES  := 70-st-link.rules
 UDEV_FILE_PATHS := $(UDEV_FILENAMES:%=$(UDEV_DIR)/%)
-ifneq (,$(wildcard $(UDEV_FILE_PATHS)))
+ifneq (,$(wildcard $(UDEV_DIR)))
 $(UDEV_FILE_PATHS) &:
 	sudo cp -np udev/* $(UDEV_DIR)
 	sudo udevadm control --reload
