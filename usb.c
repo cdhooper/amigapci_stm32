@@ -33,6 +33,7 @@ uint usb_debug_mask;
 uint usb_keyboard_terminal;
 uint8_t usb_keyboard_count;
 uint8_t usb_mouse_count;
+uint8_t usb_is_powered;
 static uint64_t usb_power_timer;
 
 typedef struct {
@@ -189,8 +190,9 @@ usb_set_power(int state)
 {
     // XXX: need config override for this
     gpio_setv(USB_ENABLE_PORT, USB_ENABLE_PIN,
-              (state == USB_SET_POWER_ON) ? 1 : 0);
+              (state == USB_SET_POWER_ON) ? 0 : 1);
     usb_power_timer = timer_tick_plus_msec(500);
+    usb_is_powered = state;
 }
 
 void

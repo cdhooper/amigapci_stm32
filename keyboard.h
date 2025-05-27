@@ -36,4 +36,8 @@ uint keyboard_reset_warning(void);
 void keyboard_poll(void);
 void keyboard_init(void);
 
+extern uint8_t amiga_keyboard_sent_wake;
+extern uint8_t amiga_keyboard_has_sync;
+extern uint8_t amiga_keyboard_lost_sync;
+
 #endif /* _KEYBOARD_H */

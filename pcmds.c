@@ -29,6 +29,7 @@
 #include "irq.h"
 #include "config.h"
 #include "fan.h"
+#include "hiden.h"
 #include "kbrst.h"
 #include "keyboard.h"
 #include "led.h"
@@ -56,7 +57,8 @@
 #endif
 
 const char cmd_amiga_help[] =
-"amiga keyboard - act as Amiga keyboard\n";
+"amiga keyboard - act as Amiga keyboard\n"
+"amiga status   - show Amiga status";
 
 const char cmd_cpu_help[] =
 "cpu hardfault - cause CPU hard fault (bad address)\n"
@@ -424,6 +426,20 @@ cmd_amiga(int argc, char * const *argv)
         return (RC_USER_HELP);
     if (strncmp(argv[1], "keyboard", 1) == 0) {
         keyboard_term();
+    } else if (strncmp(argv[1], "status", 1) == 0) {
+        power_show();
+        if (power_state != POWER_STATE_OFF) {
+            if (!amiga_not_in_reset)
+                printf("Amiga is in reset\n");
+        }
+        printf("USB Powered     %s\n", usb_is_powered ? "Yes" : "No");
+        printf("USB Keyboards   %u\n", usb_keyboard_count);
+        printf("USB Mice        %u\n", usb_mouse_count);
+        printf("HID Enabled:    %s\n", hiden_is_set ? "Yes" : "No");
+        printf("Amiga Keyboard  %s sync, %s wake\n",
+               amiga_keyboard_lost_sync ? "Lost" :
+               amiga_keyboard_has_sync ? "Has" : "No",
+               amiga_keyboard_sent_wake ? "Sent" : "Did not send");
     } else {
         printf("Unknown argument %s\n", argv[1]);
         return (RC_USER_HELP);

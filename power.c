@@ -270,7 +270,7 @@ power_show(void)
             state = "Unknown";
             break;
     }
-    printf("Power state: %s\n", state);
+    printf("Power state     %s\n", state);
 }
 
 /*
