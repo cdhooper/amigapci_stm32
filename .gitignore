@@ -5,3 +5,4 @@ libusbhost/
 stutils/
 tinyusb/
 objs
+bec
