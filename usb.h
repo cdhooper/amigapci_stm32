@@ -28,8 +28,8 @@ void usb_shutdown(void);
 
 extern uint usb_debug_mask;
 extern uint usb_keyboard_terminal;
-extern uint8_t usb_keyboard_count;
-extern uint8_t usb_mouse_count;
 extern uint8_t usb_is_powered;
+extern volatile uint8_t usb_keyboard_count;
+extern volatile uint8_t usb_mouse_count;
 
 #endif /* _USB_H */

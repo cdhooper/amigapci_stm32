@@ -29,6 +29,19 @@ uint8_t power_state;
 
 static uint64_t power_timer;
 
+#define PSON_SET_ON  1  // Turn power supply on
+#define PSON_SET_OFF 0  // Turn power supply off
+
+/*
+ * pson_set() sets the PSON pin to tell the power supply to either turn
+ *            on or turn off. Call with enable = 1 to turn on.
+ */
+static void
+pson_set(unsigned int enable)
+{
+    gpio_setv(PSON_PORT, PSON_PIN, !enable);
+}
+
 /*
  * power_button_poll
  * -----------------
@@ -165,22 +178,23 @@ power_poll(void)
         case POWER_STATE_CYCLE:
             /* Waiting for power off to initiate power on */
             if (timer_tick_has_elapsed(power_timer)) {
-                gpio_setv(PSON_PORT, PSON_PIN, 0);
+                pson_set(PSON_SET_ON);
                 power_state = POWER_STATE_POWERING_ON;
                 power_state_desired = POWER_STATE_ON;
                 power_timer = timer_tick_plus_msec(POWER_ON_STABLE);
             }
             break;
+
         case POWER_STATE_ON:
             if (power_state_desired == POWER_STATE_OFF) {
 power_off:
-                gpio_setv(PSON_PORT, PSON_PIN, 1);
+                pson_set(PSON_SET_OFF);
                 power_state = POWER_STATE_POWERING_OFF;
                 power_timer = timer_tick_plus_msec(POWER_OFF_STABLE);
                 printf("Power: powering off\n");
             } else if (power_state_desired == POWER_STATE_CYCLE) {
 power_cycle:
-                gpio_setv(PSON_PORT, PSON_PIN, 1);
+                pson_set(PSON_SET_OFF);
                 power_state = POWER_STATE_CYCLE;
                 power_state_desired = POWER_STATE_ON;
                 power_timer = timer_tick_plus_msec(POWER_CYCLE_OFF_PERIOD);
@@ -190,7 +204,7 @@ power_cycle:
         case POWER_STATE_OFF:
             if ((power_state_desired == POWER_STATE_ON) ||
                 (power_state_desired == POWER_STATE_CYCLE)) {
-                gpio_setv(PSON_PORT, PSON_PIN, 0);
+                pson_set(PSON_SET_ON);
                 power_state = POWER_STATE_POWERING_ON;
                 power_timer = timer_tick_plus_msec(POWER_OFF_STABLE);
                 printf("Power: powering on\n");

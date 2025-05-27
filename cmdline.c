@@ -961,7 +961,7 @@ cmdline(void)
 {
     char *line;
 
-    (void) get_new_input_line("CMD> ", &line);
+    (void) get_new_input_line("BEC> ", &line);
     if (line != NULL) {
         HIST_ENTRY *hist_cur;
         char *sline = no_whitespace(line);

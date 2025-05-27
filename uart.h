@@ -31,6 +31,8 @@ int getchar(void);
 void uart_init(void);
 
 void usb_rb_put(uint ch);
+void ami_rb_put(uint ch);
+uint ami_get_output(uint8_t **buf, uint maxlen);
 
 /*
  * input_break_pending() returns true if a ^C is pending in the input buffer.

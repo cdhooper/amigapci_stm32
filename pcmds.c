@@ -736,6 +736,8 @@ typedef struct {
     uint8_t     cs_mode;    // Mode bits for display (1=hex)
 } config_set_t;
 static const config_set_t config_set[] = {
+    { "board_rev",      "Board revision (1=STM32dev, 5=current)",
+      CFOFF(board_rev), MODE_DEC },
     { "cpu_temp_bias",  "Bias (+/-) for CPU temperature",
       CFOFF(cpu_temp_bias), MODE_SIGNED },
     { "debug",         "",

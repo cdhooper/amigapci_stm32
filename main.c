@@ -66,7 +66,7 @@ main(void)
     led_init();
     led_power(1);
 
-    printf("\r\nAmigaPCI STM32 %s\n", version_str);
+    printf("\r\nAmigaPCI BEC %s\n", version_str);
 
     identify_cpu();
     show_reset_reason();

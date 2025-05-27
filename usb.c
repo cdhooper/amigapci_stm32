@@ -17,6 +17,7 @@
 #include "utils.h"
 #include "timer.h"
 #include "clock.h"
+#include "config.h"
 #include "usb.h"
 #include <libopencm3/stm32/f2/rcc.h>
 #include <libopencm3/cm3/nvic.h>
@@ -31,8 +32,8 @@
 
 uint usb_debug_mask;
 uint usb_keyboard_terminal;
-uint8_t usb_keyboard_count;
-uint8_t usb_mouse_count;
+volatile uint8_t usb_keyboard_count;
+volatile uint8_t usb_mouse_count;
 uint8_t usb_is_powered;
 static uint64_t usb_power_timer;
 
@@ -188,9 +189,12 @@ usb_show_regs(void)
 void
 usb_set_power(int state)
 {
-    // XXX: need config override for this
-    gpio_setv(USB_ENABLE_PORT, USB_ENABLE_PIN,
-              (state == USB_SET_POWER_ON) ? 1 : 0);
+    uint enable = (state == USB_SET_POWER_ON) ? 1 : 0;
+
+    if (config.board_rev == 1)  // AmigaPCI STM32 dev board has this backwards
+        enable = !enable;
+
+    gpio_setv(USB_ENABLE_PORT, USB_ENABLE_PIN, enable);
     usb_power_timer = timer_tick_plus_msec(500);
     usb_is_powered = state;
 }

@@ -39,7 +39,12 @@ static uint8_t       cons_in_rb[4096];    // Console input ring buffer (FIFO)
 static uint8_t       usb_out_buf[4096];   // USB output buffer
 static uint16_t      usb_out_bufpos = 0;  // USB output buffer position
 #endif
+static uint8_t       ami_out_buf[1024];   // Amiga output buffer
+static uint16_t      ami_out_prod = 0;    // Amiga output buffer producer
+static uint16_t      ami_out_cons = 0;    // Amiga output buffer consumer
 static bool          uart_console_active = false;
+static bool          ami_console_active = false;
+
 uint8_t usb_console_active = 0;
 
 uint8_t last_input_source = 0;
@@ -222,6 +227,18 @@ input_break_pending(void)
     return (0);
 }
 
+/*
+ * usb_rb_put() adds keystroke input from Amiga application
+ */
+void
+ami_rb_put(uint ch)
+{
+    cons_rb_put(ch);
+}
+
+/*
+ * usb_rb_put() adds keystroke input from external USB keyboard.
+ */
 void
 usb_rb_put(uint ch)
 {
@@ -229,6 +246,9 @@ usb_rb_put(uint ch)
     last_input_source = SOURCE_USB;
 }
 
+/*
+ * uart_rb_put() adds keystroke input from STM32 UART
+ */
 static void
 uart_rb_put(uint ch)
 {
@@ -315,6 +335,55 @@ usb_puts_wait(uint8_t *buf, uint32_t len)
 }
 #endif
 
+static void
+ami_putchar(int ch)
+{
+    uint new_prod = (ami_out_prod + 1) % sizeof (ami_out_buf);
+    if (new_prod == ami_out_cons)
+        return;  // Buffer full
+    ami_out_buf[ami_out_prod] = ch;
+    ami_out_prod = new_prod;
+}
+
+uint
+ami_get_output(uint8_t **buf, uint maxlen)
+{
+    uint count;
+    ami_console_active = true;
+    if (ami_out_prod >= ami_out_cons)
+        count = ami_out_prod - ami_out_cons;
+    else
+        count = sizeof (ami_out_buf) - ami_out_cons;
+    if (count > maxlen)
+        count = maxlen;
+    if (count > 0) {
+        *buf = ami_out_buf + ami_out_cons;
+        ami_out_cons = (ami_out_cons + count) % sizeof (ami_out_buf);
+        return (count);
+    }
+    *buf = NULL;
+    return (0);
+}
+
+static void
+ami_putchar_wait(int ch)
+{
+    if (ami_console_active == true) {
+        uint new_prod = (ami_out_prod + 1) % sizeof (ami_out_buf);
+        if (new_prod == ami_out_cons) {
+            /* Buffer is full; need to first force a flush */
+            uint64_t timeout = timer_tick_plus_msec(10);
+            while (new_prod == ami_out_cons) {
+                if (timer_tick_has_elapsed(timeout)) {
+                    ami_console_active = false;
+;
+                }
+            }
+        }
+        ami_putchar(ch);
+    }
+}
+
 int
 puts_binary(const void *buf, uint32_t len)
 {
@@ -336,9 +405,12 @@ putchar(int ch)
     if ((ch == '\n') && (last_putc != '\r') && (last_putc != '\n')) {
         uart_putchar('\r');  // Always do CRLF
 //      usb_putchar_wait('\r');
+        ami_putchar_wait('\r');
     }
     last_putc = ch;
 
+    if (ami_console_active)
+        ami_putchar_wait(ch);
 //  usb_putchar_wait(ch);
 //  if (usb_console_active && !uart_console_active)
 //      return (0);

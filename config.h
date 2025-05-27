@@ -34,7 +34,8 @@ typedef struct {
     uint16_t    fan_rpm_max;   // Fan maximum RPM
     uint32_t    debug_flag;    // Debug flags (see DF_* above)
     int8_t      cpu_temp_bias; // CPU temperature bias
-    uint8_t     unused[87];    // Unused
+    uint8_t     board_rev;     // Board revision, for board-specific changes
+    uint8_t     unused[86];    // Unused
 } config_t;
 
 extern config_t config;
