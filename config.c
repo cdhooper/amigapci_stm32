@@ -23,8 +23,8 @@
 
 #define CONFIG_MAGIC     0x19460602
 #define CONFIG_VERSION   0x01
-#define CONFIG_AREA_BASE 0x3e000
-#define CONFIG_AREA_SIZE 0x02000
+#define CONFIG_AREA_BASE 0x0060000
+#define CONFIG_AREA_SIZE 0x0020000  // 128 KB
 #define CONFIG_AREA_END  (CONFIG_AREA_BASE + CONFIG_AREA_SIZE)
 
 uint64_t config_timer = 0;
@@ -77,10 +77,12 @@ config_write(void)
     /* Locate space for new config area */
     for (addr = CONFIG_AREA_BASE; addr < CONFIG_AREA_END; addr += 4) {
         ptr = (config_t *) addr;
-        if (ptr->magic == CONFIG_MAGIC)
+        if ((ptr->magic == CONFIG_MAGIC) &&
+            (ptr->size >= 0x04) && (ptr->size < CONFIG_AREA_SIZE)) {
             addr += ptr->size - 4;  // quickly skip to next area
-        else if (ptr->magic == 0xffffffff)
+        } else if (ptr->magic == 0xffffffff) {
             break;
+        }
     }
     if (addr + config.size > CONFIG_AREA_END) {
         addr = CONFIG_AREA_BASE;  // Need to erase config area

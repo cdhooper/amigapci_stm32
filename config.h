@@ -41,7 +41,7 @@ typedef struct {
     int8_t      cpu_temp_bias; // CPU temperature bias
     uint8_t     board_rev;     // Board revision, for board-specific changes
     uint32_t    buttonmap[16]; // Mouse button mappings
-    uint8_t     unused[154];   // Unused
+    uint8_t     unused[138];   // Unused
 } config_t;
 
 extern config_t config;

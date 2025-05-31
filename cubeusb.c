@@ -315,8 +315,8 @@ usb_ls(uint verbose)
             cl = phost->pClass[phost->ClassNumber];
             printf("%u.%u %04x.%04x ",
                    port, hubport,
-                   phost->device.DevDesc.idProduct,
-                   phost->device.DevDesc.idVendor);
+                   phost->device.DevDesc.idVendor,
+                   phost->device.DevDesc.idProduct);
 
             if (phost->device.is_connected == 0) {
                 printf("No device\n");
