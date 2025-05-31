@@ -12,9 +12,14 @@
 #ifndef _CONFIG_H
 #define _CONFIG_H
 
-#define DF_KEYBOARD 0x00000001  // USB Keyboard debug
-#define DF_MOUSE    0x00000002  // USB Mouse debug
-#define DF_RTC      0x00000004  // Real-Time Clock debug
+#define DF_RTC              0x00000001  // Real-Time Clock
+#define DF_AMIGA_KEYBOARD   0x00000002  // Amiga keyboard
+#define DF_AMIGA_MOUSE      0x00000004  // Amiga mouse
+#define DF_USB              0x00000010  // USB configuration (noisy)
+#define DF_USB_CONN         0x00000020  // USB connect/disconnect
+#define DF_USB_KEYBOARD     0x00000040  // USB keyboard
+#define DF_USB_MOUSE        0x00000080  // USB mouse
+#define DF_USB_MOUSE_RPT    0x00000100  // USB mouse report descriptor
 
 typedef struct {
     uint32_t    magic;         // Structure magic
@@ -35,7 +40,8 @@ typedef struct {
     uint32_t    debug_flag;    // Debug flags (see DF_* above)
     int8_t      cpu_temp_bias; // CPU temperature bias
     uint8_t     board_rev;     // Board revision, for board-specific changes
-    uint8_t     unused[86];    // Unused
+    uint32_t    buttonmap[16]; // Mouse button mappings
+    uint8_t     unused[154];   // Unused
 } config_t;
 
 extern config_t config;

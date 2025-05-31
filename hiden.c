@@ -28,18 +28,19 @@ hiden_set(unsigned int enable)
 //      printf("HID %s\n", enable ? "enabled" : "disabled");
         gpio_setv(HIDEN_PORT, HIDEN_PIN, !enable);
     }
-    if (enable)
-        hiden_timeout = 0;
+    hiden_timeout = 0;
 }
 
 void
 hiden_poll(void)
 {
-    /* Automatic HID disable when devices are missing */
-    if (hiden_is_set &&
-        ((usb_keyboard_count + usb_mouse_count) == 0)) {
+    /* Automatic HID disable when no mouse is present */
+    if (hiden_is_set) {
         if (hiden_timeout == 0) {
-            hiden_timeout = timer_tick_plus_msec(1000);
+            if (usb_mouse_count == 0)
+                hiden_timeout = timer_tick_plus_msec(500);
+            else
+                hiden_timeout = timer_tick_plus_msec(5000);
             return;
         }
         if (timer_tick_has_elapsed(hiden_timeout)) {

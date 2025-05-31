@@ -435,7 +435,7 @@ cmd_amiga(int argc, char * const *argv)
         printf("USB Powered     %s\n", usb_is_powered ? "Yes" : "No");
         printf("USB Keyboards   %u\n", usb_keyboard_count);
         printf("USB Mice        %u\n", usb_mouse_count);
-        printf("HID Enabled:    %s\n", hiden_is_set ? "Yes" : "No");
+        printf("HID Enabled     %s\n", hiden_is_set ? "Yes" : "No");
         printf("Amiga Keyboard  %s sync, %s wake\n",
                amiga_keyboard_lost_sync ? "Lost" :
                amiga_keyboard_has_sync ? "Has" : "No",
@@ -681,9 +681,9 @@ cmd_gpio(int argc, char * const *argv)
 }
 
 static const char *const debug_bits[] = {
-    "Keyboard", "Mouse", "", "",
-        "", "", "", "",
-    "", "", "", "",
+    "RTC", "AmigaKeyboard", "AmigaMouse", "",
+        "USB", "USBConn", "USBKeyboard", "USBMouse",
+    "USBMouseRPT", "", "", "",
         "", "", "", "",
     "", "", "", "",
         "", "", "", "",
@@ -699,11 +699,11 @@ decode_debug_flags(uint32_t flags)
     for (bit = 0; bit < 32; bit++) {
         if (flags & BIT(bit)) {
             if (printed++)
-                printf(", ");
+                printf(",");
             if (debug_bits[bit][0] == '\0') {
-                printf("bit%u", bit);
+                printf(" bit%u", bit);
             } else {
-                printf("%s", debug_bits[bit]);
+                printf(" %s", debug_bits[bit]);
             }
         }
     }
@@ -827,12 +827,15 @@ cmd_set(int argc, char * const *argv)
         uint     do_save = 0;
         uint     did_set = 0;
         uint32_t value;
-        uint32_t nvalue = config.debug_flag;
+        uint32_t nvalue = 0;
         if (argc <= 2) {
-            printf("Debug flags are a combination of bits\n");
+            printf("Debug flags are a combination of bits: "
+                   "specify all bit numbers or names\n");
             for (bit = 0; bit < 32; bit++)
                 if (debug_bits[bit][0] != '\0')
-                    printf("  %2u  %s\n", bit, debug_bits[bit]);
+                    printf(" %c %2u  %s\n",
+                           config.debug_flag & BIT(bit) ? '*' : ' ',
+                           bit, debug_bits[bit]);
             printf("Current debug %08lx  ", config.debug_flag);
             decode_debug_flags(config.debug_flag);
             printf("\n");
@@ -853,7 +856,10 @@ cmd_set(int argc, char * const *argv)
                     printf("Invalid argument: %s\n", argv[arg]);
                     return (RC_USER_HELP);
                 }
-                nvalue = value;
+                if ((pos >= 4) || (value >= 32))
+                    nvalue = value;
+                else
+                    nvalue |= BIT(value);
                 did_set = 1;
             }
         }
@@ -959,6 +965,61 @@ cmd_set(int argc, char * const *argv)
     } else if (strcmp(argv[1], "time") == 0) {
         return (cmd_time_set(argc - 1, argv + 1));
     } else {
+        uint which;
+        uint n = 1;
+        uint do_save = 0;
+        if (strcmp(argv[n], "save") == 0) {
+            do_save++;
+            n++;
+        }
+        for (which = 0; which < ARRAY_SIZE(config_set); which++) {
+            const char *cs_name = config_set[which].cs_name;
+            if (strcmp(cs_name, argv[n]) == 0) {
+                uint16_t    cs_offset = config_set[which].cs_offset;
+                uint8_t     cs_size   = config_set[which].cs_size;
+                uint8_t     cs_mode   = config_set[which].cs_mode;
+                const char *mode_str = "%d%n";
+                int         value;
+                int         pos = 0;
+                if (strcmp(argv[n + 2], "save") == 0) {
+                    do_save++;
+                    argc--;
+                }
+                if (argc - n != 2) {
+                    printf("%s value required\n", cs_name);
+                    return (RC_BAD_PARAM);
+                }
+                if (cs_mode & MODE_HEX)
+                    mode_str = "%x%d";
+                if ((sscanf(argv[n + 1], mode_str, &value, &pos) != 1) ||
+                    (argv[n + 1][pos] != '\0') ||
+                    (((cs_mode & MODE_SIGNED) == 0) && (value < 0))) {
+invalid_value:
+                    printf("Invalid value %s for %s\n", argv[n + 1], cs_name);
+                    return (RC_USER_HELP);
+                }
+                uint8_t *ptr = ((uint8_t *)&config) + cs_offset;
+                switch (cs_size) {
+                    default:
+                    case 1:
+                        if (value > 0x100)
+                            goto invalid_value;
+                        *ptr = value;
+                        break;
+                    case 2:
+                        if (value >= 0x10000)
+                            goto invalid_value;
+                        *(uint16_t *)ptr = value;
+                        break;
+                    case 4:
+                        *(uint32_t *)ptr = value;
+                        break;
+                }
+                if (do_save)
+                    config_updated();
+                return (RC_SUCCESS);
+            }
+        }
         printf("set \"%s\" unknown argument\n", argv[1]);
         return (RC_USER_HELP);
     }

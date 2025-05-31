@@ -49,6 +49,7 @@
 #include <unistd.h>
 #include "main.h"
 #include "uart.h"
+#include "config.h"
 
 /* Compatibility types */
 #define INTMAX_T      int64_t  // Signed largest integer
@@ -66,8 +67,6 @@
 #define FMT_NEGATIVE   0x0080   // Value is negative
 #define FMT_UPPERCASE  0x0100   // Uppercase hex (A-F) instead of (a-f)
 #define FMT_DOT        0x0200   // Dot specifier was used
-
-uint32_t debug_flags = 0;
 
 /* Output buffer structure */
 typedef struct {
@@ -555,12 +554,11 @@ printf(const char *fmt, ...)
 }
 
 /**
- * dprintf() is wrapper for printf() which first checks if the debug flag(s)
+ * dprintf() is a wrapper for printf() which first checks if the debug flag(s)
  *           presented is within the mask of config debug flags. If not,
  *           nothing is printed.
  *
- * @param [in]  mask - Flag(s) which will be matched against the debug_flags
- *                     global.
+ * @param [in]  mask - Flag(s) which will be matched against config.debug_flag.
  * @param [in]  fmt  - A string describing the format of the output.  This
  *                     format string is compatible with that of printf().
  * @param [in]  ...  - A variable list of arguments.
@@ -572,7 +570,7 @@ dprintf(uint32_t mask, const char *fmt, ...)
 {
     va_list args;
 
-    if (debug_flags & mask) {
+    if (config.debug_flag & mask) {
         va_start(args, fmt);
         (void) vprintf(fmt, args);
         va_end(args);

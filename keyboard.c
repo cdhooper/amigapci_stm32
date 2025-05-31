@@ -22,7 +22,7 @@
 #include "uart.h"
 #include "usb.h"
 #include "gpio.h"
-#include "hiden.h"
+#include "mouse.h"
 #include <libopencm3/stm32/gpio.h>
 
 #undef DEBUG_KEYBOARD
@@ -972,7 +972,7 @@ amiga_keyboard_send(void)
         code = AS_LOST_SYNC;
     else
         code = ak_rb[ak_rb_consumer];
-//  printf("[tx %x]", code);
+    dprintf(DF_AMIGA_KEYBOARD, "[tx %x]", code);
     for (mask = 0x80; mask != 0; mask >>= 1) {
         if (code & mask)
             set_kbdat_1();
@@ -1022,7 +1022,12 @@ amiga_keyboard_send(void)
         ak_rb_consumer = ((ak_rb_consumer + 1) % sizeof (ak_rb));
 }
 
-static void
+/*
+ * amiga_keyboard_put
+ * ------------------
+ * Push the specified keystroke to the Amiga keyboard buffer
+ */
+void
 amiga_keyboard_put(uint8_t code)
 {
     uint new_prod;
@@ -1048,7 +1053,7 @@ amiga_keyboard_put(uint8_t code)
             break;
     }
 
-    printf("[%02x]", code);
+    dprintf(DF_USB_KEYBOARD, "[%02x]", code);
     new_prod = ((ak_rb_producer + 1) % sizeof (ak_rb));
     if (new_prod == ak_rb_consumer) {
         /* Ring buffer full! */
@@ -1060,7 +1065,6 @@ amiga_keyboard_put(uint8_t code)
     ak_rb[ak_rb_producer] = ~((code << 1) | (code >> 7));
     __sync_synchronize();  // Memory barrier
     ak_rb_producer = new_prod;
-
 }
 
 /*
@@ -1199,6 +1203,7 @@ keyboard_usb_input(usb_keyboard_report_t *report)
     uint mod_diff = modifier ^ pmodifier;
     uint cur;
     uint ascii;
+    uint32_t mouse_buttons_old = mouse_buttons_add;
 
     if ((mod_diff != 0) & !usb_keyboard_terminal) {
         uint code;
@@ -1261,8 +1266,13 @@ keyboard_usb_input(usb_keyboard_report_t *report)
                         if (capslock)
                             code = AS_NONE;
                     }
-                    if (code != AS_NONE)
-                        amiga_keyboard_put(code);
+                    if (code != AS_NONE) {
+                        if (code & 0x80)  // Button press or macro expansion
+                            /* Button press or macro expansion */
+                            mouse_buttons_add |= BIT(code & 31);
+                        else
+                            amiga_keyboard_put(code);
+                    }
                 }
             }
         }
@@ -1309,11 +1319,18 @@ keyboard_usb_input(usb_keyboard_report_t *report)
                         code = AS_NONE;
                     }
                 }
-                if (code != AS_NONE)
-                    amiga_keyboard_put(code | 0x80);
+                if (code != AS_NONE) {
+                    if (code & 0x80)  // Button press or macro expansion
+                        mouse_buttons_add &= ~BIT(code & 31);
+                    else
+                        amiga_keyboard_put(code | 0x80);
+                }
             }
         }
     }
+    if (mouse_buttons_old != mouse_buttons_add)
+        mouse_action(0, 0, 0, 0);  // Inject button / macro expansion change
+
     prev_report = *report;
 }
 
@@ -1354,7 +1371,6 @@ keyboard_term(void)
 
     printf("Press ^Q to exit\n");
     while (1) {
-        hiden_set(1);
         main_poll();
         ch = getchar();
         if (ch <= 0) {
@@ -1597,8 +1613,6 @@ keyboard_poll(void)
         amiga_keyboard_sent_wake = 0;  // No USB keyboard
         return;
     }
-    if (hiden_is_set == 0)
-        return;             // Don't send
 
     if (recursive == 0) {
         uint8_t cur_ctrl_amiga_amiga = ak_ctrl_amiga_amiga;
@@ -1649,7 +1663,6 @@ keyboard_reset_warning(void)
     amiga_keyboard_put(AS_RESET_WARN);
     timeout = timer_tick_plus_msec(200);
     while (ak_rb_consumer != ak_rb_producer) {
-        hiden_set(1);
         keyboard_poll();
         main_poll();
         if (timer_tick_has_elapsed(timeout)) {
@@ -1664,7 +1677,6 @@ keyboard_reset_warning(void)
     amiga_keyboard_put(AS_RESET_WARN);
     timeout = timer_tick_plus_msec(250);
     while (ak_rb_consumer != ak_rb_producer) {
-        hiden_set(1);
         keyboard_poll();
         main_poll();
         if (timer_tick_has_elapsed(timeout)) {
@@ -1678,7 +1690,6 @@ keyboard_reset_warning(void)
     /* Second warning was received. Wait up to 10 seconds */
     timeout = timer_tick_plus_msec(10000);
     while (get_kbdat() == 0) {
-        hiden_set(1);
         main_poll();
         if (timer_tick_has_elapsed(timeout)) {
             return (1);

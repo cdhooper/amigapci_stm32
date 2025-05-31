@@ -328,22 +328,18 @@ static USBH_StatusTypeDef USBH_HID_ClassRequest_ll(USBH_HandleTypeDef *phost, HI
     case HID_REQ_GET_HID_DESC:
 
       /* Get HID Desc */
-      if (USBH_HID_GetHIDDescriptor(phost, USB_HID_DESC_SIZE) == USBH_OK)
+      if (USBH_HID_GetHIDDescriptor(phost, HID_Handle->interface, USB_HID_DESC_SIZE) == USBH_OK)
       {
-
         USBH_HID_ParseHIDDesc(&HID_Handle->HID_Desc, phost->device.Data);
         HID_Handle->ctl_state = HID_REQ_GET_REPORT_DESC;
       }
 
       break;
     case HID_REQ_GET_REPORT_DESC:
-
-
       /* Get Report Desc */
-      if (USBH_HID_GetHIDReportDescriptor(phost, HID_Handle->HID_Desc.wItemLength) == USBH_OK)
+      if (USBH_HID_GetHIDReportDescriptor(phost, HID_Handle->interface, HID_Handle->HID_Desc.wItemLength) == USBH_OK)
       {
         /* The descriptor is available in phost->device.Data */
-
         HID_Handle->ctl_state = HID_REQ_SET_IDLE;
       }
 
@@ -591,18 +587,19 @@ static USBH_StatusTypeDef USBH_HID_SOFProcess(USBH_HandleTypeDef *phost)
   *         Issue report Descriptor command to the device. Once the response
   *         received, parse the report descriptor and update the status.
   * @param  phost: Host handle
+  * @param  iface: Which interface on the device
   * @param  Length : HID Report Descriptor Length
   * @retval USBH Status
   */
 USBH_StatusTypeDef USBH_HID_GetHIDReportDescriptor(USBH_HandleTypeDef *phost,
-                                                   uint16_t length)
+                                                   uint16_t iface, uint16_t length)
 {
 
   USBH_StatusTypeDef status;
 
   status = USBH_GetDescriptor(phost,
                               USB_REQ_RECIPIENT_INTERFACE | USB_REQ_TYPE_STANDARD,
-                              USB_DESC_HID_REPORT, 0,
+                              USB_DESC_HID_REPORT, iface,
                               phost->device.Data,
                               length);
 
@@ -616,22 +613,24 @@ USBH_StatusTypeDef USBH_HID_GetHIDReportDescriptor(USBH_HandleTypeDef *phost,
   return status;
 }
 
+
 /**
   * @brief  USBH_Get_HID_Descriptor
   *         Issue HID Descriptor command to the device. Once the response
   *         received, parse the report descriptor and update the status.
   * @param  phost: Host handle
+  * @param  iface: Which interface on the device
   * @param  Length : HID Descriptor Length
   * @retval USBH Status
   */
 USBH_StatusTypeDef USBH_HID_GetHIDDescriptor(USBH_HandleTypeDef *phost,
-                                             uint16_t length)
+                                             uint16_t iface, uint16_t length)
 {
   USBH_StatusTypeDef status;
 
   status = USBH_GetDescriptor(phost,
                               USB_REQ_RECIPIENT_INTERFACE | USB_REQ_TYPE_STANDARD,
-                              USB_DESC_HID, 0,
+                              USB_DESC_HID, iface,
                               phost->device.Data,
                               length);
 
@@ -779,16 +778,17 @@ static void  USBH_HID_ParseHIDDesc(HID_DescTypeDef *desc, uint8_t *buf)
   * @brief  USBH_HID_GetDeviceType
   *         Return Device function.
   * @param  phost: Host handle
+  * @param  iface: Which interface on the device
   * @retval HID function: HID_MOUSE / HID_KEYBOARD
   */
-HID_TypeTypeDef USBH_HID_GetDeviceType(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle)
+HID_TypeTypeDef USBH_HID_GetDeviceType(USBH_HandleTypeDef *phost, uint16_t iface)
 {
   HID_TypeTypeDef   type = HID_UNKNOWN;
   uint8_t InterfaceProtocol;
 
   if (phost->gState == HOST_CLASS)
   {
-    InterfaceProtocol = phost->device.CfgDesc.Itf_Desc[HID_Handle->interface].bInterfaceProtocol;
+    InterfaceProtocol = phost->device.CfgDesc.Itf_Desc[iface].bInterfaceProtocol;
     if (InterfaceProtocol == HID_KEYBRD_BOOT_CODE) {
       type = HID_KEYBOARD;
     } else if (InterfaceProtocol == HID_MOUSE_BOOT_CODE) {

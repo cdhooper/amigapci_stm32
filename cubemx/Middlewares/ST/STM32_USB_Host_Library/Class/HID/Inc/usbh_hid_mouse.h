@@ -52,9 +52,10 @@ extern "C" {
 
 typedef struct _HID_MOUSE_Info
 {
-  uint8_t              x;
-  uint8_t              y;
-  uint8_t              buttons[3];
+  int16_t              x;
+  int16_t              y;
+  int16_t              wheel;
+  uint32_t             buttons;
 }
 HID_MOUSE_Info_TypeDef;
 

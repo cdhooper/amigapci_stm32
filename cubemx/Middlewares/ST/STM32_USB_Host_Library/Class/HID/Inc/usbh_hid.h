@@ -198,6 +198,18 @@ typedef struct _HIDDescriptor
 }
 HID_DescTypeDef;
 
+typedef struct _HIDRDescriptor
+{
+  uint16_t   pos_x;
+  uint16_t   pos_y;
+  uint16_t   pos_wheel;
+  uint16_t   pos_button[16];
+  uint8_t    num_buttons;
+  uint8_t    bits_x;
+  uint8_t    bits_y;
+  uint8_t    bits_wheel;
+}
+HID_RDescTypeDef;
 
 typedef struct
 {
@@ -227,6 +239,7 @@ struct _HID_Process
   uint32_t             timer;
   uint8_t              DataReady;
   HID_DescTypeDef      HID_Desc;
+  HID_RDescTypeDef     HID_RDesc;
   USBH_StatusTypeDef(* Init)(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle);
   struct _HID_Process *next;
 };
@@ -295,10 +308,10 @@ USBH_StatusTypeDef USBH_HID_GetReport(USBH_HandleTypeDef *phost,
                                       uint8_t reportLen);
 
 USBH_StatusTypeDef USBH_HID_GetHIDReportDescriptor(USBH_HandleTypeDef *phost,
-                                                   uint16_t length);
+                                                   uint16_t iface, uint16_t length);
 
 USBH_StatusTypeDef USBH_HID_GetHIDDescriptor(USBH_HandleTypeDef *phost,
-                                             uint16_t length);
+                                             uint16_t iface, uint16_t length);
 
 USBH_StatusTypeDef USBH_HID_SetIdle(USBH_HandleTypeDef *phost,
                                     uint8_t duration,
@@ -309,7 +322,7 @@ USBH_StatusTypeDef USBH_HID_SetProtocol(USBH_HandleTypeDef *phost,
 
 void USBH_HID_EventCallback(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle);
 
-HID_TypeTypeDef USBH_HID_GetDeviceType(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle);
+HID_TypeTypeDef USBH_HID_GetDeviceType(USBH_HandleTypeDef *phost, uint16_t iface);
 
 uint8_t USBH_HID_GetPollInterval(USBH_HandleTypeDef *phost);
 

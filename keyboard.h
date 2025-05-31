@@ -29,6 +29,7 @@ typedef struct {
     uint8_t keycode[6]; // Key codes of the currently pressed keys
 } usb_keyboard_report_t;
 
+void amiga_keyboard_put(uint8_t code);  // Queue Amiga keystroke
 void keyboard_usb_input(usb_keyboard_report_t *report);  // USB keyboard input
 void keyboard_term(void);  // ASCII terminal input to Amiga
 void keyboard_set_defaults(void);

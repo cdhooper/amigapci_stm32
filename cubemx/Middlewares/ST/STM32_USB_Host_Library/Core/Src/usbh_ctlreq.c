@@ -186,6 +186,7 @@ USBH_StatusTypeDef USBH_Get_StringDesc(USBH_HandleTypeDef *phost,
   * @param  phost: Host Handle
   * @param  req_type: Descriptor type
   * @param  value_idx: Value for the GetDescriptr request
+  * @param  iface: Which interface on the device
   * @param  buff: Buffer to store the descriptor
   * @param  length: Length of the descriptor
   * @retval USBH Status
@@ -193,7 +194,7 @@ USBH_StatusTypeDef USBH_Get_StringDesc(USBH_HandleTypeDef *phost,
 USBH_StatusTypeDef USBH_GetDescriptor(USBH_HandleTypeDef *phost,
                                       uint8_t  req_type,
                                       uint16_t value_idx,
-                                      uint16_t index,
+                                      uint16_t iface,
                                       uint8_t *buff,
                                       uint16_t length)
 {
@@ -209,7 +210,7 @@ USBH_StatusTypeDef USBH_GetDescriptor(USBH_HandleTypeDef *phost,
     }
     else
     {
-      phost->Control.setup.b.wIndex.w = index;
+      phost->Control.setup.b.wIndex.w = iface;
     }
     phost->Control.setup.b.wLength.w = length;
   }
@@ -608,7 +609,7 @@ USBH_StatusTypeDef USBH_CtlReq(USBH_HandleTypeDef *phost, uint8_t *buff,
         if (status == USBH_FAIL)
         {
           /* Failure Mode */
-          phost->RequestState = CMD_ERROR;
+          phost->RequestState = CMD_SEND;  // Return to "ready to send" state
           USBH_UsrLog("USBH_CtlReq FAIL\n");
           status = USBH_FAIL;
         }

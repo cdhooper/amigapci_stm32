@@ -40,6 +40,21 @@
 
 #define DAYS_2024            19722       // Number of days between 1970 and 2024
 
+/*
+ * libopencm3 does not yet define these for STM32F2
+ *
+ * Issue #1588, PR #1589
+ * https://github.com/libopencm3/libopencm3/pull/1589
+ */
+#ifndef RCC_BDCR_RTCSEL_SHIFT
+#define RCC_BDCR_RTCSEL_SHIFT			8
+#define RCC_BDCR_RTCSEL_MASK			0x3
+#define RCC_BDCR_RTCSEL_NONE			0
+#define RCC_BDCR_RTCSEL_LSE			1
+#define RCC_BDCR_RTCSEL_LSI			2
+#define RCC_BDCR_RTCSEL_HSE			3
+#endif
+
 /* Do-nothing function provided by libopencm3 */
 void     null_handler(void);
 static uint utc_offset = 0;
@@ -528,10 +543,7 @@ rtc_get_time(uint *year, uint *mon, uint *day,
     if (*sec > 59)
         *sec = 0;
     if (*year < 12 || *year > 99)
-{
-printf("y=%u ?\n", *year);
         *year = 24;  // Assume 2024
-}
     if (*mon < 1 || *mon > 12)
         *mon = 1;
     if (*day < 1 || *day > 31)

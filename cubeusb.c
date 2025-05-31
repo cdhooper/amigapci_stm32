@@ -12,6 +12,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "main.h"
+#include "config.h"
 #include "printf.h"
 #include "utils.h"
 #include "timer.h"
@@ -47,11 +48,14 @@ typedef enum {
     APPLICATION_IDLE = 0,
     APPLICATION_START,
     APPLICATION_READY,
+    APPLICATION_RUNNING,
     APPLICATION_DISCONNECT
 } appstate_type;
 
 static struct {
     HID_TypeTypeDef    hid_devtype;
+    uint8_t            keyboard_count;
+    uint8_t            mouse_count;
     uint64_t           hid_ready_timer;
     appstate_type      appstate;
 } usbdev[2][MAX_HUB_PORTS + 1];
@@ -95,8 +99,19 @@ HCD_HandleTypeDef _hHCD[2];  // FS and HS device handles
  *   0 IDLE                     1 SEND
  *   2 WAIT                     3 ERROR
  */
+
+/*
+ * Decode for HOST_USER_* state macros
+ *   1 HOST_USER_SELECT_CONFIGURATION
+ *   2 HOST_USER_CLASS_ACTIVE
+ *   3 HOST_USER_CLASS_SELECTED
+ *   4 HOST_USER_CONNECTION
+ *   5 HOST_USER_DISCONNECTION
+ *   6 HOST_USER_UNRECOVERED_ERROR
+ */
 static const char * const host_user_types[] = {
-    "SELECT_CONF", "ACTIVE", "SELECTED", "CONN", "DISCONN", "ERROR"
+    "Unknown", "SELECT_CONF", "ACTIVE", "SELECTED",
+    "CONNECT", "DISCONNECT", "ERROR"
 };
 
 static uint
@@ -120,7 +135,7 @@ USBH_UserProcess(USBH_HandleTypeDef *phost, uint8_t id)
 {
     uint devnum;
     uint port = get_port(phost, &devnum);
-    printf("USB%u.%u %x %s\n", port, devnum, id,
+    dprintf(DF_USB_CONN, "USB%u.%u %x %s\n", port, devnum, id,
            (id < ARRAY_SIZE(host_user_types)) ?
            host_user_types[id] : "Unknown");
     switch (id) {
@@ -128,6 +143,7 @@ USBH_UserProcess(USBH_HandleTypeDef *phost, uint8_t id)
             break;
         case HOST_USER_CLASS_ACTIVE:
             usbdev[port][devnum].appstate = APPLICATION_READY;
+            usbdev[port][devnum].hid_ready_timer = timer_tick_plus_msec(500);
             break;
         case HOST_USER_CLASS_SELECTED:
             break;
@@ -135,16 +151,17 @@ USBH_UserProcess(USBH_HandleTypeDef *phost, uint8_t id)
             usbdev[port][devnum].appstate = APPLICATION_START;
             break;
         case HOST_USER_DISCONNECTION:
-            usbdev[port][devnum].appstate = APPLICATION_DISCONNECT;
-            if (usbdev[port][devnum].hid_devtype == HID_KEYBOARD)
-                usb_keyboard_count--;
-            else if (usbdev[port][devnum].hid_devtype == HID_MOUSE)
-                usb_mouse_count--;
+            usb_keyboard_count -= usbdev[port][devnum].keyboard_count;
+            usb_mouse_count    -= usbdev[port][devnum].mouse_count;
 
-            if (usb_keyboard_count + usb_mouse_count == 0)
+            if (usb_mouse_count == 0)
                 hiden_set(0);
 
-            usbdev[port][devnum].hid_devtype = 0;
+            memset(&usbdev[port][devnum], 0, sizeof (usbdev[port][devnum]));
+            usbdev[port][devnum].appstate = APPLICATION_DISCONNECT;
+//          usbdev[port][devnum].keyboard_count = 0;
+//          usbdev[port][devnum].mouse_count = 0;
+//          usbdev[port][devnum].hid_devtype = 0;
             break;
         case HOST_USER_UNRECOVERED_ERROR:
             break;
@@ -330,27 +347,14 @@ USBH_HID_EventCallback(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle)
 {
     uint devnum;
     uint port = get_port(phost, &devnum);
-    HID_TypeTypeDef devtype = USBH_HID_GetDeviceType(phost, HID_Handle);
-//  printf("ecb:%x ", (uintptr_t)HID_Handle);
+    HID_TypeTypeDef devtype = USBH_HID_GetDeviceType(phost, HID_Handle->interface);
     if (devtype == HID_MOUSE) {  // Mouse
-        HID_MOUSE_Info_TypeDef *Mouse_Info;
-        Mouse_Info = USBH_HID_GetMouseInfo(phost, HID_Handle);  // Get the info
-        int x_val = (int8_t)Mouse_Info->x;  // get the x value
-        int y_val = (int8_t)Mouse_Info->y;  // get the y value
-#if 0
-        printf("X=%d, Y=%d, B1=%d, B2=%d, B3=%d\n",
-               x_val, y_val, Mouse_Info->buttons[0],
-               Mouse_Info->buttons[1], Mouse_Info->buttons[2]);
-#endif
-        mouse_action(x_val, y_val, Mouse_Info->buttons[0],
-                     Mouse_Info->buttons[1], Mouse_Info->buttons[2]);
+        HID_MOUSE_Info_TypeDef *info;
+        info = USBH_HID_GetMouseInfo(phost, HID_Handle);  // Get the info
+        mouse_action(info->x, info->y, info->wheel, info->buttons);
     } else if (devtype == HID_KEYBOARD) {  // Keyboard
         HID_KEYBD_Info_TypeDef *kinfo;
         kinfo = USBH_HID_GetKeybdInfo(phost, HID_Handle);  // get the info
-#if 0
-        uint8_t key = USBH_HID_GetASCIICode(kinfo);  // get the key pressed
-        printf("Key Pressed = %c %04x\n", key, key);
-#endif
 
         usb_keyboard_report_t kinput;
         kinput.modifier = (kinfo->lctrl  ? KEYBOARD_MODIFIER_LEFTCTRL   : 0) |
@@ -375,71 +379,55 @@ USBH_HID_EventCallback(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle)
 }
 
 static void
-handle_dev(USBH_HandleTypeDef *dev, uint port, uint devnum)
+handle_dev(USBH_HandleTypeDef *phost, uint port, uint devnum)
 {
     HID_HandleTypeDef *HID_Handle;
-    HID_Handle = (HID_HandleTypeDef *) dev->pActiveClass->pData;
+    HID_Handle = (HID_HandleTypeDef *) phost->pActiveClass->pData;
+    uint iface;
+    uint numif = phost->device.CfgDesc.bNumInterfaces;
+    uint devtype;
 
     if (usbdev[port][devnum].appstate == APPLICATION_READY) {
-        HID_TypeTypeDef devtype = USBH_HID_GetDeviceType(dev, HID_Handle);
-// printf("hd:%x ", devtype);
-        if (usbdev[port][devnum].hid_devtype != devtype) {
-            uint prevcount = usb_keyboard_count + usb_mouse_count;
-            if (usbdev[port][devnum].hid_devtype == HID_KEYBOARD)
-                usb_keyboard_count--;
-            else if (usbdev[port][devnum].hid_devtype == HID_MOUSE)
-                usb_mouse_count--;
+        if (!timer_tick_has_elapsed(usbdev[port][devnum].hid_ready_timer))
+            return;
 
-            usbdev[port][devnum].hid_devtype = devtype;
-
-            if (devtype == HID_KEYBOARD)
+        for (iface = 0; iface < numif; iface++) {
+            devtype = USBH_HID_GetDeviceType(phost, iface);
+            dprintf(DF_USB_CONN, "USB%u.%u.%u type %x %s\n",
+                    port, devnum, iface, devtype,
+                    (devtype == HID_KEYBOARD) ? "Keyboard" :
+                    (devtype == HID_MOUSE) ? "Mouse" : "Unknown");
+            if (devtype == HID_KEYBOARD) {
+                usbdev[port][devnum].keyboard_count++;
                 usb_keyboard_count++;
-            else if (devtype == HID_MOUSE)
+            } else if (devtype == HID_MOUSE) {
+                usbdev[port][devnum].mouse_count++;
                 usb_mouse_count++;
+            }
+        }
+        if (usb_mouse_count > 0)
+            hiden_set(1);
+        usbdev[port][devnum].appstate = APPLICATION_RUNNING;
+    }
 
-            if ((prevcount == 0) &&
-                (usb_keyboard_count + usb_mouse_count == 1)) {
-                hiden_set(1);
-            }
-#if 1
-            printf("USB%u.%u type %x %s\n", port, devnum, devtype,
-                   (devtype == HID_KEYBOARD) ? "Keyboard" :
-                   (devtype == HID_MOUSE) ? "Mouse" : "Unknown");
-#endif
-            usbdev[port][devnum].hid_ready_timer = timer_tick_plus_msec(500);
-        }
-        if (usbdev[port][devnum].hid_ready_timer) {
-            if (!timer_tick_has_elapsed(usbdev[port][devnum].hid_ready_timer))
-                return;
-            usbdev[port][devnum].hid_ready_timer = 0;
-        }
-        if (devtype == HID_KEYBOARD) {
-            HID_KEYBD_Info_TypeDef *info;
-            info = USBH_HID_GetKeybdInfo(dev, HID_Handle);
-            if (info != NULL) {
-                printf("lctrl = %d lshift = %d lalt   = %d\r\n"
-                       "lgui  = %d rctrl  = %d rshift = %d\r\n"
-                       "ralt  = %d rgui   = %d\r\n",
-                       info->lctrl, info->lshift, info->lalt,
-                       info->lgui, info->rctrl, info->rshift,
-                       info->ralt, info->rgui);
-                // info->keys[]
-            }
+    if (usbdev[port][devnum].appstate == APPLICATION_RUNNING) {
+        for (iface = 0; iface < numif; iface++) {
+            devtype = USBH_HID_GetDeviceType(phost, iface);
+            if (devtype == HID_KEYBOARD) {
+                HID_KEYBD_Info_TypeDef *info;
+                info = USBH_HID_GetKeybdInfo(phost, HID_Handle);
+                if (info != NULL) {
+                    printf("lctrl = %d lshift = %d lalt   = %d\r\n"
+                           "lgui  = %d rctrl  = %d rshift = %d\r\n"
+                           "ralt  = %d rgui   = %d\r\n",
+                           info->lctrl, info->lshift, info->lalt,
+                           info->lgui, info->rctrl, info->rshift,
+                           info->ralt, info->rgui);
+                    // info->keys[]
+                }
 // XXX: No need to process here, as it can be handled by event callback
+            }
         }
-#if 0
-        if (devtype == HID_MOUSE) {
-            HID_MOUSE_Info_TypeDef *Mouse_Info;
-            Mouse_Info = USBH_HID_GetMouseInfo(dev);  // Get the info
-            int x_val = (int8_t)Mouse_Info->x;  // get the x value
-            int y_val = (int8_t)Mouse_Info->y;  // get the y value
-            printf("X=%d, Y=%d, B1=%d, B2=%d, B3=%d\n",
-                   x_val, y_val, Mouse_Info->buttons[0],
-                   Mouse_Info->buttons[1], Mouse_Info->buttons[2]);
-            mouse_action(x_val, y_val, Mouse_Info->buttons[0],
-                         Mouse_Info->buttons[1], Mouse_Info->buttons[2]);
-        }
-#endif
     }
 }
 
@@ -752,7 +740,7 @@ void
 HAL_HCD_Connect_Callback(HCD_HandleTypeDef *hhcd)
 {
     int port = (hhcd == &_hHCD[0]) ? 0 : (hhcd == &_hHCD[1]) ? 1 : -1;
-    printf("USB%d HAL_HCD_Connect\n", port);
+    dprintf(DF_USB_CONN, "USB%d HAL_HCD_Connect\n", port);
     usbport[port].connected = 1;
     USBH_LL_Connect(hhcd->pData);
 }
@@ -761,7 +749,7 @@ void
 HAL_HCD_Disconnect_Callback(HCD_HandleTypeDef *hhcd)
 {
     int port = (hhcd == &_hHCD[0]) ? 0 : (hhcd == &_hHCD[1]) ? 1 : -1;
-    printf("USB%d HAL_HCD_Disconnect\n", port);
+    dprintf(DF_USB_CONN, "USB%d HAL_HCD_Disconnect\n", port);
     usbport[port].connected = 0;
     USBH_LL_Disconnect(hhcd->pData);
 }
@@ -781,7 +769,7 @@ void
 HAL_HCD_PortEnabled_Callback(HCD_HandleTypeDef *hhcd)
 {
     int port = (hhcd == &_hHCD[0]) ? 0 : (hhcd == &_hHCD[1]) ? 1 : -1;
-    printf("USB%d HAL_HCD_PortEnabled\n", port);
+    dprintf(DF_USB_CONN, "USB%d HAL_HCD_PortEnabled\n", port);
     USBH_LL_PortEnabled(hhcd->pData);
 }
 
@@ -789,7 +777,7 @@ void
 HAL_HCD_PortDisabled_Callback(HCD_HandleTypeDef *hhcd)
 {
     int port = (hhcd == &_hHCD[0]) ? 0 : (hhcd == &_hHCD[1]) ? 1 : -1;
-    printf("USB%d HAL_HCD_PortDisabled\n", port);
+    dprintf(DF_USB_CONN, "USB%d HAL_HCD_PortDisabled\n", port);
     USBH_LL_PortDisabled(hhcd->pData);
     if (usbport[port].connected) {
         usbport[port].disabled = 1;  // Mark it as (unexpected) disabled
@@ -850,9 +838,6 @@ USBH_LL_GetURBState(USBH_HandleTypeDef *phost, uint8_t pipe)
 USBH_StatusTypeDef
 USBH_LL_DriverVBUS(USBH_HandleTypeDef *phost, uint8_t state)
 {
-    uint devnum;
-    uint port = get_port(phost, &devnum);
-printf("USBH_LL_DriverVBUS %u.%u = %u\n", port, devnum, state);
     return (USBH_OK);
 }
 
@@ -1085,7 +1070,6 @@ void
 cubeusb_init(void)
 {
     uint port;
-    printf("cubeusb_init\n");
 
     __HAL_RCC_SYSCFG_CLK_ENABLE();
     __HAL_RCC_PWR_CLK_ENABLE();

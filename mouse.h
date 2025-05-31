@@ -11,8 +11,8 @@
 #ifndef _MOUSE_H
 #define _MOUSE_H
 
-void mouse_action(int off_x, int off_y, uint button0, uint button1,
-                  uint button2);
+void mouse_action(int off_x, int off_y, int off_wheel, uint32_t buttons);
 void mouse_poll(void);
+extern uint32_t mouse_buttons_add;
 
 #endif /* _MOUSE_H */
