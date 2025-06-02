@@ -21,15 +21,23 @@
 #define DF_USB_MOUSE        0x00000080  // USB mouse
 #define DF_USB_MOUSE_RPT    0x00000100  // USB mouse report descriptor
 
+#define CF_MOUSE_INVERT_X   0x00000001  // Intert mouse X axis
+#define CF_MOUSE_INVERT_Y   0x00000002  // Invert mouse Y axis
+#define CF_MOUSE_INVERT_W   0x00000004  // Invert mouse wheel
+#define CF_MOUSE_INVERT_P   0x00000008  // Invert mouse AC Pan
+#define CF_MOUSE_SWAP_XY    0x00000010  // Swap mouse X and Y axis
+#define CF_MOUSE_SWAP_WP    0x00000020  // Swap mouse Wheel and Pan axis
+#define CF_MOUSE_KEYUP_WP   0x00000040  // Send key released for wheel / pan
+
 typedef struct {
     uint32_t    magic;         // Structure magic
     uint32_t    crc;           // Structure CRC
     uint16_t    size;          // Structure size in bytes
     uint8_t     valid;         // Structure record is valid
     uint8_t     version;       // Structure version
-    char        name[16];      // Unique name for this board
-    uint8_t     keymap[256];   // USB key mappings to Amiga keys
-    uint8_t     modkeymap[8];  // USB modifier key mappings to Amiga keys
+    char        name[32];      // Unique name for this board
+    uint32_t    keymap[256];   // USB key mappings to Amiga keys
+    uint32_t    modkeymap[8];  // USB modifier key mappings to Amiga keys
     uint8_t     led_level;     // Power LED brightness (0 to 100)
     uint8_t     ps_on_mode;    // Power supply on at AC restored
     uint8_t     fan_speed;     // Fan speed percent (bit 7 = auto)
@@ -40,8 +48,11 @@ typedef struct {
     uint32_t    debug_flag;    // Debug flags (see DF_* above)
     int8_t      cpu_temp_bias; // CPU temperature bias
     uint8_t     board_rev;     // Board revision, for board-specific changes
+    uint8_t     unused1[2];    // Unused
     uint32_t    buttonmap[16]; // Mouse button mappings
-    uint8_t     unused[138];   // Unused
+    uint32_t    scrollmap[4];  // Mouse scroll wheel mappings (U,D,L,R)
+    uint32_t    flags;         // Runtime flags
+    uint8_t     unused[848];   // Unused
 } config_t;
 
 extern config_t config;

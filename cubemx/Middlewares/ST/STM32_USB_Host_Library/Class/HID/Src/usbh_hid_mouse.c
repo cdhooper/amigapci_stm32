@@ -275,6 +275,11 @@ static void USBH_HID_Process_HIDReportDescriptor_Mouse(USBH_HandleTypeDef *phost
                                         rd->pos_wheel = bitpos;
                                         rd->bits_wheel = report_size;
                                         break;
+                                    case HID_USAGE_AC_PAN:
+                                        DPRINTF(" AC_PAN=%u", bitpos);
+                                        rd->pos_ac_pan = bitpos;
+                                        rd->bits_ac_pan = report_size;
+                                        break;
                                 }
                             }
                             bitpos += report_size;
@@ -561,6 +566,8 @@ static USBH_StatusTypeDef USBH_HID_MouseDecode(USBH_HandleTypeDef *phost, HID_Ha
     mouse_info.y = readbits(mouse_report_data, rd->pos_y, rd->bits_y);
     mouse_info.wheel = readbits(mouse_report_data, rd->pos_wheel,
                                 rd->bits_wheel);
+    mouse_info.ac_pan = readbits(mouse_report_data, rd->pos_ac_pan,
+                                 rd->bits_ac_pan);
     return USBH_OK;
   }
   return   USBH_FAIL;

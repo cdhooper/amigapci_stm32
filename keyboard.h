@@ -41,4 +41,11 @@ extern uint8_t amiga_keyboard_sent_wake;
 extern uint8_t amiga_keyboard_has_sync;
 extern uint8_t amiga_keyboard_lost_sync;
 
+/* Newmouse keycodes */
+#define NM_WHEEL_UP       (0x7A)
+#define NM_WHEEL_DOWN     (0x7B)
+#define NM_WHEEL_LEFT     (0x7C)
+#define NM_WHEEL_RIGHT    (0x7D)
+#define NM_BUTTON_FOURTH  (0x7E)
+
 #endif /* _KEYBOARD_H */

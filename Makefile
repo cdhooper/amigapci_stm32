@@ -55,7 +55,8 @@ USB_DEFS += \
 	    -I$(CUBE)/Drivers/STM32F2xx_HAL_Driver/Inc \
 	    -I$(CUBE)/Core/Inc -I$(CUBE)/USB_HOST/App \
 	    -Wno-maybe-uninitialized -Wno-redundant-decls
-USB_HEADERS :=
+USB_HEADERS := $(wildcard $(CUBEUHL)/*/*/*.h $(CUBEUHL)/*/*/*/*.h \
+	         $(CUBEHAL)/../Inc/*.h)
 endif
 
 OBJDIR := objs
@@ -99,9 +100,7 @@ $(foreach SRCFILE,$(USB_SRCS),$(eval $(call DEPEND_SRC,$(SRCFILE),$(OBJDIR),USB_
 USB_OBJDIRS := $(sort $(USB_OBJDIRS))
 $(USB_OBJS): | $(USB_OBJDIRS)
 $(USB_OBJS):: CFLAGS += $(USB_DEFS)
-ifeq ($(STACK),tinyusb)
 $(USB_OBJS): $(USB_HEADERS)
-endif
 
 # Our output name
 BINARY = $(OBJDIR)/fw
@@ -336,17 +335,20 @@ just-erase: $(ST_TOOLS_PATH)/st-flash | $(UDEV_FILE_PATHS)
 # F105 unlocked  1ffff800: a5 5a 07 f8 00 ff 00 ff ff 00 ff 00 ff 00 ff 00
 # F105 protect   1ffff800: 00 ff 07 f8 ff 00 ff 00 00 ff 00 ff 00 ff 00 ff
 # F105 clobber   1ffff800: 00 00 00 00 00 03 00 03 00 ff 00 ff 00 ff 00 ff
+#
+# F205 unlocked  1fffc000: ff aa 00 55 ff aa 00 55 ff ff 00 00 ff ff 00 00
+# F205 protect   1fffc000: ff aa 00 55 ff aa 00 55 00 f0 00 00 ff ff 00 00
 
 # Select specific programmer ("make stinfo" to get serial)
 # export ST_ARGS="--serial 57FF6E064975545225502187"		# amiga1
 # export ST_ARGS="--serial 303030303030303030303031"		# amiga2
 
 just-unprotect: $(ST_TOOLS_PATH)/st-flash | $(UDEV_FILE_PATHS)
-	$(ST_TOOLS_PATH)/st-flash $(ST_ARGS) --reset write flash_unprotect.bin 0x1ffff800
+	$(ST_TOOLS_PATH)/st-flash $(ST_ARGS) --reset write flash_unprotect.bin 0x1fffc000
 just-protect: $(ST_TOOLS_PATH)/st-flash | $(UDEV_FILE_PATHS)
-	$(ST_TOOLS_PATH)/st-flash $(ST_ARGS) --reset write flash_protect.bin 0x1ffff800
+	$(ST_TOOLS_PATH)/st-flash $(ST_ARGS) --reset write flash_protect.bin 0x1fffc000
 just-clobber: $(ST_TOOLS_PATH)/st-flash | $(UDEV_FILE_PATHS)
-	$(ST_TOOLS_PATH)/st-flash $(ST_ARGS) --reset write flash_clobber.bin 0x1ffff800
+	$(ST_TOOLS_PATH)/st-flash $(ST_ARGS) --reset write flash_clobber.bin 0x1fffc000
 
 dfu: all $(UDEV_FILE_PATHS) just-dfu
 flash: all just-flash

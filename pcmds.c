@@ -90,6 +90,7 @@ const char cmd_set_help[] =
 "set fan_speed_min <num>  - Fan speed minimum percent\n"
 "set fan_temp_max <num>   - CPU temp for max fan speed\n"
 "set fan_temp_min <num>   - CPU temp for min fan speed\n"
+"set flags <flags> [save] - set config flags\n"
 "set name <name>          - set board name\n"
 "set pson <num>           - set power on mode (1=On at AC restore)\n"
 "set time <y/m/d>|<h:m:s> - set RTC time and/or date";
@@ -680,7 +681,7 @@ cmd_gpio(int argc, char * const *argv)
     return (RC_SUCCESS);
 }
 
-static const char *const debug_bits[] = {
+static const char *const debug_flag_bits[] = {
     "RTC", "AmigaKeyboard", "AmigaMouse", "",
         "USB", "USBConn", "USBKeyboard", "USBMouse",
     "USBMouseRPT", "", "", "",
@@ -690,8 +691,20 @@ static const char *const debug_bits[] = {
     "", "", "", "",
         "", "", "", "",
 };
+
+static const char *const config_flag_bits[] = {
+    "InvertX", "InvertY", "InvertW", "InvertP",
+        "SwapXY", "SwapWP", "KeyupWP", "",
+    "", "", "", "",
+        "", "", "", "",
+    "", "", "", "",
+        "", "", "", "",
+    "", "", "", "",
+        "", "", "", "",
+};
+
 static void
-decode_debug_flags(uint32_t flags)
+decode_bits(const char *const *bits, uint32_t flags)
 {
     uint bit;
     uint printed = 0;
@@ -699,22 +712,22 @@ decode_debug_flags(uint32_t flags)
     for (bit = 0; bit < 32; bit++) {
         if (flags & BIT(bit)) {
             if (printed++)
-                printf(",");
-            if (debug_bits[bit][0] == '\0') {
-                printf(" bit%u", bit);
+                printf(", ");
+            if (bits[bit][0] == '\0') {
+                printf("bit%u", bit);
             } else {
-                printf(" %s", debug_bits[bit]);
+                printf("%s", bits[bit]);
             }
         }
     }
 }
 
 static uint
-match_debug_flag(const char *name)
+match_bits(const char *const *bits, const char *name)
 {
     uint bit;
     for (bit = 0; bit < 32; bit++) {
-        if (strcasecmp(name, debug_bits[bit]) == 0)
+        if (strcasecmp(name, bits[bit]) == 0)
             return (bit);
     }
     return (bit);
@@ -722,12 +735,12 @@ match_debug_flag(const char *name)
 
 #define CFOFF(x) offsetof(config_t, x), sizeof (config.x)
 
-#define MODE_DEC         0       // Show value in decimal
-#define MODE_HEX         BIT(0)  // Show value in hexadecimal
-#define MODE_STRING      BIT(1)  // Show string
-#define MODE_DEBUG_FLAGS BIT(2)  // Decode debug flags
-#define MODE_FAN_AUTO    BIT(3)  // Interpret BIT(7) as "auto" otherwise decimal
-#define MODE_SIGNED      BIT(4)  // Decimal value is signed
+#define MODE_DEC          0       // Show value in decimal
+#define MODE_HEX          BIT(0)  // Show value in hexadecimal
+#define MODE_STRING       BIT(1)  // Show string
+#define MODE_BIT_FLAGS    BIT(2)  // Decode debug flags
+#define MODE_FAN_AUTO     BIT(3)  // Interpret BIT(7) as "auto"; 0 = decimal
+#define MODE_SIGNED       BIT(4)  // Decimal value is signed
 typedef struct {
     const char *cs_name;
     const char *cs_desc;
@@ -741,7 +754,7 @@ static const config_set_t config_set[] = {
     { "cpu_temp_bias",  "Bias (+/-) for CPU temperature",
       CFOFF(cpu_temp_bias), MODE_SIGNED },
     { "debug",         "",
-      CFOFF(debug_flag), MODE_HEX | MODE_DEBUG_FLAGS },
+      CFOFF(debug_flag), MODE_HEX | MODE_BIT_FLAGS },
     { "fan_rpm_max",  "Fan maximum speed in RPM",
       CFOFF(fan_rpm_max), MODE_DEC },
     { "fan_speed",     "Fan speed",
@@ -752,6 +765,8 @@ static const config_set_t config_set[] = {
       CFOFF(fan_temp_max), MODE_DEC },
     { "fan_temp_min",  "CPU temp for min fan speed",
       CFOFF(fan_temp_min), MODE_DEC },
+    { "flags",          "",
+      CFOFF(flags), MODE_HEX | MODE_BIT_FLAGS },
     { "name",          "Board name",
       CFOFF(name), MODE_STRING },
     { "pson",          "Power on at AC restored",
@@ -793,11 +808,18 @@ cmd_set(int argc, char * const *argv)
                 }
             }
             printf("%s%*s%s", buf, 24 - strlen(buf), "", c->cs_desc);
-            if (cs_mode & MODE_DEBUG_FLAGS) {
-                /* Also decode flags (currently only debug flags) */
-                if (value == 0)
-                    printf("Debug flags");
-                decode_debug_flags(value);
+            if (cs_mode & MODE_BIT_FLAGS) {
+                if (strncmp(c->cs_name, "debug", 5) == 0) {
+                    /* Decode debug flags */
+                    if (value == 0)
+                        printf("Debug flags");
+                    decode_bits(debug_flag_bits, value);
+                } else if (strncmp(c->cs_name, "flags", 4) == 0) {
+                    /* Decode config flags */
+                    if (value == 0)
+                        printf("Config flags");
+                    decode_bits(config_flag_bits, value);
+                }
             }
             printf("\n");
         }
@@ -832,12 +854,12 @@ cmd_set(int argc, char * const *argv)
             printf("Debug flags are a combination of bits: "
                    "specify all bit numbers or names\n");
             for (bit = 0; bit < 32; bit++)
-                if (debug_bits[bit][0] != '\0')
+                if (debug_flag_bits[bit][0] != '\0')
                     printf(" %c %2u  %s\n",
                            config.debug_flag & BIT(bit) ? '*' : ' ',
-                           bit, debug_bits[bit]);
+                           bit, debug_flag_bits[bit]);
             printf("Current debug %08lx  ", config.debug_flag);
-            decode_debug_flags(config.debug_flag);
+            decode_bits(debug_flag_bits, config.debug_flag);
             printf("\n");
             return (RC_SUCCESS);
         }
@@ -845,7 +867,7 @@ cmd_set(int argc, char * const *argv)
             if (strcasecmp(argv[arg], "save") == 0) {
                 do_save = 1;
                 continue;
-            } else if ((bit = match_debug_flag(argv[arg])) < 32) {
+            } else if ((bit = match_bits(debug_flag_bits, argv[arg])) < 32) {
                 if (did_set == 0)
                     nvalue = 0;
                 nvalue |= BIT(bit);
@@ -865,8 +887,8 @@ cmd_set(int argc, char * const *argv)
         }
         if (config.debug_flag != nvalue) {
             config.debug_flag = nvalue;
-            printf("debug %08lx", nvalue);
-            decode_debug_flags(nvalue);
+            printf("Debug flags %08lx ", nvalue);
+            decode_bits(debug_flag_bits, nvalue);
             printf("\n");
         }
         if (do_save)
@@ -941,6 +963,57 @@ cmd_set(int argc, char * const *argv)
         else
             config.fan_temp_max = value;
         config_updated();
+    } else if (strncmp(argv[1], "flags", 4) == 0) {
+        int      arg;
+        int      pos = 0;
+        uint     bit;
+        uint     do_save = 0;
+        uint     did_set = 0;
+        uint32_t value;
+        uint32_t nvalue = 0;
+        if (argc <= 2) {
+            printf("Config flags are a combination of bits: "
+                   "specify all bit numbers or names\n");
+            for (bit = 0; bit < 32; bit++)
+                if (config_flag_bits[bit][0] != '\0')
+                    printf(" %c %2u  %s\n",
+                           config.flags & BIT(bit) ? '*' : ' ',
+                           bit, config_flag_bits[bit]);
+            printf("Current config %08lx  ", config.flags);
+            decode_bits(config_flag_bits, config.flags);
+            printf("\n");
+            return (RC_SUCCESS);
+        }
+        for (arg = 2; arg < argc; arg++) {
+            if (strcasecmp(argv[arg], "save") == 0) {
+                do_save = 1;
+                continue;
+            } else if ((bit = match_bits(config_flag_bits, argv[arg])) < 32) {
+                if (did_set == 0)
+                    nvalue = 0;
+                nvalue |= BIT(bit);
+                did_set = 1;
+            } else {
+                if ((sscanf(argv[arg], "%x%n", &value, &pos) != 1) ||
+                    (argv[arg][pos] != '\0')) {
+                    printf("Invalid argument: %s\n", argv[arg]);
+                    return (RC_USER_HELP);
+                }
+                if ((pos >= 4) || (value >= 32))
+                    nvalue = value;
+                else
+                    nvalue |= BIT(value);
+                did_set = 1;
+            }
+        }
+        if (config.flags != nvalue) {
+            config.flags = nvalue;
+            printf("Config flags %08lx ", nvalue);
+            decode_bits(config_flag_bits, nvalue);
+            printf("\n");
+        }
+        if (do_save)
+            config_updated();
     } else if (strcmp(argv[1], "name") == 0) {
         config_name((argc < 2) ? NULL : argv[2]);
         return (RC_SUCCESS);

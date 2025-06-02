@@ -203,11 +203,13 @@ typedef struct _HIDRDescriptor
   uint16_t   pos_x;
   uint16_t   pos_y;
   uint16_t   pos_wheel;
+  uint16_t   pos_ac_pan;
   uint16_t   pos_button[16];
   uint8_t    num_buttons;
   uint8_t    bits_x;
   uint8_t    bits_y;
   uint8_t    bits_wheel;
+  uint8_t    bits_ac_pan;
 }
 HID_RDescTypeDef;
 

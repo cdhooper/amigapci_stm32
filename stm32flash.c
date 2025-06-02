@@ -36,6 +36,21 @@
  * System Memory (DFU)     0x1fff0000 - 0x1fff77ff  30 KB
  * OTP area                0x1fff7800 - 0x1fff7a0f  528 bytes
  * Option bytes            0x1fffc000 - 0x1fffc00f  16 bytes
+ *
+ * Option byte 0
+ *      bit 1:0    Not used (11)
+ *      bit 2:3    BOR level (reset voltage threshold)
+ *                   00 = 2.70V to 3.60V   01 = 2.40V to 2.70V
+ *                   10 = 2.10V to 2.40V   11 = 1.8V to 2.10V
+ *      bit 4      Not used (1)
+ *      bit 5      0=HW Watchdog, 1=SW Watchdog
+ *      bit 6      0=Reset at Stop enter, 1=No reset
+ *      bit 7      0=Reset at Standby enter, 1=No reset
+ * Option byte 8
+ *      bit 0:7    1=Write protect not active on sector (0-7)
+ * Option byte 9
+ *      bit 0:3    1=Write protect not active on sector (8-11)
+ *      bit 4:7    Unused (1)
  */
 
 /*

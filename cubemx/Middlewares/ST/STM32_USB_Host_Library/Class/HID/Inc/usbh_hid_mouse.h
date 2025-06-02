@@ -55,6 +55,7 @@ typedef struct _HID_MOUSE_Info
   int16_t              x;
   int16_t              y;
   int16_t              wheel;
+  int16_t              ac_pan;
   uint32_t             buttons;
 }
 HID_MOUSE_Info_TypeDef;

@@ -21,6 +21,8 @@
 #include "utils.h"
 #include "keyboard.h"
 
+CC_ASSERT_SIZE(config_t, 2048);
+
 #define CONFIG_MAGIC     0x19460602
 #define CONFIG_VERSION   0x01
 #define CONFIG_AREA_BASE 0x0060000
@@ -78,7 +80,7 @@ config_write(void)
     for (addr = CONFIG_AREA_BASE; addr < CONFIG_AREA_END; addr += 4) {
         ptr = (config_t *) addr;
         if ((ptr->magic == CONFIG_MAGIC) &&
-            (ptr->size >= 0x04) && (ptr->size < CONFIG_AREA_SIZE)) {
+            (ptr->size >= 0x20) && (ptr->size < 0x0800)) {
             addr += ptr->size - 4;  // quickly skip to next area
         } else if (ptr->magic == 0xffffffff) {
             break;
@@ -130,17 +132,21 @@ config_read(void)
 {
     uint32_t addr;
     config_t *ptr;
+
     for (addr = CONFIG_AREA_BASE; addr < CONFIG_AREA_END; addr += 4) {
         ptr = (config_t *) addr;
         if ((ptr->magic == CONFIG_MAGIC) && (ptr->valid)) {
+            uint cfgsize = ptr->size;
             uint crcpos = offsetof(config_t, crc) + sizeof (ptr->crc);
-            uint crclen = sizeof (config_t) - crcpos;
+            uint crclen = cfgsize - crcpos;
             uint32_t crc = crc32(0, &ptr->crc + 1, crclen);
             if (crc == ptr->crc) {
 #ifdef DEBUG_CONFIG
                 printf("Valid config at %lx\n", addr);
 #endif
-                memcpy(&config, (void *) addr, sizeof (config));
+                if (cfgsize > sizeof (config))
+                    cfgsize = sizeof (config);
+                memcpy(&config, (void *) addr, cfgsize);
                 if (config.name[0] != '\0')
                     printf("    %s\n", config.name);
                 config.version = CONFIG_VERSION;

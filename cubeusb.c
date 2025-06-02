@@ -351,7 +351,8 @@ USBH_HID_EventCallback(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle)
     if (devtype == HID_MOUSE) {  // Mouse
         HID_MOUSE_Info_TypeDef *info;
         info = USBH_HID_GetMouseInfo(phost, HID_Handle);  // Get the info
-        mouse_action(info->x, info->y, info->wheel, info->buttons);
+        mouse_action(info->x, info->y, -info->wheel, info->ac_pan,
+                     info->buttons);
     } else if (devtype == HID_KEYBOARD) {  // Keyboard
         HID_KEYBD_Info_TypeDef *kinfo;
         kinfo = USBH_HID_GetKeybdInfo(phost, HID_Handle);  // get the info

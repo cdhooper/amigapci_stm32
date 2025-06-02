@@ -405,6 +405,7 @@ static void USBH_ParseCfgDesc(USBH_HandleTypeDef *phost, USBH_CfgDescTypeDef *cf
   uint16_t                     ptr;
   uint8_t                      if_ix = 0U;
   uint8_t                      ep_ix = 0U;
+  uint                         count = 0;
 
   pdesc   = (USBH_DescHeader_t *)(void *)buf;
 
@@ -425,6 +426,10 @@ static void USBH_ParseCfgDesc(USBH_HandleTypeDef *phost, USBH_CfgDescTypeDef *cf
 
     while ((if_ix < USBH_MAX_NUM_INTERFACES) && (ptr < cfg_desc->wTotalLength))
     {
+      if (count++ > 100) {
+          printf("Descrptor processing failure\n");
+          break;
+      }
       pdesc = USBH_GetNextDesc((uint8_t *)(void *)pdesc, &ptr);
       if ((pdesc->bDescriptorType == USB_DESC_TYPE_INTERFACE) &&
           (USBH_ClassIsValid(phost, (uint8_t *)pdesc)))
@@ -436,6 +441,10 @@ static void USBH_ParseCfgDesc(USBH_HandleTypeDef *phost, USBH_CfgDescTypeDef *cf
         pep = (USBH_EpDescTypeDef *)0;
         while ((ep_ix < pif->bNumEndpoints) && (ptr < cfg_desc->wTotalLength))
         {
+          if (count++ > 100) {
+              printf("Descrptor processing failure (inner)\n");
+              break;
+          }
           pdesc = USBH_GetNextDesc((uint8_t *)(void *)pdesc, &ptr);
           if (pdesc->bDescriptorType   == USB_DESC_TYPE_ENDPOINT)
           {
@@ -543,10 +552,13 @@ static void USBH_ParseStringDesc(uint8_t *psrc, uint8_t *pdest, uint16_t length)
 USBH_DescHeader_t  *USBH_GetNextDesc(uint8_t   *pbuf, uint16_t  *ptr)
 {
   USBH_DescHeader_t  *pnext;
+  uint16_t len = ((USBH_DescHeader_t *)(void *)pbuf)->bLength;
 
-  *ptr += ((USBH_DescHeader_t *)(void *)pbuf)->bLength;
-  pnext = (USBH_DescHeader_t *)(void *)((uint8_t *)(void *)pbuf + \
-                                        ((USBH_DescHeader_t *)(void *)pbuf)->bLength);
+  if (len == 0)
+      len = 1;  // Work around broken descriptors
+
+  *ptr += len;
+  pnext = (USBH_DescHeader_t *)(void *)((uint8_t *)(void *)pbuf + len);
 
   return (pnext);
 }

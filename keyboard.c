@@ -148,13 +148,6 @@ uint8_t amiga_keyboard_lost_sync;
 #define AS_POWER_DONE  (0xfe)  // Keyboard powerup done key stream
 #define AS_NONE        (0xff)  // Not a valid keycode
 
-/* Newmouse keycodes */
-#define NM_WHEEL_UP       (0x7A)
-#define NM_WHEEL_DOWN     (0x7B)
-#define NM_WHEEL_LEFT     (0x7C)
-#define NM_WHEEL_RIGHT    (0x7D)
-#define NM_BUTTON_FOURTH  (0x7E)
-
 
 #define SAF_ADD_SHIFT 0x01
 static const struct {
@@ -420,7 +413,7 @@ static const struct {
     { AS_NONE,       0, 0x00 },  // 0xfe
     { AS_NONE,       0, 0x00 },  // 0xff
 };
-// 0x01 = Assert shift on non-shifted version
+// 0x01 = Assert shift on non-shifted version (SAF_ADD_SHIFT)
 
 #define ATA_ADD_SHIFT 0x100
 #define ATA_ADD_CTRL  0x200
@@ -851,11 +844,11 @@ keyboard_set_defaults(void)
     config.modkeymap[7] = AS_RIGHTAMIGA;
 }
 
-static uint8_t
+static uint32_t
 convert_scancode_to_amiga(uint8_t keycode, uint8_t modifier,
                           uint8_t *amiga_modifier)
 {
-    uint8_t code = config.keymap[keycode];
+    uint32_t code = config.keymap[keycode];
     *amiga_modifier = 0;
     if (modifier & (KEYBOARD_MODIFIER_LEFTSHIFT |
                     KEYBOARD_MODIFIER_RIGHTSHIFT)) {
@@ -1206,15 +1199,29 @@ keyboard_usb_input(usb_keyboard_report_t *report)
     uint32_t mouse_buttons_old = mouse_buttons_add;
 
     if ((mod_diff != 0) & !usb_keyboard_terminal) {
-        uint code;
+        uint32_t code;
         uint bit;
         for (bit = 0; bit < 8; bit++) {
             if (mod_diff & BIT(bit)) {
                 code = config.modkeymap[bit];
-                if (modifier & BIT(bit))
-                    amiga_keyboard_put(code);         // pressed
-                else
-                    amiga_keyboard_put(code | 0x80);  // released
+                while (code != 0) {
+                    if (modifier & BIT(bit)) {
+                        if (code & 0x80) {
+                            /* Button press or macro expansion */
+                            mouse_buttons_add |= BIT(code & 31);
+                        } else {
+                            amiga_keyboard_put(code);         // pressed
+                        }
+                    } else {
+                        if (code & 0x80) {
+                            /* Button press or macro expansion */
+                            mouse_buttons_add &= ~BIT(code & 31);
+                        } else {
+                            amiga_keyboard_put(code | 0x80);  // released
+                        }
+                    }
+                    code >>= 8;
+                }
             }
         }
     }
@@ -1259,19 +1266,25 @@ keyboard_usb_input(usb_keyboard_report_t *report)
                 } else {
                     /* Convert to Amiga keypress */
                     uint8_t amiga_modifier;
-                    uint8_t code = convert_scancode_to_amiga(keycode, modifier,
-                                                             &amiga_modifier);
-                    if (code == AS_CAPSLOCK) {
-                        /* Capslock is pressed a second time to release */
-                        if (capslock)
-                            code = AS_NONE;
-                    }
-                    if (code != AS_NONE) {
-                        if (code & 0x80)  // Button press or macro expansion
-                            /* Button press or macro expansion */
-                            mouse_buttons_add |= BIT(code & 31);
-                        else
-                            amiga_keyboard_put(code);
+                    uint32_t tcode;
+
+                    tcode = convert_scancode_to_amiga(keycode, modifier,
+                                                      &amiga_modifier);
+                    while (tcode != 0) {
+                        uint8_t code = tcode & 0xff;
+                        if (tcode == AS_CAPSLOCK) {
+                            /* Capslock is pressed a second time to release */
+                            if (capslock)
+                                code = AS_NONE;
+                        }
+                        if (code != AS_NONE) {
+                            if (code & 0x80) // Button press or macro expansion
+                                /* Button press or macro expansion */
+                                mouse_buttons_add |= BIT(code & 31);
+                            else
+                                amiga_keyboard_put(code);
+                        }
+                        tcode >>= 8;
                     }
                 }
             }
@@ -1309,27 +1322,32 @@ keyboard_usb_input(usb_keyboard_report_t *report)
             } else {
                 /* Convert to Amiga keypress */
                 uint8_t amiga_modifier;
-                uint8_t code = convert_scancode_to_amiga(keycode, modifier,
-                                                         &amiga_modifier);
-                if (code == AS_CAPSLOCK) {
-                    if (capslock) {
-                        capslock = 0;
-                    } else {
-                        capslock = 1;
-                        code = AS_NONE;
+                uint32_t tcode;
+                tcode = convert_scancode_to_amiga(keycode, modifier,
+                                                  &amiga_modifier);
+                while (tcode != 0) {
+                    uint8_t code = tcode & 0xff;
+                    if (code == AS_CAPSLOCK) {
+                        if (capslock) {
+                            capslock = 0;
+                        } else {
+                            capslock = 1;
+                            code = AS_NONE;
+                        }
                     }
-                }
-                if (code != AS_NONE) {
-                    if (code & 0x80)  // Button press or macro expansion
-                        mouse_buttons_add &= ~BIT(code & 31);
-                    else
-                        amiga_keyboard_put(code | 0x80);
+                    if (code != AS_NONE) {
+                        if (code & 0x80)  // Button press or macro expansion
+                            mouse_buttons_add &= ~BIT(code & 31);
+                        else
+                            amiga_keyboard_put(code | 0x80);
+                    }
+                    tcode >>= 8;
                 }
             }
         }
     }
     if (mouse_buttons_old != mouse_buttons_add)
-        mouse_action(0, 0, 0, 0);  // Inject button / macro expansion change
+        mouse_action(0, 0, 0, 0, 0);  // Inject button / macro expansion change
 
     prev_report = *report;
 }

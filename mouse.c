@@ -45,14 +45,61 @@ static volatile int mouse_x;
 static volatile int mouse_y;
 uint32_t mouse_buttons_add;
 
-void
-mouse_action(int off_x, int off_y, int off_wheel, uint32_t buttons)
+static void
+mouse_inject_keystrokes(uint32_t macro, uint is_pressed)
 {
-    static uint8_t last[16];
+    uint32_t val;
+    for (val = macro; val != 0; val >>= 8) {
+        if (is_pressed)
+            amiga_keyboard_put(val);
+        else
+            amiga_keyboard_put(val | 0x80);
+    }
+}
+
+static void
+mouse_inject(uint32_t bmapped, uint is_pressed, uint was_pressed)
+{
+    switch (bmapped) {
+        case 0:
+            *B0_GPIO = !is_pressed;
+            break;
+        case 1:
+            *B1_GPIO = !is_pressed;
+            break;
+        case 2:
+            *B2_GPIO = !is_pressed;
+            break;
+        case 3:
+            if (was_pressed != is_pressed)
+                mouse_inject_keystrokes(NM_BUTTON_FOURTH, is_pressed);
+            break;
+        default:
+            if ((bmapped >= 0x10) && (was_pressed != is_pressed)) {
+                /* Button mapped to between one and four Keystrokes */
+                mouse_inject_keystrokes(bmapped, is_pressed);
+            }
+    }
+    if (is_pressed && (bmapped < 0x10))
+        dprintf(DF_USB_MOUSE | DF_AMIGA_MOUSE, "B%lx", bmapped);
+}
+
+/*
+ * mouse_action() converts USB Mouse input to Amiga mouse or keyboard input.
+ *
+ * @param [in]  off_x     - X movement of the mouse (< 0 is left)
+ * @param [in]  off_y     - Y movement of the mouse (< 0 is up)
+ * @param [in]  off_wheel - Wheel movement of the mouse (< 0 is up)
+ * @param [in]  off_pan   - Left-right movement of the mouse (< 0 is left)
+ * @param [in]  buttons   - Bits representing buttno state (1 = pressed)
+ */
+void
+mouse_action(int off_x, int off_y, int off_wheel, int off_pan, uint32_t buttons)
+{
+    static uint8_t button_was_pressed[16];
+    static int last_wheel;
+    static int last_pan;
     uint b;
-    (void) off_wheel;
-    mouse_x += off_x;
-    mouse_y += off_y;
 
     if (config.debug_flag & DF_USB_MOUSE) {
         printf(" ");
@@ -62,44 +109,92 @@ mouse_action(int off_x, int off_y, int off_wheel, uint32_t buttons)
             printf("My ");
         if (off_wheel != 0)
             printf("Mw ");
+        if (off_pan != 0)
+            printf("Mp ");
+    }
+
+    if (config.flags & CF_MOUSE_INVERT_X)
+        off_x = -off_x;
+    if (config.flags & CF_MOUSE_INVERT_Y)
+        off_y = -off_y;
+    if (config.flags & CF_MOUSE_INVERT_W)
+        off_wheel = -off_wheel;
+    if (config.flags & CF_MOUSE_INVERT_P)
+        off_pan = -off_pan;
+    if (config.flags & CF_MOUSE_SWAP_XY) {
+        int temp = off_x;
+        off_x = off_y;
+        off_y = temp;
+    }
+    if (config.flags & CF_MOUSE_SWAP_WP) {
+        int temp = off_wheel;
+        off_wheel = off_pan;
+        off_pan = temp;
+    }
+
+    mouse_x += off_x;
+    mouse_y += off_y;
+
+    /* Up/down wheel */
+    if (off_wheel != last_wheel) {
+        uint32_t macro;
+
+        macro = config.scrollmap[0] ? config.scrollmap[0] : NM_WHEEL_UP;
+        if (last_wheel < 0)
+            mouse_inject(macro, 0, 1);
+        if (off_wheel < 0)
+            mouse_inject(macro, 1, 0);
+
+        macro = config.scrollmap[1] ? config.scrollmap[1] : NM_WHEEL_DOWN;
+        if (last_wheel > 0)
+            mouse_inject(macro, 0, 1);
+        if (off_wheel > 0)
+            mouse_inject(macro, 1, 0);
+
+        /*
+         * Update last_wheel if we want keystroke-like behavior
+         *
+         * XXX: More code is needed to implement this for wheel because the
+         *      wheel won't give a state release like pan does. Need to
+         *      set a timeout for the poll code to send a "key up"
+         */
+        if (config.flags & CF_MOUSE_KEYUP_WP)
+            last_wheel = off_wheel;
+    }
+
+    /* Left/right pan */
+    if (off_pan != last_pan) {
+        uint32_t macro;
+
+        macro = config.scrollmap[2] ? config.scrollmap[2] : NM_WHEEL_LEFT;
+        if (last_pan < 0)
+            mouse_inject(macro, 0, 1);
+        if (off_pan < 0)
+            mouse_inject(macro, 1, 0);
+
+        macro = config.scrollmap[3] ? config.scrollmap[3] : NM_WHEEL_RIGHT;
+        if (last_pan > 0)
+            mouse_inject(macro, 0, 1);
+        if (off_pan > 0)
+            mouse_inject(macro, 1, 0);
+
+        /* Update last_pan if we want keystroke-like behavior */
+        if (config.flags & CF_MOUSE_KEYUP_WP)
+            last_pan = off_pan;
     }
 
     buttons |= mouse_buttons_add;
     hiden_set(1);
 
     for (b = 0; b < ARRAY_SIZE(config.buttonmap); b++) {
-        uint bmapped = config.buttonmap[b];
-        uint is_pressed = (buttons & BIT(b)) ? 1 : 0;
+        uint32_t bmapped = config.buttonmap[b];
+        uint     is_pressed = (buttons & BIT(b)) ? 1 : 0;
         if (bmapped == 0)
             bmapped = b;  // Not reassigned: default this button to itself
         else if (bmapped <= 8)
             bmapped--;
-        switch (bmapped) {
-            case 0:
-                *B0_GPIO = !is_pressed;
-                break;
-            case 1:
-                *B1_GPIO = !is_pressed;
-                break;
-            case 2:
-                *B2_GPIO = !is_pressed;
-                break;
-            default:
-                if ((bmapped >= 0x10) && (last[b] != is_pressed)) {
-                    /* Button mapped to one to four Keystrokes */
-                    uint32_t val;
-                    bmapped -= 0x10;
-                    for (val = bmapped; val != 0; val >>= 8) {
-                        if (is_pressed)
-                            amiga_keyboard_put(val);
-                        else
-                            amiga_keyboard_put(val | 0x80);
-                    }
-                }
-        }
-        if (is_pressed && (bmapped < 0x10))
-            dprintf(DF_USB_MOUSE | DF_AMIGA_MOUSE, "B%x", bmapped);
-        last[b] = is_pressed;
+        mouse_inject(bmapped, is_pressed, button_was_pressed[b]);
+        button_was_pressed[b] = is_pressed;
     }
 }
 

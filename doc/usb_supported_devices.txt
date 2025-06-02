@@ -1,0 +1,81 @@
+Tested working
+==============
+USB Mouse
+    LimeIDE wired Gaming Mouse RGB "3DOptical"
+        ID 1c4f:0034 SiGma Micro XM102K Optical Wheel Mouse
+        https://www.ebay.com/itm/116613382672
+    Lukas Remis wireless Tank Mouse (Kickstarter)
+        https://www.kickstarter.com/projects/lukas-remis/tank-mouse-your-new-amiga-mouse
+        ID 248a:8566 Maxxter Wireless Receiver
+        Reports at Telink Wireless Receiver
+    Logitech B100 wired mouse
+        ID 046d:c077 Logitech, Inc. Mouse
+    Logitech M187 wireless mouse
+        ID 046d:c534 Logitech, Inc. Nano Receiver
+    Logitech M325 wireless mouse 3-button version through unifying receiver
+        ID 046d:c52b Logitech, Inc. Unifying Receiver
+        Wheel left and right are B3 and B4
+    Logitech M505 wireless mouse through unifying receiver
+        ID 046d:c52b Logitech, Inc. Unifying Receiver
+    Logitech M510 wireless mouse 5-button version through unifying receiver
+        ID 046d:c52b Logitech, Inc. Unifying Receiver
+        Side buttons are B3 and B4
+
+USB Hub Keyboard
+    ***
+    *** BEC firmware needs improvements for hotplug)
+    ***
+    Dell UD0003-DEL5
+        ID 413c:2011 Dell Computer Corp. Multimedia Pro Keyboard
+
+USB Keyboard
+    Acer Scorpius=M11SFL
+        Predator RGB Color Gaming Keyboard
+        ID 195d:2047 iOne Internation Co.Ltd. Full Color Gaming Keyboard
+        FN+F7 to FN+F12 drive various mouse button combinations
+    SIIG USB Low Profile Multimedia Keyboard
+        ID 046e.6000 BTC USB Keyboard
+        Multimedia keys cause keyboard to timeout and reset at 1 second.
+            Probably needs the host to poll the second interface:
+            USB1 IF=0 protocol=1 numcfg=2
+            USB1 kbdinit class=5
+            USB1.0.0 type 2 Keyboard
+            USB1.0.1 type ff Unknown
+    WASD Model V3 custom keyboard
+        ID 0c45:7692 Microdia USB Keyboard
+
+USB Keyboard / Mouse adapter
+    Dual PS/2 to USB adapter PCP-BCG4209
+        ID 13ba:0018 PCPlay Barcode PCP-BCG4209
+        https://www.amazon.com/dp/B075T1LS3V
+
+PS/2 Mouse (through active PS/2 -> USB adapter)
+    Sony VAIO PCVA-MSPB wired PS/2 mouse
+    V7 MU200 wired PS/2 Mouse
+
+PS/2 Keyboard (through active PS/2 -> USB adapter)
+    Dell SK-8110 wired PS/2 keyboard
+    V7 CKU200US wired PS/2 keyboard
+
+PS/2 Mouse/Keyboard combination
+    Lantronix SpiderDuo KVM
+        PS/2 keybonad and mouse ports through PCP-BCG4209
+
+=========================================================================
+
+Not working
+==============
+USB Hub Keyboard
+    Apple wired keyboard A1243
+        ID 05ac:1006 Apple, Inc. Hub in Aluminum Keyboard
+        ID 05ac:024f Apple, Inc. Aluminium Keyboard (ANSI)
+        HUB shows up, but Apple keyboard appears as 0000.0000, class 0
+    XArmor U9BL-S mechanical keyboard
+        ID 1a40:0101 Terminus Technology Inc. Hub
+        ID 04b4:0101 Cypress Semiconductor Corp. Keyboard/Hub
+        Requires both USB hub connector and PS/2 keyboard connector
+            (through passive adapter).
+        If PS/2 is looped back through onboard USB Hub ports, the
+            HUB shows up, but keyboard appears as 0000.0000, class 0
+        If PS/2 is connected direct to USB port, it shows as 04b4.0101,
+            but class is 0 and product string is blank.
