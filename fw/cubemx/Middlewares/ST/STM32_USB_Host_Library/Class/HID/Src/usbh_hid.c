@@ -127,6 +127,384 @@ USBH_ClassTypeDef  HID_Class =
 * @{
 */
 
+#include <stdbool.h>
+#include "config.h"
+#include "timer.h"
+#include "utils.h"
+#define DEBUG_HIDREPORT_DESCRIPTOR
+#ifdef DEBUG_HIDREPORT_DESCRIPTOR
+#define DPRINTF(...) dprintf(DF_USB_REPORT, __VA_ARGS__)
+#else
+#define DPRINTF(...)
+#endif
+
+/** @defgroup USBH_HID_MOUSE_Private_Functions
+  * @{
+  */
+void USBH_HID_Process_HIDReportDescriptor(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle)
+{
+    uint pos;
+    uint desc_len = HID_Handle->HID_Desc.wItemLength;
+    uint coll_depth = 0;
+    uint8_t report_size = 0;  // in bits
+    uint8_t report_count = 0;
+    uint8_t usage_page = 0;
+    uint16_t usage = 0;
+    uint    bitpos = 0;  // First byte is usually record #
+    uint    button = 0;
+    uint    temp;
+    uint    value;
+    HID_RDescTypeDef *rd = &HID_Handle->HID_RDesc;
+    uint16_t usage_array[16];
+    uint8_t  usage_count = 0;
+    uint8_t  report_id;
+    const uint8_t *desc = (const uint8_t *) phost->device.Data;
+#ifdef DEBUG_HIDREPORT_DESCRIPTOR
+    const char *spaces = "                 ";
+#endif
+    DPRINTF("Process_HIDReportDescriptor: IF=%u rlen=%x\n",
+            HID_Handle->interface, desc_len);
+
+    if (desc_len > 512)
+        desc_len = 512;  // Let's not go crazy here
+
+    /* Request HID Report Descriptor (some mice require 20ms) */
+    uint timeout = 100;
+    while (USBH_HID_GetHIDReportDescriptor(phost, HID_Handle->interface,
+                                           desc_len) != USBH_OK) {
+        if (--timeout == 0) {
+            printf("Get report descriptor failed\n");
+            return;
+        }
+        timer_delay_msec(1);
+    }
+
+#if 0
+    for (pos = 0; pos < desc_len; pos++)
+        printf(" %02x", desc[pos]);
+    printf("\n");
+#endif
+    for (pos = 0; pos < desc_len; ) {
+        const uint8_t tag = desc[pos] >> 4;
+        const uint8_t type = (desc[pos] >> 2) & 3;
+        const uint8_t size = desc[pos] & 3;
+
+        if ((type == 0) && (tag == 0)) {
+            pos++;
+            continue;
+        }
+        DPRINTF("%02x:", pos);
+        for (temp = 0; temp <= 2; temp++) {
+            if (temp <= size) {
+                DPRINTF(" %02x", desc[pos + temp]);
+            } else {
+                DPRINTF("   ");
+            }
+        }
+        pos++;
+        DPRINTF(" type %x tag %x size %x  ", type, tag, size);
+        switch (type) {
+            case HID_ITEM_TYPE_MAIN:  // type 0
+                switch (tag) {
+                    case HID_MAIN_ITEM_TAG_INPUT:
+                        value = desc[pos];
+                        DPRINTF("%.*s%s", coll_depth, spaces, "INPUT");
+                        DPRINTF(" size=%u count=%u", report_size, report_count);
+                        while ((usage_count < report_count) &&
+                               (usage_count < ARRAY_SIZE(usage_array))) {
+                            usage_array[usage_count++] = usage;
+                        }
+                        for (temp = 0; temp < report_count; temp++) {
+                            int x = temp;
+                            if (value & BIT(0)) {
+                                /* Constant data */
+                                DPRINTF(" C");
+                            } else if (usage_page == HID_USAGE_PAGE_BUTTON) {
+                                DPRINTF(" Button%u=%u", button, bitpos);
+                                if (button < ARRAY_SIZE(rd->pos_button))
+                                    rd->pos_button[button] = bitpos;
+                                button++;
+                                rd->num_buttons = button;
+                            } else if (usage_page == HID_USAGE_PAGE_CONSUMER) {
+                                DPRINTF(" Consumer usage=%x", usage_array[x]);
+                                switch (usage_array[x]) {
+                                    case 0x01:  // Generic control
+                                        if (rd->num_keys <
+                                            ARRAY_SIZE(rd->pos_key)) {
+                                            rd->bits_key = report_size;
+                                            rd->pos_key[rd->num_keys] = bitpos;
+                                            rd->num_keys++;
+                                        }
+                                        DPRINTF(" key=%u", bitpos);
+                                        break;
+                                    case HID_USAGE_AC_PAN:
+                                        DPRINTF(" AC_PAN=%u", bitpos);
+                                        rd->pos_ac_pan = bitpos;
+                                        rd->bits_ac_pan = report_size;
+                                        break;
+                                    default: {
+                                        /* Attempt to handle as MM Button */
+                                        uint num = rd->num_mmbuttons;
+                                        if (report_size != 1)
+                                            break;
+                                        if (num >= ARRAY_SIZE(rd->val_mmbutton))
+                                            break;
+                                        DPRINTF(" MM %x %x=%u", num,
+                                                usage_array[x], bitpos);
+                                        rd->val_mmbutton[num] = usage_array[x];
+                                        rd->pos_mmbutton[num] = bitpos;
+                                        rd->id_mmbutton[num] = report_id;
+                                        rd->num_mmbuttons++;
+                                    }
+                                }
+                            } else if (x <= usage_count) {
+                                switch (usage_array[x]) {
+                                    case HID_USAGE_X:
+                                        DPRINTF(" X=%u", bitpos);
+                                        rd->pos_x = bitpos;
+                                        rd->bits_x = report_size;
+                                        break;
+                                    case HID_USAGE_Y:
+                                        DPRINTF(" Y=%u", bitpos);
+                                        rd->pos_y = bitpos;
+                                        rd->bits_y = report_size;
+                                        break;
+                                    case HID_USAGE_WHEEL:
+                                        DPRINTF(" WHEEL=%u", bitpos);
+                                        rd->pos_wheel = bitpos;
+                                        rd->bits_wheel = report_size;
+                                        break;
+                                    case HID_USAGE_SYSCTL:
+                                    case HID_USAGE_SLEEP:
+                                    case HID_USAGE_PWDOWN:
+                                    case HID_USAGE_WAKEUP:
+                                        DPRINTF(" SYSCTL=%u", bitpos);
+                                        rd->pos_sysctl = bitpos;
+                                        rd->bits_sysctl = report_size;
+                                        if (rd->bits_sysctl > 16)
+                                            rd->bits_sysctl = 16;
+                                        break;
+                                }
+                            }
+                            bitpos += report_size;
+                        }
+                        break;
+                    case HID_MAIN_ITEM_TAG_OUTPUT:
+                        DPRINTF("%.*s%s", coll_depth, spaces, "OUTPUT");
+                        // End output feature
+                        break;
+                    case HID_MAIN_ITEM_TAG_COLLECTION:
+                        DPRINTF("%.*s%s", coll_depth, spaces, "COLL");
+                        coll_depth++;
+                        break;
+                    case HID_MAIN_ITEM_TAG_FEATURE:
+                        DPRINTF("%.*s%s", coll_depth, spaces, "FEATURE");
+                        break;
+                    case HID_MAIN_ITEM_TAG_ENDCOLLECTION:
+                        coll_depth--;
+                        if (coll_depth == 0) {
+                            bitpos = 0;
+                            usage = 0;
+                            report_count = 0;
+                        }
+                        DPRINTF("%.*s%s", coll_depth, spaces, "END COLL");
+                        break;
+                }
+                usage_count = 0;
+                break;
+            case HID_ITEM_TYPE_GLOBAL:  // type 1
+                switch (tag) {
+                    case HID_GLOBAL_ITEM_TAG_USAGE_PAGE:
+                        usage_page = desc[pos];
+                        DPRINTF("%.*s%s", coll_depth, spaces, "USAGE PAGE");
+                        switch (usage_page) {
+                            case HID_USAGE_PAGE_GEN_DES:
+                                /* Mouse X, Y */
+                                DPRINTF(" Generic Desktop");
+                                break;
+                            case HID_USAGE_PAGE_GAME_CTR:
+                                DPRINTF(" Game Controller");
+                                break;
+                            case HID_USAGE_PAGE_KEYB:
+                                DPRINTF(" Keyboard");
+                                break;
+                            case HID_USAGE_PAGE_LED:
+                                DPRINTF(" LED");
+                                break;
+                            case HID_USAGE_PAGE_BUTTON:
+                                DPRINTF(" Button");
+                                break;
+                            case HID_USAGE_PAGE_CONSUMER:
+                                DPRINTF(" Consumer");
+                                break;
+                            case HID_USAGE_PAGE_BARCODE:
+                                DPRINTF(" Barcode");
+                                break;
+                        }
+                        break;
+                    case HID_GLOBAL_ITEM_TAG_LOG_MIN:
+                        DPRINTF("%.*s%s", coll_depth, spaces, "LOG MIN");
+                        break;
+                    case HID_GLOBAL_ITEM_TAG_LOG_MAX:
+                        DPRINTF("%.*s%s", coll_depth, spaces, "LOG MAX");
+                        break;
+                    case HID_GLOBAL_ITEM_TAG_PHY_MIN:
+                        DPRINTF("%.*s%s", coll_depth, spaces, "PHY MIN");
+                        break;
+                    case HID_GLOBAL_ITEM_TAG_PHY_MAX:
+                        DPRINTF("%.*s%s", coll_depth, spaces, "PHY MAX");
+                        break;
+                    case HID_GLOBAL_ITEM_TAG_UNIT_EXPONENT:
+                        DPRINTF("%.*s%s", coll_depth, spaces, "UNIT EXP");
+                        break;
+                    case HID_GLOBAL_ITEM_TAG_UNIT:
+                        DPRINTF("%.*s%s", coll_depth, spaces, "UNIT");
+                        break;
+                    case HID_GLOBAL_ITEM_TAG_REPORT_SIZE:
+                        report_size = desc[pos];  // bits per report
+                        DPRINTF("%.*s%s", coll_depth, spaces, "REP SIZE");
+                        DPRINTF("=%u bits", report_size);
+                        break;
+                    case HID_GLOBAL_ITEM_TAG_REPORT_ID:
+                        DPRINTF("%.*s%s", coll_depth, spaces, "REP ID");
+                        DPRINTF("=%u", desc[pos]);
+                        report_id = desc[pos];
+                        switch (usage_page) {
+                            case HID_USAGE_PAGE_GEN_DES:
+                                switch (usage) {
+                                    case HID_USAGE_POINTER:
+                                    case HID_USAGE_MOUSE:
+                                        rd->id_mouse = report_id;
+                                        break;
+                                    case HID_USAGE_SYSCTL:
+                                        rd->id_sysctl = report_id;
+                                        break;
+                                }
+                                break;
+                            case HID_USAGE_PAGE_CONSUMER:
+                                rd->id_consumer = report_id;
+                                break;
+                        }
+                        bitpos += 8;
+                        break;
+                    case HID_GLOBAL_ITEM_TAG_REPORT_COUNT:
+                        report_count = desc[pos];  // number of reports
+                        DPRINTF("%.*s%s", coll_depth, spaces, "REP COUNT");
+                        DPRINTF("=%u", report_count);
+                        break;
+                    case HID_GLOBAL_ITEM_TAG_PUSH:
+                        DPRINTF("%.*s%s", coll_depth, spaces, "PUSH");
+                        break;
+                    case HID_GLOBAL_ITEM_TAG_POP:
+                        DPRINTF("%.*s%s", coll_depth, spaces, "POP");
+                        break;
+                        break;
+                }
+                break;
+            case HID_ITEM_TYPE_LOCAL:  // type 2
+                switch (tag) {
+                    case HID_LOCAL_ITEM_TAG_USAGE:
+                        DPRINTF("%.*s%s", coll_depth, spaces, "USAGE");
+                        if (size == 1)
+                            usage = desc[pos];
+                        else
+                            usage = desc[pos] | (desc[pos + 1] << 8);
+                        switch (usage_page) {
+                            case HID_USAGE_PAGE_GEN_DES:
+                                switch (usage) {
+                                    case HID_USAGE_POINTER:
+                                        DPRINTF(" Pointer");
+                                        break;
+                                    case HID_USAGE_MOUSE:
+                                        DPRINTF(" Mouse");
+                                        break;
+                                    case HID_USAGE_JOYSTICK:
+                                        DPRINTF(" Joystick");
+                                        break;
+                                    case HID_USAGE_GAMEPAD:
+                                        DPRINTF(" Gamepad");
+                                        break;
+                                    case HID_USAGE_KBD:
+                                        DPRINTF(" Keyboard");
+                                        break;
+                                    case HID_USAGE_X:
+                                        DPRINTF(" X");
+                                        break;
+                                    case HID_USAGE_Y:
+                                        DPRINTF(" Y");
+                                        break;
+                                    case HID_USAGE_WHEEL:
+                                        DPRINTF(" WHEEL");
+                                        break;
+                                    case HID_USAGE_SYSCTL:
+                                        DPRINTF(" SYSCTL");
+                                        break;
+                                    case HID_USAGE_PWDOWN:
+                                        DPRINTF(" PWDOWN");
+                                        break;
+                                    case HID_USAGE_SLEEP:
+                                        DPRINTF(" SLEEP");
+                                        break;
+                                    case HID_USAGE_WAKEUP:
+                                        DPRINTF(" WAKEUP");
+                                        break;
+                                }
+                                break;
+                            case HID_USAGE_PAGE_CONSUMER:
+                                switch (usage) {
+                                    case 0x01:
+                                        DPRINTF(" Control");
+                                        break;
+                                    case HID_USAGE_AC_PAN:
+                                        DPRINTF(" AC_PAN");
+                                        break;
+                                }
+                                break;
+                        }
+                        if (coll_depth == 0) {
+                            if (rd->usage == 0)
+                                rd->usage = usage;
+                        } else {
+                            if (usage_count < ARRAY_SIZE(usage_array))
+                                usage_array[usage_count++] = usage;
+                        }
+                        break;
+                    case HID_LOCAL_ITEM_TAG_USAGE_MIN:
+                        DPRINTF("%.*s%s", coll_depth, spaces, "USAGEMIN");
+                        break;
+                    case HID_LOCAL_ITEM_TAG_USAGE_MAX:
+                        DPRINTF("%.*s%s", coll_depth, spaces, "USAGEMAX");
+                        break;
+                    case HID_LOCAL_ITEM_TAG_DESIGNATOR_INDEX:
+                        DPRINTF("%.*s%s", coll_depth, spaces, "DES INDEX");
+                        break;
+                    case HID_LOCAL_ITEM_TAG_DESIGNATOR_MIN:
+                        DPRINTF("%.*s%s", coll_depth, spaces, "DES MIN");
+                        break;
+                    case HID_LOCAL_ITEM_TAG_DESIGNATOR_MAX:
+                        DPRINTF("%.*s%s", coll_depth, spaces, "DES MAX");
+                        break;
+                    case HID_LOCAL_ITEM_TAG_STRING_INDEX:
+                    case HID_LOCAL_ITEM_TAG_STRING_MIN:
+                    case HID_LOCAL_ITEM_TAG_STRING_MAX:
+                    case HID_LOCAL_ITEM_TAG_DELIMITER:
+                        DPRINTF("%.*s%s", coll_depth, spaces, "DELIM");
+                        break;
+                        break;
+                }
+                break;
+            case HID_ITEM_TYPE_RESERVED:  // type 3
+                break;
+        }
+        DPRINTF("\n");
+        pos += size;
+    }
+}
+
+
+void timer_delay_msec(uint msec);
+#define BIT(x) (1U << (x))
+
 
 static USBH_StatusTypeDef USBH_HID_InterfaceInit_ll(USBH_HandleTypeDef *phost, uint8_t interface)
 {
@@ -152,44 +530,48 @@ static USBH_StatusTypeDef USBH_HID_InterfaceInit_ll(USBH_HandleTypeDef *phost, u
   /* Initialize hid handler */
   USBH_memset(HID_Handle, 0, sizeof(HID_HandleTypeDef));
 
-#if 1
+#if 0
+  /* pData list in reverse order */
   HID_Handle->next = phost->pActiveClass->pData;
   phost->pActiveClass->pData = HID_Handle;
 #else
-  // XXX: TEMPORARY TO DEBUG ORDER OF PDATA LIST
-  HID_HandleTypeDef *thh;
-  thh = (HID_HandleTypeDef *) phost->pActiveClass->pData;
+  /*
+   * pData list must be in insertion order because some HID devices
+   * such as the Dell USB Hub Keyboard require that interfaces be
+   * processed in order.
+   */
+  HID_HandleTypeDef *prev = (HID_HandleTypeDef *) phost->pActiveClass->pData;
 
   HID_Handle->next = NULL;
 
-  if (thh == NULL)
-      phost->pActiveClass->pData = HID_Handle;
-  else {
-    while (thh->next != NULL)
-        thh = thh->next;
-    thh->next = HID_Handle;
+  if (prev == NULL) {
+    phost->pActiveClass->pData = HID_Handle;
+  } else {
+    while (prev->next != NULL)
+        prev = prev->next;
+    prev->next = HID_Handle;
   }
 #endif
 
   HID_Handle->interface = interface;
   HID_Handle->state = HID_ERROR;
 
-  /*Decode Bootclass Protocol: Mouse or Keyboard*/
-  printf("USB%u IF=%u protocol=%u numcfg=%u\n", phost->id, interface, phost->device.CfgDesc.Itf_Desc[interface].bInterfaceProtocol, phost->device.CfgDesc.bNumInterfaces);
+  /* Decode Bootclass Protocol: Mouse or Keyboard */
   if (phost->device.CfgDesc.Itf_Desc[interface].bInterfaceProtocol == HID_KEYBRD_BOOT_CODE)
   {
-    USBH_UsrLog("USB%u.%u Keyboard device found!", phost->address, interface);
+    USBH_UsrLog("USB%u.%u Keyboard device found", phost->address, interface);
     HID_Handle->Init = USBH_HID_KeybdInit;
   }
-  else if (phost->device.CfgDesc.Itf_Desc[interface].bInterfaceProtocol  == HID_MOUSE_BOOT_CODE)
+  else if (phost->device.CfgDesc.Itf_Desc[interface].bInterfaceProtocol == HID_MOUSE_BOOT_CODE)
   {
-    USBH_UsrLog("USB%u.%u Mouse device found!", phost->address, interface);
+    USBH_UsrLog("USB%u.%u Mouse device found", phost->address, interface);
     HID_Handle->Init = USBH_HID_MouseInit;
   }
   else
   {
-    USBH_UsrLog("USB%u.%u Protocol not supported.", phost->address, interface);
-    return USBH_FAIL;
+    USBH_UsrLog("USB%u.%u Generic device found", phost->address, interface);
+    HID_Handle->Init = USBH_HID_GenericInit;
+//  return USBH_FAIL;
   }
 
   HID_Handle->state     = HID_INIT;
@@ -250,14 +632,16 @@ static USBH_StatusTypeDef USBH_HID_InterfaceInit(USBH_HandleTypeDef *phost)
 {
   uint8_t interface;
   USBH_StatusTypeDef status = USBH_FAIL;
+  USBH_StatusTypeDef t_status;
+  uint numif = phost->device.CfgDesc.bNumInterfaces;
 
-  interface = USBH_FindInterface(phost, phost->pActiveClass->ClassCode, HID_BOOT_CODE, HID_KEYBRD_BOOT_CODE);
-  if (interface < USBH_MAX_NUM_INTERFACES)
-      status = USBH_HID_InterfaceInit_ll(phost, interface);
-
-  interface = USBH_FindInterface(phost, phost->pActiveClass->ClassCode, HID_BOOT_CODE, HID_MOUSE_BOOT_CODE);
-  if (interface < USBH_MAX_NUM_INTERFACES)
-      status = USBH_HID_InterfaceInit_ll(phost, interface);
+  if (numif > USBH_MAX_NUM_INTERFACES)
+      numif = USBH_MAX_NUM_INTERFACES;
+  for (interface = 0; interface < numif; interface++) {
+      t_status = USBH_HID_InterfaceInit_ll(phost, interface);
+      if (t_status == USBH_OK)
+          status = t_status;
+  }
 
   if (status == USBH_FAIL) { /* No Valid Interface */
     USBH_DbgLog("Cannot Find the interface for %s class.", phost->pActiveClass->Name);
@@ -309,7 +693,7 @@ static USBH_StatusTypeDef USBH_HID_InterfaceDeInit(USBH_HandleTypeDef *phost)
 }
 
 /**
-  * @brief  USBH_HID_ClassRequest
+  * @brief  USBH_HID_ClassRequest_ll
   *         The function is responsible for handling Standard requests
   *         for HID class.
   * @param  phost: Host handle
@@ -340,6 +724,7 @@ static USBH_StatusTypeDef USBH_HID_ClassRequest_ll(USBH_HandleTypeDef *phost, HI
       if (USBH_HID_GetHIDReportDescriptor(phost, HID_Handle->interface, HID_Handle->HID_Desc.wItemLength) == USBH_OK)
       {
         /* The descriptor is available in phost->device.Data */
+//      USBH_HID_Process_HIDReportDescriptor(phost, HID_Handle);
         HID_Handle->ctl_state = HID_REQ_SET_IDLE;
       }
 
@@ -365,7 +750,8 @@ static USBH_StatusTypeDef USBH_HID_ClassRequest_ll(USBH_HandleTypeDef *phost, HI
 
     case HID_REQ_SET_PROTOCOL:
       /* set protocol */
-      if (USBH_HID_SetProtocol(phost, 0U) == USBH_OK)
+      status = USBH_HID_SetProtocol(phost, 0U);
+      if ((status == USBH_OK) || (status == USBH_NOT_SUPPORTED))
       {
         HID_Handle->ctl_state = HID_REQ_IDLE;
 
@@ -392,14 +778,33 @@ static USBH_StatusTypeDef USBH_HID_ClassRequest_ll(USBH_HandleTypeDef *phost, HI
   */
 static USBH_StatusTypeDef USBH_HID_ClassRequest(USBH_HandleTypeDef *phost)
 {
-  USBH_StatusTypeDef status = USBH_FAIL;
-  HID_HandleTypeDef *HID_Handle = (HID_HandleTypeDef *) phost->pActiveClass->pData;
+    static uint32_t waiting = 0;
+    uint bit = 0;
+    USBH_StatusTypeDef status;
+    HID_HandleTypeDef *HID_Handle = (HID_HandleTypeDef *) phost->pActiveClass->pData;
 
-  while (HID_Handle != NULL) {
-    status = USBH_HID_ClassRequest_ll(phost, HID_Handle);
-    HID_Handle = HID_Handle->next;
-  }
-  return status;
+    /*
+     * Serialize class requests because only one may be active
+     * on the USB host at any time.
+     */
+    while (HID_Handle != NULL) {
+        if (waiting) {
+            if (waiting & BIT(bit)) {
+                status = USBH_HID_ClassRequest_ll(phost, HID_Handle);
+                if (status == USBH_OK)
+                    waiting &= ~BIT(bit);
+            }
+        } else {
+            status = USBH_HID_ClassRequest_ll(phost, HID_Handle);
+            if (status != USBH_OK) {
+                waiting |= BIT(bit);
+                break;  // Check again later
+            }
+        }
+        bit++;
+        HID_Handle = HID_Handle->next;
+    }
+    return (waiting ? USBH_FAIL: USBH_OK);
 }
 
 static USBH_StatusTypeDef USBH_HID_Process_ll(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle)
@@ -528,17 +933,20 @@ static USBH_StatusTypeDef USBH_HID_Process_ll(USBH_HandleTypeDef *phost, HID_Han
 /**
   * @brief  USBH_HID_Process
   *         The function is for managing state machine for HID data transfers
+  *         It is the background processor for the class (BgndProcess).
   * @param  phost: Host handle
   * @retval USBH Status
   */
 static USBH_StatusTypeDef USBH_HID_Process(USBH_HandleTypeDef *phost)
 {
-  USBH_StatusTypeDef status = USBH_FAIL;
+  USBH_StatusTypeDef tstatus;
+  USBH_StatusTypeDef status = USBH_OK;
   HID_HandleTypeDef *HID_Handle = (HID_HandleTypeDef *) phost->pActiveClass->pData;
 
-  while (HID_Handle != NULL) {
-    status = USBH_HID_Process_ll(phost, HID_Handle);
-    HID_Handle = HID_Handle->next;
+  for (; HID_Handle != NULL; HID_Handle = HID_Handle->next) {
+    tstatus = USBH_HID_Process_ll(phost, HID_Handle);
+    if (status == USBH_OK)
+        status = tstatus;
   }
   return status;
 }
@@ -572,11 +980,14 @@ static USBH_StatusTypeDef USBH_HID_SOFProcess_ll(USBH_HandleTypeDef *phost, HID_
   */
 static USBH_StatusTypeDef USBH_HID_SOFProcess(USBH_HandleTypeDef *phost)
 {
-  USBH_StatusTypeDef status = USBH_FAIL;
+  USBH_StatusTypeDef tstatus;
+  USBH_StatusTypeDef status = USBH_OK;
   HID_HandleTypeDef *HID_Handle = (HID_HandleTypeDef *) phost->pActiveClass->pData;
 
   while (HID_Handle != NULL) {
-    status = USBH_HID_SOFProcess_ll(phost, HID_Handle);
+    tstatus = USBH_HID_SOFProcess_ll(phost, HID_Handle);
+    if (status == USBH_OK)
+        status = tstatus;
     HID_Handle = HID_Handle->next;
   }
   return status;
@@ -799,6 +1210,7 @@ HID_TypeTypeDef USBH_HID_GetDeviceType(USBH_HandleTypeDef *phost, uint16_t iface
 }
 
 
+#if 0
 /**
   * @brief  USBH_HID_GetPollInterval
   *         Return HID device poll time
@@ -807,6 +1219,7 @@ HID_TypeTypeDef USBH_HID_GetDeviceType(USBH_HandleTypeDef *phost, uint16_t iface
   */
 uint8_t USBH_HID_GetPollInterval(USBH_HandleTypeDef *phost)
 {
+  uint8_t interval = 0U;
   HID_HandleTypeDef *HID_Handle = (HID_HandleTypeDef *) phost->pActiveClass->pData;
 
   if ((phost->gState == HOST_CLASS_REQUEST) ||
@@ -815,13 +1228,15 @@ uint8_t USBH_HID_GetPollInterval(USBH_HandleTypeDef *phost)
       (phost->gState == HOST_CHECK_CLASS) ||
       ((phost->gState == HOST_CLASS)))
   {
-    return (uint8_t)(HID_Handle->poll);
+    while (HID_Handle != NULL) {
+      if ((interval == 0) || (interval > HID_Handle->poll))
+        interval = HID_Handle->poll;
+      HID_Handle = HID_Handle->next;
+    }
   }
-  else
-  {
-    return 0U;
-  }
+  return (interval);
 }
+#endif
 /**
   * @brief  USBH_HID_FifoInit
   *         Initialize FIFO.
@@ -962,3 +1377,150 @@ __weak void USBH_HID_EventCallback(USBH_HandleTypeDef *phost, HID_HandleTypeDef 
 */
 
 /************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/
+
+#include "config.h"
+#include "usbh_hid_mouse.h"
+
+static int
+readbits(void *ptr, uint startbit, uint bits)
+{
+    uint byte = startbit / 8;
+    uint bitoff = startbit % 8;
+    uint mask = BIT(bits) - 1;
+    uint val = ((*(uint *) ((uintptr_t) ptr + byte)) >> bitoff) & mask;
+
+    if (val & BIT(bits - 1))
+        val |= (0 - BIT(bits));  // Sign-extend negative
+
+    return (val);
+}
+
+/*
+ * readbits_joy() converts joystick values from the retronicdesign.com
+ *                Atari C64 Amiga Joystick v3.2       ID e501.0810
+ */
+static int
+readbits_joy(void *ptr, uint startbit, uint bits)
+{
+    int val = readbits(ptr, startbit, bits);
+    switch (val) {
+        case 0:
+            val = -1;
+            break;
+        case -128:
+            val = 0;
+            break;
+        case -1:
+            val = 1;
+            break;
+    }
+    return (val);
+}
+
+static uint32_t
+readbits_buttons(void *ptr, HID_RDescTypeDef *rd)
+{
+    uint button;
+    uint32_t buttons = 0;
+    uint num_buttons = rd->num_buttons;
+
+    if (num_buttons > ARRAY_SIZE(rd->pos_button))
+        num_buttons = ARRAY_SIZE(rd->pos_button);
+
+    for (button = 0; button < num_buttons; button++) {
+        if ((button < ARRAY_SIZE(rd->pos_button)) &&
+            readbits(ptr, rd->pos_button[button], 1))
+            buttons |= BIT(button);
+    }
+    return (buttons);
+}
+
+/**
+  * @brief  USBH_HID_DecodeReport
+  *         The function gets and decodes mouse and generic data.
+  * @param  phost: Host handle
+  * @retval USBH Status
+  */
+USBH_StatusTypeDef USBH_HID_DecodeReport(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle, HID_TypeTypeDef devtype, HID_MISC_Info_TypeDef *report_info)
+{
+    HID_RDescTypeDef *rd = &HID_Handle->HID_RDesc;
+    uint32_t          report_data[4];
+    uint button;
+
+    if (HID_Handle == NULL)
+        return USBH_FAIL;
+
+    if (HID_Handle->length == 0U)
+        return USBH_FAIL;
+
+    memset(&report_data, 0, sizeof (report_data));
+
+    /* Fill report */
+    if (USBH_HID_FifoRead(&HID_Handle->fifo, &report_data,
+                          HID_Handle->length) ==  HID_Handle->length) {
+        uint cur;
+        uint8_t id = report_data[0];
+        memset(report_info, 0, sizeof (*report_info));
+        report_info->usage = rd->usage;
+
+        if (((rd->id_mouse != 0) && (rd->id_mouse == id)) ||
+            ((rd->id_mouse == 0) && (devtype == HID_MOUSE))) {
+is_mouse:
+            dprintf(DF_USB_DECODE_MOUSE, "\n%08lx %08lx ",
+                    report_data[0], report_data[1]);
+
+            report_info->buttons = readbits_buttons(report_data, rd);
+            report_info->x = readbits(report_data, rd->pos_x, rd->bits_x);
+            report_info->y = readbits(report_data, rd->pos_y, rd->bits_y);
+            if (rd->bits_wheel != 0) {
+                report_info->wheel = readbits(report_data, rd->pos_wheel,
+                                              rd->bits_wheel);
+            }
+            if (rd->bits_ac_pan != 0) {
+                report_info->ac_pan = readbits(report_data, rd->pos_ac_pan,
+                                               rd->bits_ac_pan);
+            }
+        } else if ((rd->id_consumer != 0) && (rd->id_consumer == id)) {
+            dprintf(DF_USB_DECODE_MISC, "mmkey");
+            for (cur = 0; cur < rd->num_keys; cur++) {
+                if (rd->pos_key[cur] == 0)
+                    continue;
+                report_info->mm_key[cur] =
+                        readbits(report_data, rd->pos_key[cur], rd->bits_key);
+                dprintf(DF_USB_DECODE_MISC, " %x", report_info->mm_key[cur]);
+            }
+        } else if ((rd->id_sysctl != 0) && (rd->id_sysctl == id)) {
+            report_info->sysctl = readbits(report_data,
+                                           rd->pos_sysctl, rd->bits_sysctl);
+            dprintf(DF_USB_DECODE_MISC, "Sysctl %x", report_info->sysctl);
+        } else if ((rd->id_mouse == 0) && (rd->usage == HID_USAGE_MOUSE)) {
+            goto is_mouse;
+        } else if (rd->usage == HID_USAGE_GAMEPAD) {
+            dprintf(DF_USB_DECODE_JOY, "\n%08lx %08lx %08lx ",
+                    report_data[0], report_data[1], report_data[2]);
+            report_info->buttons = readbits_buttons(report_data, rd);
+            report_info->x = readbits_joy(report_data, rd->pos_x, rd->bits_x);
+            report_info->y = readbits_joy(report_data, rd->pos_y, rd->bits_y);
+        } else {
+            dprintf(DF_USB_DECODE_MISC, "ID %x", id);
+        }
+        cur = 0;
+        for (button = 0; button < rd->num_mmbuttons; button++) {
+            uint val;
+            if (id != rd->id_mmbutton[button])
+                continue;
+            val = readbits(report_data, rd->pos_mmbutton[button], 1);
+            if (val != 0) {
+                if (cur == 0)
+                    dprintf(DF_USB_DECODE_MISC, "MMKEY");
+                dprintf(DF_USB_DECODE_MISC, " %x", rd->val_mmbutton[button]);
+                report_info->mm_key[cur++] = rd->val_mmbutton[button];
+                if (cur == ARRAY_SIZE(report_info->mm_key))
+                    break;
+            }
+        }
+
+        return USBH_OK;
+    }
+    return   USBH_FAIL;
+}

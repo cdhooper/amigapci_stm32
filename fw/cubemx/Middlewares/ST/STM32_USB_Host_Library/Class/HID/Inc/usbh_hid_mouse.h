@@ -52,11 +52,14 @@ extern "C" {
 
 typedef struct _HID_MOUSE_Info
 {
-  int16_t              x;
-  int16_t              y;
-  int16_t              wheel;
-  int16_t              ac_pan;
-  uint32_t             buttons;
+  uint32_t             buttons;     // Mouse buttons
+  int16_t              x;           // Mouse X movement
+  int16_t              y;           // Mouse Y movement
+  int16_t              wheel;       // Mouse Wheel movement
+  int16_t              ac_pan;      // Mouse Left-Right movement
+  uint16_t             sysbuttons;  // System buttons (power, sleep, wake)
+  uint16_t             mm_key[2];   // Multimedia key(s)
+  uint16_t             sysctl;      // System control button(s)
 }
 HID_MOUSE_Info_TypeDef;
 
@@ -90,6 +93,7 @@ HID_MOUSE_Info_TypeDef;
   */
 USBH_StatusTypeDef USBH_HID_MouseInit(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle);
 HID_MOUSE_Info_TypeDef *USBH_HID_GetMouseInfo(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle);
+USBH_StatusTypeDef USBH_HID_GenericInit(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle);
 
 /**
   * @}

@@ -18,16 +18,18 @@
 #include "timer.h"
 #include "clock.h"
 #include "hiden.h"
+#include "joystick.h"
 #include "keyboard.h"
 #include "mouse.h"
 #include "cubeusb.h"
+#include "power.h"
 #include "usb.h"
 #include <usbh_cdc.h>  // CDC
 #include <usbh_hid.h>  // HID
 #include <usbh_msc.h>  // MSC
 #include <usbh_mtp.h>  // MTP
 #include <usbh_hub.h>  // HUB
-
+#include <usbh_hid_usage.h>  // HID_USAGE_*
 
 void otg_fs_isr(void);
 void otg_hs_ep1_out_isr(void);
@@ -113,6 +115,48 @@ static const char * const host_user_types[] = {
     "Unknown", "SELECT_CONF", "ACTIVE", "SELECTED",
     "CONNECT", "DISCONNECT", "ERROR"
 };
+
+static const char * const host_gstate_types[] = {
+    "HOST_IDLE", "HOST_DEV_WAIT_FOR_ATTACHMENT",
+        "HOST_DEV_ATTACHED", "HOST_DEV_DISCONNECTED",
+    "HOST_DETECT_DEVICE_SPEED", "HOST_ENUMERATION",
+        "HOST_CLASS_REQUEST", "HOST_INPUT",
+    "HOST_SET_CONFIGURATION", "HOST_SET_WAKEUP_FEATURE",
+        "HOST_CHECK_CLASS", "HOST_CLASS",
+    "HOST_SUSPENDED", "HOST_ABORT_STATE"
+};
+
+static const char * const host_enumstate_types[] = {
+    "ENUM_IDLE", "ENUM_GET_FULL_DEV_DESC",
+        "ENUM_SET_ADDR", "ENUM_GET_CFG_DESC",
+    "ENUM_GET_FULL_CFG_DESC", "ENUM_GET_MFC_STRING_DESC",
+        "ENUM_GET_PRODUCT_STRING_DESC", "ENUM_GET_SERIALNUM_STRING_DESC",
+};
+
+static const char * const host_requeststate_types[] = {
+    "CMD_IDLE", "CMD_SEND", "CMD_WAIT", "CMD_ERROR"
+};
+
+static const char * const host_controlstate_types[] = {
+    "CTRL_IDLE", "CTRL_SETUP",
+        "CTRL_SETUP_WAIT", "CTRL_DATA_IN",
+    "CTRL_DATA_IN_WAIT", "CTRL_DATA_OUT",
+        "CTRL_DATA_OUT_WAIT", "CTRL_STATUS_IN",
+    "CTRL_STATUS_IN_WAIT", "CTRL_STATUS_OUT",
+        "CTRL_STATUS_OUT_WAIT", "CTRL_ERROR",
+    "CTRL_STALLED", "CTRL_COMPLETE",
+};
+
+static const char * const hid_state_types[] = {
+    "INIT", "IDLE", "SEND_DATA", "BUSY",
+    "GET_DATA", "SYNC", "POLL", "ERROR"
+};
+
+static const char * const hid_ctl_state_types[] = {
+    "INIT", "IDLE", "GET_REPORT_DESC", "GET_HID_DESC",
+    "SET_IDLE", "SET_PROTOCOL", "SET_REPORT"
+};
+
 
 static uint
 get_port(USBH_HandleTypeDef *phost, uint *portdev)
@@ -249,7 +293,7 @@ static const char *const usb_class_codes[] =
 };
 
 static void
-usb_ls_classes(USBH_HandleTypeDef *phost)
+usb_ls_classes(USBH_HandleTypeDef *phost, uint verbose)
 {
     uint ifnum;
     uint numif = phost->device.CfgDesc.bNumInterfaces;
@@ -257,6 +301,7 @@ usb_ls_classes(USBH_HandleTypeDef *phost)
     uint ifsclass;
     uint ifproto;
     char *protostr;
+    char *ifsclass_str;
 
     if (numif > USBH_MAX_NUM_INTERFACES)
         numif = USBH_MAX_NUM_INTERFACES;
@@ -269,33 +314,64 @@ usb_ls_classes(USBH_HandleTypeDef *phost)
         ifsclass = phost->device.CfgDesc.Itf_Desc[ifnum].bInterfaceSubClass;
         ifproto  = phost->device.CfgDesc.Itf_Desc[ifnum].bInterfaceProtocol;
         protostr = "";
-        if (ifclass == USB_HID_CLASS) {
-            switch (ifproto) {
-                case HID_MOUSE_BOOT_CODE:
-                    protostr = "Mouse";
-                    break;
-                case HID_KEYBRD_BOOT_CODE:
-                    protostr = "Keyboard";
-                    break;
-                default:
-                    protostr = "Unknown";
-                    break;
-            }
+        ifsclass_str = "";
+        switch (ifclass) {
+            case USB_HID_CLASS:
+                switch (ifproto) {
+                    case HID_MOUSE_BOOT_CODE:
+                        protostr = "Mouse";
+                        break;
+                    case HID_KEYBRD_BOOT_CODE:
+                        protostr = "Keyboard";
+                        break;
+                    default:
+                        protostr = "Unknown";
+                        break;
+                }
+                switch (ifsclass) {
+                    case 0:
+                        ifsclass_str = "None";
+                        break;
+                    case 1:
+                        ifsclass_str = "Boot Interface";
+                        break;
+                }
+                break;
         }
-        printf("    IF %u: class=%x %s subclass=%02x protocol=%02x %s\n",
+        printf("    IF %u: class=%x %s subclass=%02x %s protocol=%02x %s\n",
                ifnum, ifclass,
                (ifclass < ARRAY_SIZE(usb_class_codes)) ?
                                      usb_class_codes[ifclass] : "Unknown",
-               ifsclass, ifproto, protostr);
-        if (ifclass == USB_HID_CLASS) {
-            HID_HandleTypeDef *HID_Handle = data;
-            for (; HID_Handle != NULL; HID_Handle = HID_Handle->next) {
-                if (HID_Handle->interface != ifnum)
-                    continue;
-                printf("          OutEp=%x InEp=%x ep=%x\n",
-                       HID_Handle->OutEp,
-                       HID_Handle->InEp,
-                       HID_Handle->ep_addr);
+               ifsclass, ifsclass_str,
+               ifproto, protostr);
+        if (verbose) {
+            switch (ifclass) {
+                case USB_HID_CLASS: {
+                    HID_HandleTypeDef *HID_Handle = data;
+                    for (; HID_Handle != NULL; HID_Handle = HID_Handle->next) {
+                        if (HID_Handle->interface != ifnum)
+                            continue;
+
+                        printf("          OutEp=%x InEp=%x state=%x %s "
+                               "ctl_state=%x %s\n",
+                               HID_Handle->OutEp, HID_Handle->InEp,
+                               HID_Handle->state,
+                               (HID_Handle->state <
+                                ARRAY_SIZE(hid_state_types)) ?
+                               hid_state_types[HID_Handle->state] : "Unknown",
+                               HID_Handle->ctl_state,
+                               (HID_Handle->ctl_state <
+                                ARRAY_SIZE(hid_ctl_state_types)) ?
+                               hid_ctl_state_types[HID_Handle->ctl_state] :
+                               "Unknown");
+                        printf("          timer=%lx dataready=%x idmouse=%x "
+                               "idconsumer=%x idsysctl=%x\n",
+                               HID_Handle->timer, HID_Handle->DataReady,
+                               HID_Handle->HID_RDesc.id_mouse,
+                               HID_Handle->HID_RDesc.id_consumer,
+                               HID_Handle->HID_RDesc.id_sysctl);
+                    }
+                }
             }
         }
     }
@@ -325,19 +401,38 @@ usb_ls(uint verbose)
             printf("%s: %s", phost->device.manufacturer_string,
                    phost->device.product_string);
 
-            printf("\n          class=%x %s gstate=%x estate=%x ifs=%u ",
+            printf("\n          class=%x %s",
                    (cl == NULL) ? 0 : cl->ClassCode,
-                   (cl == NULL) ? "?" : cl->Name,
-                   phost->gState, phost->EnumState,
-                   phost->device.CfgDesc.bNumInterfaces);
-            printf("rstate=%x hub=%x hubifs=%x",
-                   phost->RequestState,
-                   phost->hub,
-                   phost->interfaces);
-            if (phost->busy)
-                printf(" busy");
+                   (cl == NULL) ? "?" : cl->Name);
+            if (verbose) {
+                printf(" gstate=%x %s",
+                       phost->gState,
+                       (phost->gState < ARRAY_SIZE(host_gstate_types)) ?
+                       host_gstate_types[phost->gState] : "Unknown");
+                printf(" rstate=%x %s",
+                       phost->RequestState,
+                       (phost->RequestState <
+                        ARRAY_SIZE(host_requeststate_types)) ?
+                       host_requeststate_types[phost->RequestState] :
+                       "Unknown");
+                printf("\n          estate=%x %s",
+                       phost->EnumState,
+                       (phost->EnumState < ARRAY_SIZE(host_enumstate_types)) ?
+                       host_enumstate_types[phost->EnumState] : "Unknown");
+                printf(" ifs=%u hub=%x hubifs=%x",
+                       phost->device.CfgDesc.bNumInterfaces,
+                       phost->hub, phost->interfaces);
+                printf("\n          ctlstate=%x %s",
+                       phost->Control.state,
+                       (phost->Control.state <
+                        ARRAY_SIZE(host_controlstate_types)) ?
+                       host_controlstate_types[phost->Control.state] :
+                       "Unknown");
+                if (phost->busy)
+                    printf(" busy");
+            }
             printf("\n");
-            usb_ls_classes(phost);
+            usb_ls_classes(phost, verbose);
         }
     }
 }
@@ -348,11 +443,21 @@ USBH_HID_EventCallback(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle)
     uint devnum;
     uint port = get_port(phost, &devnum);
     HID_TypeTypeDef devtype = USBH_HID_GetDeviceType(phost, HID_Handle->interface);
-    if (devtype == HID_MOUSE) {  // Mouse
-        HID_MOUSE_Info_TypeDef *info;
-        info = USBH_HID_GetMouseInfo(phost, HID_Handle);  // Get the info
-        mouse_action(info->x, info->y, -info->wheel, info->ac_pan,
-                     info->buttons);
+    if ((devtype == HID_MOUSE) || (devtype == HID_UNKNOWN)) {
+        /* Mouse or Generic HID (refer to the HID report descriptor) */
+        HID_MISC_Info_TypeDef info;
+        if (USBH_HID_DecodeReport(phost, HID_Handle, devtype, &info) != USBH_OK)
+            return;
+        if ((info.usage == HID_USAGE_GAMEPAD) ||
+            (info.usage == HID_USAGE_JOYSTICK)) {
+            joystick_action(info.y < 0, info.y > 0, info.x < 0, info.x > 0,
+                            info.buttons);
+        } else {
+            mouse_action(info.x, info.y, -info.wheel, info.ac_pan,
+                         info.buttons);
+            keyboard_usb_input_mm(info.mm_key, ARRAY_SIZE(info.mm_key));
+            power_sysctl(info.sysctl);
+        }
     } else if (devtype == HID_KEYBOARD) {  // Keyboard
         HID_KEYBD_Info_TypeDef *kinfo;
         kinfo = USBH_HID_GetKeybdInfo(phost, HID_Handle);  // get the info
@@ -382,8 +487,6 @@ USBH_HID_EventCallback(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle)
 static void
 handle_dev(USBH_HandleTypeDef *phost, uint port, uint devnum)
 {
-    HID_HandleTypeDef *HID_Handle;
-    HID_Handle = (HID_HandleTypeDef *) phost->pActiveClass->pData;
     uint iface;
     uint numif = phost->device.CfgDesc.bNumInterfaces;
     uint devtype;
@@ -411,6 +514,9 @@ handle_dev(USBH_HandleTypeDef *phost, uint port, uint devnum)
         usbdev[port][devnum].appstate = APPLICATION_RUNNING;
     }
 
+#if 0
+    HID_HandleTypeDef *HID_Handle;
+    HID_Handle = (HID_HandleTypeDef *) phost->pActiveClass->pData;
     if (usbdev[port][devnum].appstate == APPLICATION_RUNNING) {
         for (iface = 0; iface < numif; iface++) {
             devtype = USBH_HID_GetDeviceType(phost, iface);
@@ -430,6 +536,7 @@ handle_dev(USBH_HandleTypeDef *phost, uint port, uint devnum)
             }
         }
     }
+#endif
 }
 
 /**
@@ -485,7 +592,6 @@ hub_process(uint port)
             case 0:  // Not valid
                 break;
             case 1:
-// printf("p[%u,%u]", port, cur[port]);
                 host_switch_to_dev(phost);
                 USBH_Process(phost);
                 break;
@@ -500,7 +606,6 @@ hub_process(uint port)
                        phost->valid, port, cur[port]);
                 break;
         }
-
 #if 0
         if ((phost->valid == 1) && (phost->busy == 0)) {
             HID_MOUSE_Info_TypeDef *minfo;
@@ -520,52 +625,6 @@ hub_process(uint port)
 
     if (++cur[port] >= MAX_HUB_PORTS + 1)
         cur[port] = 0;
-
-#ifdef NOT
-    uint count;
-    static uint8_t current_loop = -1;
-    static USBH_HandleTypeDef *_phost = 0;
-
-    if (_phost != NULL && _phost->valid == 1) {
-        USBH_Process(_phost);
-
-        if (_phost->busy)
-            return;
-    }
-
-    for (count = 0; count < ARRAY_SIZE(hUSBHost); count++) {
-        if (++current_loop > ARRAY_SIZE(hUSBHost))
-            current_loop = 0;
-
-        if (hUSBHost[current_loop].valid) {
-            _phost = &hUSBHost[current_loop];
-            host_switch_to_dev(_phost);
-
-            if (_phost->valid == 3) {
-                LOG("PROCESSING ATTACH %d", _phost->address);
-                _phost->valid = 1;
-                _phost->busy  = 1;
-            }
-            break;
-        }
-    }
-    if (count == ARRAY_SIZE(hUSBHost))
-        return;
-
-    if (_phost != NULL && _phost->valid) {
-        HID_MOUSE_Info_TypeDef *minfo;
-        minfo = USBH_HID_GetMouseInfo(_phost);
-        if (minfo != NULL) {
-            LOG("BUTTON %d", minfo->buttons[0]);
-        } else {
-            HID_KEYBD_Info_TypeDef *kinfo;
-            kinfo = USBH_HID_GetKeybdInfo(_phost);
-            if (kinfo != NULL) {
-                LOG("KEYB %d", kinfo->keys[0]);
-            }
-        }
-    }
-#endif
 }
 
 #if 0

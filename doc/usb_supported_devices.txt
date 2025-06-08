@@ -20,13 +20,19 @@ USB Mouse
     Logitech M510 wireless mouse 5-button version through unifying receiver
         ID 046d:c52b Logitech, Inc. Unifying Receiver
         Side buttons are B3 and B4
+    Kensington Technology Group K64325 Expert Mouse (trackball)
+        ID 047d:1020 Kensington Expert Mouse
+        Four buttons
 
 USB Hub Keyboard
     ***
-    *** BEC firmware needs improvements for hotplug)
+    *** BEC firmware needs improvements for USB hotplug)
     ***
     Dell UD0003-DEL5
         ID 413c:2011 Dell Computer Corp. Multimedia Pro Keyboard
+        Multimedia keys present as 1-bit USAGEs, which have Consumer
+            Controls defined in the HID report descriptor.
+            224 225 226 227 223 18a 194 192 b5 b6 cd bc 183
 
 USB Keyboard
     Acer Scorpius=M11SFL
@@ -43,6 +49,11 @@ USB Keyboard
             USB1.0.1 type ff Unknown
     WASD Model V3 custom keyboard
         ID 0c45:7692 Microdia USB Keyboard
+    Logitech K360 wireless keyboard
+        ID 046d:c52b Logitech, Inc. Unifying Receiver
+        Multimedia keys present as USAGE Consumer Control, two 16-bit entries
+            which correspond to one or two Consumer Page codes as the keys
+            are pressed.
 
 USB Keyboard / Mouse adapter
     Dual PS/2 to USB adapter PCP-BCG4209
@@ -61,10 +72,18 @@ PS/2 Mouse/Keyboard combination
     Lantronix SpiderDuo KVM
         PS/2 keybonad and mouse ports through PCP-BCG4209
 
+USB Gamepad / Joystick
+    Retronic Design Universal Retro Joystick Adapter
+        ID e501:0810 retronicdesign.com Atari C64 Amiga Joystick v3.2
+    Mayflash Arcade Stick F500 Elite
+        ID 054c:0cda Sony Interactive Entertainment Controller
+        ID 20d6:a713 UNIVERSAL ARCADE FIGHTSTICK F500 ELITE
+        ID 2f24:00ae UNIVERSAL ARCADE FIGHTSTICK F500 ELITE
+
 =========================================================================
 
 Not working
-==============
+===========
 USB Hub Keyboard
     Apple wired keyboard A1243
         ID 05ac:1006 Apple, Inc. Hub in Aluminum Keyboard
@@ -79,3 +98,15 @@ USB Hub Keyboard
             HUB shows up, but keyboard appears as 0000.0000, class 0
         If PS/2 is connected direct to USB port, it shows as 04b4.0101,
             but class is 0 and product string is blank.
+
+USB Gamepad / Joystick
+    NVIDIA Shield P2920 game controller
+        ID 0955:7214 NVIDIA Controller v01.04
+        When plugged in, gets identified as a game controller, but
+        no events come in.
+    EasySMX 2.4G Wireless Controller ESM-9013
+        ID 057e:2009 PC USB CONTROLLER 1.07
+        ID 045e:028e Microsoft Corp. Xbox360 Controller
+        ID 057e:2009 Nintendo Co., Ltd Switch Pro Controller
+        Wireless USB device responds, but no events come in.
+        USB port stuck in CTRL_SETUP_WAIT

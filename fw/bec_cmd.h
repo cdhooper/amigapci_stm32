@@ -36,10 +36,12 @@
 #define BEC_CMD_UPTIME       0x03  // Send STM32 uptime in microseconds (64-bit)
 #define BEC_CMD_TESTPATT     0x05  // Send test pattern
 #define BEC_CMD_LOOPBACK     0x06  // Reply with (exact) sent message
-#define BEC_CMD_SET          0x07  // Set config value (options in high bits)
-#define BEC_CMD_GET          0x08  // Get config value (options in high bits)
-#define BEC_CMD_CONS_OUTPUT  0x09  // Receive STM32 console output
-#define BEC_CMD_CONS_INPUT   0x0a  // Send STM32 console input keystrokes
+#define BEC_CMD_CONS_OUTPUT  0x07  // Receive STM32 console output
+#define BEC_CMD_CONS_INPUT   0x08  // Send STM32 console input keystrokes
+#define BEC_CMD_SET          0x09  // Set config value
+#define BEC_CMD_GET          0x0a  // Get config value
+#define BEC_CMD_SET_MAP      0x0b  // Set map (keyboard, mouse, etc, macros)
+#define BEC_CMD_GET_MAP      0x0c  // Get map (keyboard, mouse, etc, macros)
 
 /* Status codes returned by AmigaPCI STM32 */
 #define BEC_STATUS_OK        0x00  // Success
@@ -55,19 +57,33 @@
 #define BEC_STATUS_REPLYLEN  0x0a  // Response message is too long
 #define BEC_STATUS_REPLYCRC  0x0a  // Response message has bad CRC
 
-typedef struct {
-    uint16_t bec_version[2];       // BEC firmware version    (major-minor)
-    uint8_t  bec_date[4];          // BEC firmware build date (cc-yy-mm-dd)
-    uint8_t  bec_time[4];          // BEC firmware build time (hh-mm-ss-00)
-    char     bec_serial[24];       // BEC serial number
-    uint16_t bec_features;         // Available features
-    uint16_t bec_rev;              // Protocol revision (00.01)
-    char     bec_name[16];         // Unique name for this board
-    uint8_t  bec_unused[24];       // Unused space
-} bec_id_t;
-
 #define BEC_MSG_HDR_LEN 8
 #define BEC_MSG_CRC_LEN 8
+
+typedef struct {
+    uint16_t bid_version[2];       // BEC firmware version    (major-minor)
+    uint8_t  bid_date[4];          // BEC firmware build date (cc-yy-mm-dd)
+    uint8_t  bid_time[4];          // BEC firmware build time (hh-mm-ss-00)
+    char     bid_serial[24];       // BEC serial number
+    uint16_t bid_features;         // Available features
+    uint16_t bid_rev;              // Protocol revision (00.01)
+    char     bid_name[16];         // Unique name for this board
+    uint8_t  bid_unused[24];       // Unused space
+} bec_id_t;
+
+typedef struct {
+    uint8_t  bkm_which;            // Which keymap (see BKM_WHICH_*)
+    uint8_t  bkm_start;            // First entry number
+    uint8_t  bkm_len;              // Size of single entry
+    uint8_t  bkm_count;            // Count of entries (0 = no entries)
+} bec_keymap_t;
+
+#define BKM_WHICH_KEYMAP       0x01
+#define BKM_WHICH_MODKEYMAP    0x02
+#define BKM_WHICH_BUTTONMAP    0x03
+#define BKM_WHICH_SCROLLMAP    0x04
+#define BKM_WHICH_JBUTTONMAP   0x05
+#define BKM_WHICH_JDIRECTMAP   0x06
 
 #endif  /* _BEC_CMD_H */
 

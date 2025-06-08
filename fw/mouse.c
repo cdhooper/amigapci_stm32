@@ -14,7 +14,6 @@
 #include "main.h"
 #include "config.h"
 #include "mouse.h"
-#include "mouse.h"
 #include "gpio.h"
 #include "printf.h"
 #include "timer.h"
@@ -26,15 +25,20 @@
 #define B1_GPIO ADDR32(BND_IO(PotY_PORT + GPIO_ODR_OFFSET, low_bit(PotY_PIN)))
 #define B2_GPIO ADDR32(BND_IO(PotX_PORT + GPIO_ODR_OFFSET, low_bit(PotX_PIN)))
 
+#define BACK_GPIO ADDR32(BND_IO(BACK_PORT + GPIO_ODR_OFFSET, low_bit(BACK_PIN)))
+#define RIGHT_GPIO ADDR32(BND_IO(RIGHT_PORT + GPIO_ODR_OFFSET, \
+                          low_bit(RIGHT_PIN)))
+#define FORWARD_GPIO ADDR32(BND_IO(FORWARD_PORT + GPIO_ODR_OFFSET, \
+                                   low_bit(FORWARD_PIN)))
+#define LEFT_GPIO ADDR32(BND_IO(LEFT_PORT + GPIO_ODR_OFFSET, low_bit(LEFT_PIN)))
+
 /* X is Down/Right */
-#define QX0_GPIO ADDR32(BND_IO(BACK_PORT + GPIO_ODR_OFFSET, low_bit(BACK_PIN)))
-#define QX1_GPIO ADDR32(BND_IO(RIGHT_PORT + GPIO_ODR_OFFSET, \
-                        low_bit(RIGHT_PIN)))
+#define QX0_GPIO BACK_GPIO
+#define QX1_GPIO RIGHT_GPIO
 
 /* Y is Up/Left */
-#define QY0_GPIO ADDR32(BND_IO(FORWARD_PORT + GPIO_ODR_OFFSET, \
-                               low_bit(FORWARD_PIN)))
-#define QY1_GPIO ADDR32(BND_IO(LEFT_PORT + GPIO_ODR_OFFSET, low_bit(LEFT_PIN)))
+#define QY0_GPIO FORWARD_GPIO
+#define QY1_GPIO LEFT_GPIO
 
 static const uint8_t quad0[] = { 0, 0, 1, 1 };
 static const uint8_t quad1[] = { 0, 1, 1, 0 };
@@ -45,22 +49,25 @@ static volatile int mouse_x;
 static volatile int mouse_y;
 uint32_t mouse_buttons_add;
 
-static void
-mouse_inject_keystrokes(uint32_t macro, uint is_pressed)
+/*
+ * mouse_put_macro() sets a mouse button or joystick direction or sends
+ *                   a keyboard macro sequence.
+ *
+ * Values
+ *    0 Left Mouse button
+ *    1 Right Mouse button
+ *    2 Middle Mouse button
+ *    4 Fourth Mouse button keystroke
+ *    6 Joystick up
+ *    7 Joystick down
+ *    8 Joystick left
+ *    9 Joystick right
+ *  >15 Keyboard macro (up to 4 keys may be sent)
+ */
+void
+mouse_put_macro(uint32_t macro, uint is_pressed, uint was_pressed)
 {
-    uint32_t val;
-    for (val = macro; val != 0; val >>= 8) {
-        if (is_pressed)
-            amiga_keyboard_put(val);
-        else
-            amiga_keyboard_put(val | 0x80);
-    }
-}
-
-static void
-mouse_inject(uint32_t bmapped, uint is_pressed, uint was_pressed)
-{
-    switch (bmapped) {
+    switch (macro) {
         case 0:
             *B0_GPIO = !is_pressed;
             break;
@@ -72,16 +79,34 @@ mouse_inject(uint32_t bmapped, uint is_pressed, uint was_pressed)
             break;
         case 3:
             if (was_pressed != is_pressed)
-                mouse_inject_keystrokes(NM_BUTTON_FOURTH, is_pressed);
+                keyboard_put_macro(NM_BUTTON_FOURTH, is_pressed);
+            break;
+        case 6:  // Joystick up
+            *BACK_GPIO = !is_pressed;
+            break;
+        case 7:  // Joystick down
+            *FORWARD_GPIO = !is_pressed;
+            break;
+        case 8:  // Joystick left
+            *LEFT_GPIO = !is_pressed;
+            break;
+        case 9:  // Joystick right
+            *RIGHT_GPIO = !is_pressed;
             break;
         default:
-            if ((bmapped >= 0x10) && (was_pressed != is_pressed)) {
+            if ((macro >= 0x10) && (was_pressed != is_pressed)) {
                 /* Button mapped to between one and four Keystrokes */
-                mouse_inject_keystrokes(bmapped, is_pressed);
+                keyboard_put_macro(macro, is_pressed);
             }
     }
-    if (is_pressed && (bmapped < 0x10))
-        dprintf(DF_USB_MOUSE | DF_AMIGA_MOUSE, "B%lx", bmapped);
+    if (config.debug_flag & (DF_USB_MOUSE | DF_AMIGA_MOUSE |
+                             DF_AMIGA_JOYSTICK)) {
+        if (is_pressed && (macro < 10)) {
+            if (macro < 5)
+                putchar('B');
+            putchar("012345UDLR"[macro]);
+        }
+    }
 }
 
 /*
@@ -96,10 +121,10 @@ mouse_inject(uint32_t bmapped, uint is_pressed, uint was_pressed)
 void
 mouse_action(int off_x, int off_y, int off_wheel, int off_pan, uint32_t buttons)
 {
-    static uint8_t button_was_pressed[16];
+    static uint32_t last_buttons;
     static int last_wheel;
     static int last_pan;
-    uint b;
+    uint32_t macro;
 
     if (config.debug_flag & DF_USB_MOUSE) {
         printf(" ");
@@ -137,19 +162,17 @@ mouse_action(int off_x, int off_y, int off_wheel, int off_pan, uint32_t buttons)
 
     /* Up/down wheel */
     if (off_wheel != last_wheel) {
-        uint32_t macro;
-
         macro = config.scrollmap[0] ? config.scrollmap[0] : NM_WHEEL_UP;
         if (last_wheel < 0)
-            mouse_inject(macro, 0, 1);
+            mouse_put_macro(macro, 0, 1);
         if (off_wheel < 0)
-            mouse_inject(macro, 1, 0);
+            mouse_put_macro(macro, 1, 0);
 
         macro = config.scrollmap[1] ? config.scrollmap[1] : NM_WHEEL_DOWN;
         if (last_wheel > 0)
-            mouse_inject(macro, 0, 1);
+            mouse_put_macro(macro, 0, 1);
         if (off_wheel > 0)
-            mouse_inject(macro, 1, 0);
+            mouse_put_macro(macro, 1, 0);
 
         /*
          * Update last_wheel if we want keystroke-like behavior
@@ -164,19 +187,17 @@ mouse_action(int off_x, int off_y, int off_wheel, int off_pan, uint32_t buttons)
 
     /* Left/right pan */
     if (off_pan != last_pan) {
-        uint32_t macro;
-
         macro = config.scrollmap[2] ? config.scrollmap[2] : NM_WHEEL_LEFT;
         if (last_pan < 0)
-            mouse_inject(macro, 0, 1);
+            mouse_put_macro(macro, 0, 1);
         if (off_pan < 0)
-            mouse_inject(macro, 1, 0);
+            mouse_put_macro(macro, 1, 0);
 
         macro = config.scrollmap[3] ? config.scrollmap[3] : NM_WHEEL_RIGHT;
         if (last_pan > 0)
-            mouse_inject(macro, 0, 1);
+            mouse_put_macro(macro, 0, 1);
         if (off_pan > 0)
-            mouse_inject(macro, 1, 0);
+            mouse_put_macro(macro, 1, 0);
 
         /* Update last_pan if we want keystroke-like behavior */
         if (config.flags & CF_MOUSE_KEYUP_WP)
@@ -184,18 +205,23 @@ mouse_action(int off_x, int off_y, int off_wheel, int off_pan, uint32_t buttons)
     }
 
     buttons |= mouse_buttons_add;
-    hiden_set(1);
 
-    for (b = 0; b < ARRAY_SIZE(config.buttonmap); b++) {
-        uint32_t bmapped = config.buttonmap[b];
-        uint     is_pressed = (buttons & BIT(b)) ? 1 : 0;
-        if (bmapped == 0)
-            bmapped = b;  // Not reassigned: default this button to itself
-        else if (bmapped <= 8)
-            bmapped--;
-        mouse_inject(bmapped, is_pressed, button_was_pressed[b]);
-        button_was_pressed[b] = is_pressed;
+    if (buttons != last_buttons) {
+        uint bit;
+        for (bit = 0; bit < ARRAY_SIZE(config.buttonmap); bit++) {
+            uint     is_pressed  = (buttons & BIT(bit)) ? 1 : 0;
+            uint     was_pressed = (last_buttons & BIT(bit)) ? 1 : 0;
+            macro = config.buttonmap[bit];
+            if (macro == 0)
+                macro = bit;  // Not reassigned: default this button to itself
+            else if (macro <= 4)
+                macro--;
+            if (is_pressed != was_pressed)
+                mouse_put_macro(macro, is_pressed, was_pressed);
+        }
+        last_buttons = buttons;
     }
+    hiden_set(1);
 }
 
 static void

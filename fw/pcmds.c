@@ -573,7 +573,10 @@ cmd_usb(int argc, char * const *argv)
             return (RC_BAD_PARAM);
         }
     } else if (strcmp(argv[1], "ls") == 0) {
-        usb_ls(0);
+        uint verbose = 0;
+        if ((argc >= 3) && (strncmp(argv[2], "verbose", 1) == 0))
+            verbose++;
+        usb_ls(verbose);
     } else if (strcmp(argv[1], "off") == 0) {
         usb_set_power(0);
     } else if (strcmp(argv[1], "on") == 0) {
@@ -682,9 +685,9 @@ cmd_gpio(int argc, char * const *argv)
 }
 
 static const char *const debug_flag_bits[] = {
-    "RTC", "AmigaKeyboard", "AmigaMouse", "",
+    "RTC", "AmigaKeyboard", "AmigaMouse", "AmigaJoystick",
         "USB", "USBConn", "USBKeyboard", "USBMouse",
-    "USBMouseRPT", "", "", "",
+    "USBReport", "DecodeMisc", "DecodeMouse", "DecodeJoystick",
         "", "", "", "",
     "", "", "", "",
         "", "", "", "",
@@ -855,7 +858,7 @@ cmd_set(int argc, char * const *argv)
                    "specify all bit numbers or names\n");
             for (bit = 0; bit < 32; bit++)
                 if (debug_flag_bits[bit][0] != '\0')
-                    printf(" %c %2u  %s\n",
+                    printf("  %c %x  %s\n",
                            config.debug_flag & BIT(bit) ? '*' : ' ',
                            bit, debug_flag_bits[bit]);
             printf("Current debug %08lx  ", config.debug_flag);

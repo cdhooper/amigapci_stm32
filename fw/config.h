@@ -15,11 +15,15 @@
 #define DF_RTC              0x00000001  // Real-Time Clock
 #define DF_AMIGA_KEYBOARD   0x00000002  // Amiga keyboard
 #define DF_AMIGA_MOUSE      0x00000004  // Amiga mouse
+#define DF_AMIGA_JOYSTICK   0x00000008  // Amiga joystick
 #define DF_USB              0x00000010  // USB configuration (noisy)
 #define DF_USB_CONN         0x00000020  // USB connect/disconnect
 #define DF_USB_KEYBOARD     0x00000040  // USB keyboard
 #define DF_USB_MOUSE        0x00000080  // USB mouse
-#define DF_USB_MOUSE_RPT    0x00000100  // USB mouse report descriptor
+#define DF_USB_REPORT       0x00000100  // USB HID report descriptor
+#define DF_USB_DECODE_MISC  0x00000200  // USB HID decode miscellaneous
+#define DF_USB_DECODE_MOUSE 0x00000400  // USB HID decode mouse
+#define DF_USB_DECODE_JOY   0x00000800  // USB HID decode joystick
 
 #define CF_MOUSE_INVERT_X   0x00000001  // Intert mouse X axis
 #define CF_MOUSE_INVERT_Y   0x00000002  // Invert mouse Y axis
@@ -30,29 +34,31 @@
 #define CF_MOUSE_KEYUP_WP   0x00000040  // Send key released for wheel / pan
 
 typedef struct {
-    uint32_t    magic;         // Structure magic
-    uint32_t    crc;           // Structure CRC
-    uint16_t    size;          // Structure size in bytes
-    uint8_t     valid;         // Structure record is valid
-    uint8_t     version;       // Structure version
-    char        name[32];      // Unique name for this board
-    uint32_t    keymap[256];   // USB key mappings to Amiga keys
-    uint32_t    modkeymap[8];  // USB modifier key mappings to Amiga keys
-    uint8_t     led_level;     // Power LED brightness (0 to 100)
-    uint8_t     ps_on_mode;    // Power supply on at AC restored
-    uint8_t     fan_speed;     // Fan speed percent (bit 7 = auto)
-    uint8_t     fan_speed_min; // Fan (auto) speed at minimum temperature
-    uint8_t     fan_temp_max;  // Temperature (C) for maximum fan speed
-    uint8_t     fan_temp_min;  // Temperature (C) for minimum fan speed
-    uint16_t    fan_rpm_max;   // Fan maximum RPM
-    uint32_t    debug_flag;    // Debug flags (see DF_* above)
-    int8_t      cpu_temp_bias; // CPU temperature bias
-    uint8_t     board_rev;     // Board revision, for board-specific changes
-    uint8_t     unused1[2];    // Unused
-    uint32_t    buttonmap[16]; // Mouse button mappings
-    uint32_t    scrollmap[4];  // Mouse scroll wheel mappings (U,D,L,R)
-    uint32_t    flags;         // Runtime flags
-    uint8_t     unused[848];   // Unused
+    uint32_t    magic;          // Structure magic
+    uint32_t    crc;            // Structure CRC
+    uint16_t    size;           // Structure size in bytes
+    uint8_t     valid;          // Structure record is valid
+    uint8_t     version;        // Structure version
+    char        name[32];       // Unique name for this board
+    uint32_t    keymap[256];    // USB key mappings to Amiga keys
+    uint32_t    modkeymap[8];   // USB modifier key mappings to Amiga keys
+    uint8_t     led_level;      // Power LED brightness (0 to 100)
+    uint8_t     ps_on_mode;     // Power supply on at AC restored
+    uint8_t     fan_speed;      // Fan speed percent (bit 7 = auto)
+    uint8_t     fan_speed_min;  // Fan (auto) speed at minimum temperature
+    uint8_t     fan_temp_max;   // Temperature (C) for maximum fan speed
+    uint8_t     fan_temp_min;   // Temperature (C) for minimum fan speed
+    uint16_t    fan_rpm_max;    // Fan maximum RPM
+    uint32_t    debug_flag;     // Debug flags (see DF_* above)
+    int8_t      cpu_temp_bias;  // CPU temperature bias
+    uint8_t     board_rev;      // Board revision, for board-specific changes
+    uint8_t     unused1[2];     // Unused
+    uint32_t    buttonmap[16];  // Mouse button mappings
+    uint32_t    jbuttonmap[16]; // Joystick button mappings
+    uint32_t    jdirectmap[4];  // Joystick direction mappings (U, D, L, R)
+    uint32_t    scrollmap[4];   // Mouse scroll wheel mappings (U, D, L, R)
+    uint32_t    flags;          // Runtime flags
+    uint8_t     unused[768];    // Unused
 } config_t;
 
 extern config_t config;

@@ -572,12 +572,12 @@ bec_identify(void)
     if (flag_quiet == 0) {
         printf("ID\n");
         printf("  APCTrL %u.%u built %02u%02u-%02u-%02u %02u:%02u:%02u\n",
-               id.bec_version[0], id.bec_version[1],
-               id.bec_date[0], id.bec_date[1],
-               id.bec_date[2], id.bec_date[3],
-               id.bec_time[0], id.bec_time[1], id.bec_time[2]);
+               id.bid_version[0], id.bid_version[1],
+               id.bid_date[0], id.bid_date[1],
+               id.bid_date[2], id.bid_date[3],
+               id.bid_time[0], id.bid_time[1], id.bid_time[2]);
         printf("   Serial \"%s\"  Name \"%s\"\n",
-               id.bec_serial, id.bec_name);
+               id.bid_serial, id.bid_name);
     }
 
     usecs = bec_time();
@@ -868,8 +868,8 @@ bec_test_commands(void)
     /* BEC_CMD_ID */
     bec_id_t id;
     rc = send_cmd(BEC_CMD_ID, NULL, 0, &id, sizeof (id), &rlen);
-    if ((rc != 0) || (id.bec_rev != 0x0001)) {
-        printf("FAIL: ID Rev=%04x (%s)\n", id.bec_rev, bec_err(rc));
+    if ((rc != 0) || (id.bid_rev != 0x0001)) {
+        printf("FAIL: ID Rev=%04x (%s)\n", id.bid_rev, bec_err(rc));
         errs++;
     }
 

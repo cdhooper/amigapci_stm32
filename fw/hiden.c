@@ -16,6 +16,7 @@
 #include "hiden.h"
 #include "timer.h"
 #include "usb.h"
+#include "gpio.h"
 
 uint8_t hiden_is_set;
 static uint64_t hiden_timeout;
@@ -47,6 +48,11 @@ hiden_poll(void)
 //          printf("Auto ");
             hiden_set(0);
             hiden_timeout = 0;
+
+            /* Reset mouse / pins */
+            gpio_setv(FORWARD_PORT, FORWARD_PIN | BACK_PIN | LEFT_PIN |
+                                    RIGHT_PIN | FIRE_PIN, 1);
+            gpio_setv(PotX_PORT, PotX_PIN | PotY_PIN, 1);
         }
     }
 }

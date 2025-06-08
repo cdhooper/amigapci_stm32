@@ -41,6 +41,7 @@ static volatile uint8_t ak_ctrl_amiga_amiga;
 uint8_t amiga_keyboard_sent_wake;
 uint8_t amiga_keyboard_has_sync;
 uint8_t amiga_keyboard_lost_sync;
+uint8_t keyboard_raw_mode;   // Send USB keystrokes through unaltered
 
 /* Amiga scancodes */
                                // Shifted Unshifted
@@ -111,7 +112,11 @@ uint8_t amiga_keyboard_lost_sync;
 #define AS_RETURN      (0x44)  // Carriage Return
 #define AS_ESC         (0x45)  // ESC
 #define AS_DELETE      (0x46)  // Delete
+#define AS_INSERT      (0x47)  // Insert       (not on classic keyboards)
+#define AS_PAGEUP      (0x48)  // Page Up      (not on classic keyboards)
+#define AS_PAGEDOWN    (0x49)  // Page Down    (not on classic keyboards)
 #define AS_KPMINUS     (0x4a)  // Keypad '-'
+#define AS_F11         (0x4b)  // F11          (not on classic keyboards)
 #define AS_UP          (0x4c)  // Cursor Up
 #define AS_DOWN        (0x4d)  // Cursor Down
 #define AS_RIGHT       (0x4e)  // Cursor Right
@@ -130,7 +135,7 @@ uint8_t amiga_keyboard_lost_sync;
 #define AS_KP_RPAREN   (0x5b)  // Keypad ')'
 #define AS_KPSLASH     (0x5c)  // Keypad '/'
 #define AS_KPASTERISK  (0x5d)  // Keypad '*'
-#define AS_KPPLUS      (0x63)  // Keypad '+'
+#define AS_KPPLUS      (0x5e)  // Keypad '+'
 #define AS_HELP        (0x5f)  // Help
 #define AS_LEFTSHIFT   (0x60)  // Left Shift
 #define AS_RIGHTSHIFT  (0x61)  // Right Shift
@@ -140,7 +145,23 @@ uint8_t amiga_keyboard_lost_sync;
 #define AS_RIGHTALT    (0x65)  // Right Alt
 #define AS_LEFTAMIGA   (0x66)  // Left Amiga
 #define AS_RIGHTAMIGA  (0x67)  // Right Amiga
+#define AS_MENU        (0x6b)  // Menu         (not on classic keyboards)
+#define AS_PRINTSCR    (0x6d)  // Print screen (not on classic keyboards)
+#define AS_BREAK       (0x6e)  // Break        (not on classic keyboards)
+#define AS_F12         (0x6f)  // F12          (not on classic keyboards)
+#define AS_HOME        (0x70)  // Home         (not on classic keyboards)
+#define AS_END         (0x71)  // End          (not on classic keyboards)
+#define AS_STOP        (0x72)  // Stop         (CDTV & CD32)
+#define AS_PLAYPAUSE   (0x73)  // Play/Pause   (CDTV & CD32)
+#define AS_PREVTRACK   (0x74)  // Prev Track   (CDTV & CD32)  << REW
+#define AS_NEXTTRACK   (0x75)  // Next Track   (CDTV & CD32)  >> FF
+#define AS_SHUFFLE     (0x76)  // Shuffle      (CDTV & CD32)  Random Play
+#define AS_REPEAT      (0x77)  // Repeat       (CDTV & CD32)
 #define AS_RESET_WARN  (0x78)  // Reset warning
+#define AS_WHEEL_UP    (0x7a)  // Mouse Wheel Up    (NM_WHEEL_UP)
+#define AS_WHEEL_DOWN  (0x7b)  // Mouse Wheel Down  (NM_WHEEL_DOWN)
+#define AS_WHEEL_LEFT  (0x7c)  // Mouse Wheel Left  (NM_WHEEL_LEFT)
+#define AS_WHEEL_RIGHT (0x7d)  // Mouse Wheel Right (NM_WHEEL_RIGHT)
 #define AS_LOST_SYNC   (0xf9)  // Keyboard lost sync with Amiga
 #define AS_BUFOVERFLOW (0xfa)  // Keyboard output buffer overflow
 #define AS_POST_FAIL   (0xfc)  // Keyboard selftest failed
@@ -224,11 +245,11 @@ static const struct {
     { AS_F8,         0, 0x00 },  // 0x41  F8
     { AS_F9,         0, 0x00 },  // 0x42  F9
     { AS_F10,        0, 0x00 },  // 0x43  F10
-    { AS_NONE,       0, 0x00 },  // 0x44  F11
-    { AS_NONE,       0, 0x00 },  // 0x45  F12
+    { AS_F11,        0, 0x00 },  // 0x44  F11
+    { AS_F12,        0, 0x00 },  // 0x45  F12
     { AS_NONE,       0, 0x00 },  // 0x46  SysRq
     { AS_NONE,       0, 0x00 },  // 0x47  Scroll Lock
-    { AS_NONE,       0, 0x00 },  // 0x48  Pause
+    { AS_PLAYPAUSE,  0, 0x00 },  // 0x48  Pause
     { AS_BACKSLASH,  0, 0x00 },  // 0x49  Insert
     { AS_KP_LPAREN,  0, 0x00 },  // 0x4a  Home      (FS-UAE mapping)
     { AS_KP_RPAREN,  0, 0x00 },  // 0x4b  Page Up   (FS-UAE mapping)
@@ -388,21 +409,21 @@ static const struct {
     { AS_RIGHTSHIFT, 0, 0x00 },  // 0xe5  Right Shift
     { AS_RIGHTALT,   0, 0x00 },  // 0xe6  Right Alt
     { AS_RIGHTAMIGA, 0, 0x00 },  // 0xe7  Right Meta
-    { AS_NONE,       0, 0x00 },  // 0xe8  Media Play / Pause
-    { AS_NONE,       0, 0x00 },  // 0xe9  Media Stop CD
-    { AS_NONE,       0, 0x00 },  // 0xea  Media Previous Song
-    { AS_NONE,       0, 0x00 },  // 0xeb  Media Next Song
+    { AS_PLAYPAUSE,  0, 0x00 },  // 0xe8  Media Play / Pause
+    { AS_STOP,       0, 0x00 },  // 0xe9  Media Stop CD
+    { AS_PREVTRACK,  0, 0x00 },  // 0xea  Media Previous Song
+    { AS_NEXTTRACK,  0, 0x00 },  // 0xeb  Media Next Song
     { AS_NONE,       0, 0x00 },  // 0xec  Media Eject CD
     { AS_NONE,       0, 0x00 },  // 0xed  Media Volume Up
     { AS_NONE,       0, 0x00 },  // 0xee  Media Volume Down
     { AS_NONE,       0, 0x00 },  // 0xef  Media Mute
     { AS_NONE,       0, 0x00 },  // 0xf0  Media WWW
-    { AS_NONE,       0, 0x00 },  // 0xf1  Media Back
-    { AS_NONE,       0, 0x00 },  // 0xf2  Media Forward
-    { AS_NONE,       0, 0x00 },  // 0xf3  Media Stop
+    { AS_PREVTRACK,  0, 0x00 },  // 0xf1  Media Back
+    { AS_NEXTTRACK,  0, 0x00 },  // 0xf2  Media Forward
+    { AS_STOP,       0, 0x00 },  // 0xf3  Media Stop
     { AS_NONE,       0, 0x00 },  // 0xf4  Media Find
-    { AS_NONE,       0, 0x00 },  // 0xf5  Media Scroll Up
-    { AS_NONE,       0, 0x00 },  // 0xf6  Media Scroll Down
+    { AS_WHEEL_UP,   0, 0x00 },  // 0xf5  Media Scroll Up
+    { AS_WHEEL_DOWN, 0, 0x00 },  // 0xf6  Media Scroll Down
     { AS_NONE,       0, 0x00 },  // 0xf7  Media Edit
     { AS_NONE,       0, 0x00 },  // 0xf8  Media Sleep
     { AS_NONE,       0, 0x00 },  // 0xf9  Media Coffee
@@ -783,6 +804,28 @@ static const uint16_t scancode_to_ascii_ext[] =
 };
 CC_ASSERT_ARRAY_SIZE(scancode_to_ascii_ext, 256);
 
+static const struct {
+    uint16_t sc_mmusb;
+    uint8_t  sc_usb;
+} scancode_mm_to_usb[] = {
+    {  0xb5, 0xeb },  // OSC Scan Next Track       -> Media Next Song
+    {  0xb6, 0xea },  // OSC Scan Previous Track   -> Media Previous Song
+    {  0xb7, 0xe9 },  // OSC Stop                  -> Media Stop CD
+    {  0xcd, 0xe8 },  // OSC Play / Pause          -> Media Play / Pause
+    {  0xe2, 0xef },  // OOC Mute                  -> Media Mute
+    {  0xe9, 0xed },  // RTC Volume Increment      -> Media Volume Up
+    {  0xea, 0xee },  // RTC Volume Decrement      -> Media Volume Down
+    { 0x183, 0xf7 },  // Sel AL Consumer Ctl. Conf -> Media Edit
+    { 0x18a, 0xf9 },  // Sel AL Email Reader       -> Media Coffee
+    { 0x192, 0xfb },  // Sel AL Calculator         -> Media Calc
+    { 0x194, 0xf0 },  // Sel AL Local Browser      -> Media WWW
+    { 0x221, 0xf4 },  // Sel AC Search             -> Media Find
+    { 0x223, 0x4a },  // Sel AC Home               -> Home
+    { 0x224, 0xf1 },  // Sel AC Back               -> Media Back
+    { 0x225, 0xf2 },  // Sel AC Forward            -> Media Forward
+    { 0x226, 0xf3 },  // Sel AC Stop               -> Media Stop
+    { 0x227, 0xfa },  // Sel AC Refresh            -> Media Refresh
+};
 
 static inline bool
 find_key_in_report(usb_keyboard_report_t *report, uint8_t keycode)
@@ -861,6 +904,25 @@ convert_scancode_to_amiga(uint8_t keycode, uint8_t modifier,
         }
     }
     return (code);
+}
+
+static uint last_key_report_modifier;
+
+static uint32_t
+convert_mm_scancode_to_amiga(uint keycode)
+{
+    uint pos;
+    uint8_t code_usb;
+    uint8_t amiga_modifier;
+    for (pos = 0; pos < ARRAY_SIZE(scancode_mm_to_usb); pos++) {
+        if (scancode_mm_to_usb[pos].sc_mmusb == keycode) {
+            code_usb = scancode_mm_to_usb[pos].sc_usb;
+            dprintf(DF_USB_KEYBOARD, "<%02x>", code_usb);
+            return (convert_scancode_to_amiga(code_usb,
+                                    last_key_report_modifier, &amiga_modifier));
+        }
+    }
+    return (0);
 }
 
 static inline void
@@ -1016,34 +1078,36 @@ amiga_keyboard_send(void)
 }
 
 /*
- * amiga_keyboard_put
+ * keyboard_put_amiga
  * ------------------
  * Push the specified keystroke to the Amiga keyboard buffer
  */
 void
-amiga_keyboard_put(uint8_t code)
+keyboard_put_amiga(uint8_t code)
 {
     uint new_prod;
 
-    switch (code) {
-        case AS_CTRL:
-            ak_ctrl_amiga_amiga |= BIT(0);
-            break;
-        case AS_CTRL | 0x80:
-            ak_ctrl_amiga_amiga &= ~BIT(0);
-            break;
-        case AS_LEFTAMIGA:
-            ak_ctrl_amiga_amiga |= BIT(1);
-            break;
-        case AS_LEFTAMIGA | 0x80:
-            ak_ctrl_amiga_amiga &= ~BIT(1);
-            break;
-        case AS_RIGHTAMIGA:
-            ak_ctrl_amiga_amiga |= BIT(2);
-            break;
-        case AS_RIGHTAMIGA | 0x80:
-            ak_ctrl_amiga_amiga &= ~BIT(2);
-            break;
+    if (!keyboard_raw_mode) {
+        switch (code) {
+            case AS_CTRL:
+                ak_ctrl_amiga_amiga |= BIT(0);
+                break;
+            case AS_CTRL | 0x80:
+                ak_ctrl_amiga_amiga &= ~BIT(0);
+                break;
+            case AS_LEFTAMIGA:
+                ak_ctrl_amiga_amiga |= BIT(1);
+                break;
+            case AS_LEFTAMIGA | 0x80:
+                ak_ctrl_amiga_amiga &= ~BIT(1);
+                break;
+            case AS_RIGHTAMIGA:
+                ak_ctrl_amiga_amiga |= BIT(2);
+                break;
+            case AS_RIGHTAMIGA | 0x80:
+                ak_ctrl_amiga_amiga &= ~BIT(2);
+                break;
+        }
     }
 
     dprintf(DF_USB_KEYBOARD, "[%02x]", code);
@@ -1141,7 +1205,7 @@ keyboard_handle_magic(uint8_t keycode, uint modifier)
 {
     static const uint8_t power_seq[] = { 'p', 'o', 'w', 'e', 'r' };
     static const uint8_t reset_seq[] = { 'r', 'e', 's', 'e', 't' };
-    static const uint8_t stm32_seq[] = { 's', 't', 'm' };
+    static const uint8_t stm32_seq[] = { 'b', 'e', 'c' };
     static uint8_t       power_pos;
     static uint8_t       reset_pos;
     static uint8_t       stm32_pos;
@@ -1167,6 +1231,7 @@ keyboard_handle_magic(uint8_t keycode, uint modifier)
     }
     if (ascii == reset_seq[reset_pos]) {
         if (++reset_pos == ARRAY_SIZE(reset_seq)) {
+            printf("Resetting Amiga\n");
             kbrst_amiga(0, 0);
             reset_pos = 0;
         }
@@ -1176,7 +1241,7 @@ keyboard_handle_magic(uint8_t keycode, uint modifier)
     if (ascii == stm32_seq[stm32_pos]) {
         if (++stm32_pos == ARRAY_SIZE(stm32_seq)) {
             usb_keyboard_terminal = !usb_keyboard_terminal;
-            printf("%s STM32 keyboard\n",
+            printf("%s BEC keyboard\n",
                    usb_keyboard_terminal ? "Become" : "Leave");
             reset_pos = 0;
         }
@@ -1198,7 +1263,9 @@ keyboard_usb_input(usb_keyboard_report_t *report)
     uint ascii;
     uint32_t mouse_buttons_old = mouse_buttons_add;
 
-    if ((mod_diff != 0) & !usb_keyboard_terminal) {
+    last_key_report_modifier = modifier;
+
+    if ((mod_diff != 0) & !usb_keyboard_terminal && !keyboard_raw_mode) {
         uint32_t code;
         uint bit;
         for (bit = 0; bit < 8; bit++) {
@@ -1210,14 +1277,14 @@ keyboard_usb_input(usb_keyboard_report_t *report)
                             /* Button press or macro expansion */
                             mouse_buttons_add |= BIT(code & 31);
                         } else {
-                            amiga_keyboard_put(code);         // pressed
+                            keyboard_put_amiga(code);         // pressed
                         }
                     } else {
                         if (code & 0x80) {
                             /* Button press or macro expansion */
                             mouse_buttons_add &= ~BIT(code & 31);
                         } else {
-                            amiga_keyboard_put(code | 0x80);  // released
+                            keyboard_put_amiga(code | 0x80);  // released
                         }
                     }
                     code >>= 8;
@@ -1233,7 +1300,9 @@ keyboard_usb_input(usb_keyboard_report_t *report)
             } else {
                 /* New keypress */
                 keyboard_handle_magic(keycode, modifier);
-                if (usb_keyboard_terminal) {
+                if (keyboard_raw_mode) {
+                    keyboard_put_amiga(keycode);
+                } else if (usb_keyboard_terminal) {
                     uint16_t conv = scancode_to_ascii_ext[keycode];
                     if ((conv >> 8) == 0) {
                         /* Simple ASCII (shift and control are not applied) */
@@ -1282,7 +1351,7 @@ keyboard_usb_input(usb_keyboard_report_t *report)
                                 /* Button press or macro expansion */
                                 mouse_buttons_add |= BIT(code & 31);
                             else
-                                amiga_keyboard_put(code);
+                                keyboard_put_amiga(code);
                         }
                         tcode >>= 8;
                     }
@@ -1300,7 +1369,9 @@ keyboard_usb_input(usb_keyboard_report_t *report)
         uint8_t keycode = prev_report.keycode[cur];
         if (keycode != 0) {
             /* Key released */
-            if (usb_keyboard_terminal) {
+            if (keyboard_raw_mode) {
+                ; // Send nothing for key up while in raw mode
+            } else if (usb_keyboard_terminal) {
                 uint16_t conv = scancode_to_ascii_ext[keycode];
                 if ((conv >> 8) == 0) {
                     /* Simple ASCII (shift is not applied) */
@@ -1339,7 +1410,7 @@ keyboard_usb_input(usb_keyboard_report_t *report)
                         if (code & 0x80)  // Button press or macro expansion
                             mouse_buttons_add &= ~BIT(code & 31);
                         else
-                            amiga_keyboard_put(code | 0x80);
+                            keyboard_put_amiga(code | 0x80);
                     }
                     tcode >>= 8;
                 }
@@ -1351,6 +1422,91 @@ keyboard_usb_input(usb_keyboard_report_t *report)
 
     prev_report = *report;
 }
+
+/* Handle multimedia input from USB keyboard */
+void
+keyboard_usb_input_mm(uint16_t *ch, uint count)
+{
+    static uint16_t last[2];
+    uint            cur;
+    uint32_t        tcode;
+    uint            max = count;
+    uint            pos;
+
+    if (max > ARRAY_SIZE(last))
+        max = ARRAY_SIZE(last);
+
+    /* Handle key down */
+    for (cur = 0; cur < max; cur++) {
+        if (ch[cur] == 0)
+            continue;
+        for (pos = 0; pos < count; pos++)
+            if (ch[cur] == last[pos])
+                break;
+        if (pos == count) {
+            /* Key down */
+            tcode = convert_mm_scancode_to_amiga(ch[cur]);
+            printf(" MKEYDOWN %x -> %lx", last[cur], tcode);
+            while (tcode != 0) {
+                uint8_t code = tcode & 0xff;
+                if (code != AS_NONE) {
+                    if (code & 0x80) // Button press or macro expansion
+                        /* Button press or macro expansion */
+                        mouse_buttons_add |= BIT(code & 31);
+                    else
+                        keyboard_put_amiga(code);
+                }
+                tcode >>= 8;
+            }
+        }
+    }
+
+    /* Handle key up */
+    for (cur = 0; cur < max; cur++) {
+        if (last[cur] == 0)
+            continue;
+        for (pos = 0; pos < count; pos++)
+            if (last[cur] == ch[pos])
+                break;
+        if (pos == count) {
+            /* Key up */
+            tcode = convert_mm_scancode_to_amiga(last[cur]);
+            printf(" MKEYUP %x -> %lx", last[cur], tcode);
+            while (tcode != 0) {
+                uint8_t code = tcode & 0xff;
+                if (code != AS_NONE) {
+                    if (code & 0x80)  // Button press or macro expansion
+                        mouse_buttons_add &= ~BIT(code & 31);
+                    else
+                        keyboard_put_amiga(code | 0x80);
+                }
+                tcode >>= 8;
+            }
+        }
+    }
+
+    /* Update last key down */
+    for (cur = 0; cur < max; cur++)
+        last[cur] = ch[cur];
+}
+
+/*
+ * keyboard_put_macro
+ * ------------------
+ * Queue multiple keystrokes (up to 4) to the Amiga keyboard
+ */
+void
+keyboard_put_macro(uint32_t macro, uint is_pressed)
+{
+    uint32_t val;
+    for (val = macro; val != 0; val >>= 8) {
+        if (is_pressed)
+            keyboard_put_amiga(val);
+        else
+            keyboard_put_amiga(val | 0x80);
+    }
+}
+
 
 /* Input ESC key modes */
 typedef enum {
@@ -1594,31 +1750,31 @@ handle_code:
             if (ch != AS_NONE) {
                 if (code & ATA_ADD_CTRL) {
                     if (adding_ctrl == 0) {
-                        amiga_keyboard_put(AS_CTRL);
+                        keyboard_put_amiga(AS_CTRL);
                         adding_ctrl = 1;
                     }
                 } else if (adding_ctrl) {
                     adding_ctrl = 0;
-                    amiga_keyboard_put(AS_CTRL | 0x80);
+                    keyboard_put_amiga(AS_CTRL | 0x80);
                 }
                 if (code & ATA_ADD_SHIFT) {
                     if (adding_shift == 0) {
                         adding_shift = 1;
-                        amiga_keyboard_put(AS_LEFTSHIFT);
+                        keyboard_put_amiga(AS_LEFTSHIFT);
                     }
                 } else if (adding_shift) {
                     adding_shift = 0;
-                    amiga_keyboard_put(AS_LEFTSHIFT | 0x80);
+                    keyboard_put_amiga(AS_LEFTSHIFT | 0x80);
                 }
-                amiga_keyboard_put(code & 0x7f);
-                amiga_keyboard_put(code | 0x80);
+                keyboard_put_amiga(code & 0x7f);
+                keyboard_put_amiga(code | 0x80);
             }
         }
     }
     if (adding_ctrl)
-        amiga_keyboard_put(AS_CTRL | 0x80);
+        keyboard_put_amiga(AS_CTRL | 0x80);
     if (adding_shift)
-        amiga_keyboard_put(AS_LEFTSHIFT | 0x80);
+        keyboard_put_amiga(AS_LEFTSHIFT | 0x80);
 }
 
 void
@@ -1656,8 +1812,8 @@ keyboard_poll(void)
     }
 
     if (amiga_keyboard_sent_wake == 0) {
-        amiga_keyboard_put(AS_POWER_INIT);
-        amiga_keyboard_put(AS_POWER_DONE);
+        keyboard_put_amiga(AS_POWER_INIT);
+        keyboard_put_amiga(AS_POWER_DONE);
         amiga_keyboard_sent_wake = 1;
     }
 
@@ -1678,7 +1834,7 @@ keyboard_reset_warning(void)
     uint64_t timeout;
     uint64_t start = timer_tick_get();
     ak_rb_consumer = ak_rb_producer;  // Flush the ring buffer
-    amiga_keyboard_put(AS_RESET_WARN);
+    keyboard_put_amiga(AS_RESET_WARN);
     timeout = timer_tick_plus_msec(200);
     while (ak_rb_consumer != ak_rb_producer) {
         keyboard_poll();
@@ -1692,7 +1848,7 @@ keyboard_reset_warning(void)
     start = timer_tick_get();
 
     /* First warning was received; send second warning. */
-    amiga_keyboard_put(AS_RESET_WARN);
+    keyboard_put_amiga(AS_RESET_WARN);
     timeout = timer_tick_plus_msec(250);
     while (ak_rb_consumer != ak_rb_producer) {
         keyboard_poll();

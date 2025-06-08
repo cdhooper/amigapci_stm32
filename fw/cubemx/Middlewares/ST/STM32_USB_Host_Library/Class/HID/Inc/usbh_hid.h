@@ -200,16 +200,29 @@ HID_DescTypeDef;
 
 typedef struct _HIDRDescriptor
 {
-  uint16_t   pos_x;
-  uint16_t   pos_y;
-  uint16_t   pos_wheel;
-  uint16_t   pos_ac_pan;
-  uint16_t   pos_button[16];
-  uint8_t    num_buttons;
-  uint8_t    bits_x;
-  uint8_t    bits_y;
-  uint8_t    bits_wheel;
-  uint8_t    bits_ac_pan;
+  uint16_t   usage;            // Top level Usage
+  uint16_t   pos_x;            // Position of Mouse X movement
+  uint16_t   pos_y;            // Position of Mouse Y movement
+  uint16_t   pos_wheel;        // Position of Mouse wheel movement
+  uint16_t   pos_ac_pan;       // Position of Mouse left-right pan movement
+  uint16_t   pos_button[16];   // Position of Mouse buttons
+  uint16_t   pos_key[2];       // Position of Multimedia key
+  uint16_t   pos_sysctl;       // Position of System control key
+  uint16_t   pos_mmbutton[20]; // Position of Multimedia button
+  uint16_t   val_mmbutton[20]; // MM Key value of Multimedia button
+  uint8_t    id_mmbutton[20];  // Report ID code for each button
+  uint8_t    num_mmbuttons;    // Number of Multimedia buttons
+  uint8_t    num_buttons;      // Number of mouse buttons
+  uint8_t    num_keys;         // Number of multimedia key positions
+  uint8_t    bits_x;           // Number of bits for Mouse X movement
+  uint8_t    bits_y;           // Number of bits for Mouse Y movement
+  uint8_t    bits_wheel;       // Number of bits for Mouse wheel movement
+  uint8_t    bits_ac_pan;      // Number of bits for Mouse left-right movement
+  uint8_t    bits_key;         // Number of bits for Multimedia key
+  uint8_t    bits_sysctl;      // Number of bits for System control key
+  uint8_t    id_mouse;         // Report ID code for Mouse movement
+  uint8_t    id_consumer;      // Report ID code for Consumer control
+  uint8_t    id_sysctl;        // Report ID code for System control
 }
 HID_RDescTypeDef;
 
@@ -333,6 +346,24 @@ void USBH_HID_FifoInit(FIFO_TypeDef *f, uint8_t *buf, uint16_t size);
 uint16_t  USBH_HID_FifoRead(FIFO_TypeDef *f, void *buf, uint16_t  nbytes);
 
 uint16_t  USBH_HID_FifoWrite(FIFO_TypeDef *f, void *buf, uint16_t nbytes);
+
+void USBH_HID_Process_HIDReportDescriptor(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle);
+
+typedef struct
+{
+  uint16_t             usage;       // Usage type for this report
+  uint32_t             buttons;     // Mouse buttons
+  int16_t              x;           // Mouse X movement
+  int16_t              y;           // Mouse Y movement
+  int16_t              wheel;       // Mouse Wheel movement
+  int16_t              ac_pan;      // Mouse Left-Right movement
+  uint16_t             sysbuttons;  // System buttons (power, sleep, wake)
+  uint16_t             mm_key[2];   // Multimedia key(s)
+  uint16_t             sysctl;      // System control button(s)
+}
+HID_MISC_Info_TypeDef;
+
+USBH_StatusTypeDef USBH_HID_DecodeReport(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle, HID_TypeTypeDef devtype, HID_MISC_Info_TypeDef *report_info);
 
 /**
   * @}

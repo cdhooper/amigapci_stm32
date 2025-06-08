@@ -330,6 +330,8 @@ USBH_StatusTypeDef USBH_HID_KeybdInit(USBH_HandleTypeDef *phost, HID_HandleTypeD
   uint32_t x;
 printf("USB%u kbdinit class=%lu\n", phost->id, phost->ClassNumber);
 
+  USBH_HID_Process_HIDReportDescriptor(phost, HID_Handle);
+
   keybd_info.lctrl = keybd_info.lshift = 0U;
   keybd_info.lalt = keybd_info.lgui = 0U;
   keybd_info.rctrl = keybd_info.rshift = 0U;

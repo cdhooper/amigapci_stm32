@@ -42,55 +42,17 @@ pson_set(unsigned int enable)
     gpio_setv(PSON_PORT, PSON_PIN, !enable);
 }
 
+static uint64_t power_button_timer = 0;
+static uint8_t  power_button_armed = 0;
+
 /*
- * power_button_poll
- * -----------------
- * Manage user power button presses
+ * power_state_toggle
+ * ------------------
+ * Toggle power state (on -> off, off -> on) based on button input.
  */
 static void
-power_button_poll(void)
+power_state_toggle(void)
 {
-    static uint8_t  power_button_last = 0;
-    static uint8_t  power_button_deglitch = 0;
-    static uint8_t  power_button_armed = 0;
-    static uint64_t power_button_timer = 0;
-    uint8_t         power_button = -1;
-
-    /* Check and debounce power button press */
-    power_button = !gpio_get(PWRSW_PORT, PWRSW_PIN);
-
-    if (power_button_last != power_button) {
-        power_button_last = power_button;
-#if 0
-        /* Deglitch debug */
-        if ((power_button_timer != 0) &&
-            !timer_tick_has_elapsed(power_button_timer)) {
-            uint64_t now = timer_tick_get();
-            uint64_t diff = timer_tick_to_usec(power_button_timer - now);
-            printf("[%u]", (uint) (POWER_BUTTON_DEGLITCH - diff));
-        }
-#endif
-        power_button_timer = timer_tick_plus_msec(POWER_BUTTON_DEGLITCH);
-        power_button_deglitch = 1;
-        return;  // state must be stable for deglitch period
-    }
-    if (power_button_deglitch) {
-        if (!timer_tick_has_elapsed(power_button_timer))
-            return;  // State not stable
-
-        power_button_deglitch = 0;
-        if (power_button == 1)
-            printf("Power button pressed\n");
-    }
-
-    if (power_button == 0) {
-        power_button_armed = 1;
-        return;  // Not being pressed
-    }
-
-    if (power_button_armed == 0)
-        return;
-
     switch (power_state) {
         case POWER_STATE_INITIAL:
         case POWER_STATE_POWERING_ON:
@@ -131,6 +93,56 @@ power_button_poll(void)
             power_button_timer = 0;
             return;
     }
+}
+
+/*
+ * power_button_poll
+ * -----------------
+ * Manage user power button presses
+ */
+static void
+power_button_poll(void)
+{
+    static uint8_t  power_button_last = 0;
+    static uint8_t  power_button_deglitch = 0;
+    uint8_t         power_button = -1;
+
+    /* Check and debounce power button press */
+    power_button = !gpio_get(PWRSW_PORT, PWRSW_PIN);
+
+    if (power_button_last != power_button) {
+        power_button_last = power_button;
+#if 0
+        /* Deglitch debug */
+        if ((power_button_timer != 0) &&
+            !timer_tick_has_elapsed(power_button_timer)) {
+            uint64_t now = timer_tick_get();
+            uint64_t diff = timer_tick_to_usec(power_button_timer - now);
+            printf("[%u]", (uint) (POWER_BUTTON_DEGLITCH - diff));
+        }
+#endif
+        power_button_timer = timer_tick_plus_msec(POWER_BUTTON_DEGLITCH);
+        power_button_deglitch = 1;
+        return;  // state must be stable for deglitch period
+    }
+    if (power_button_deglitch) {
+        if (!timer_tick_has_elapsed(power_button_timer))
+            return;  // State not stable
+
+        power_button_deglitch = 0;
+        if (power_button == 1)
+            printf("Power button pressed\n");
+    }
+
+    if (power_button == 0) {
+        power_button_armed = 1;
+        return;  // Not being pressed
+    }
+
+    if (power_button_armed == 0)
+        return;
+
+    power_state_toggle();
 }
 
 /*
@@ -241,6 +253,24 @@ void
 power_set(uint state)
 {
     power_state_desired = state;
+}
+
+/*
+ * power_sysctl
+ * ------------
+ * Power control input from keyboard
+ */
+void
+power_sysctl(uint code)
+{
+    static uint sysctl_last;
+    if (code != sysctl_last) {
+        sysctl_last = code;
+        if (code != 0) {
+            printf("Keyboard power button\n");
+            power_state_toggle();
+        }
+    }
 }
 
 /*

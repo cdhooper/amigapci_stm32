@@ -16,6 +16,7 @@ void power_init(void);
 void power_poll(void);
 void power_set(uint state);  // POWER_STATE_ ON, OFF, or CYCLE
 void power_show(void);
+void power_sysctl(uint code);
 
 /* Transitional states (will end in another state) */
 #define POWER_STATE_INITIAL      0  // Power supply state is initiallizing

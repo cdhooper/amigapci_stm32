@@ -29,8 +29,10 @@ typedef struct {
     uint8_t keycode[6]; // Key codes of the currently pressed keys
 } usb_keyboard_report_t;
 
-void amiga_keyboard_put(uint8_t code);  // Queue Amiga keystroke
+void keyboard_put_amiga(uint8_t code);  // Queue Amiga keystroke
+void keyboard_put_macro(uint32_t macro, uint is_pressed);  // Queue Amiga macro
 void keyboard_usb_input(usb_keyboard_report_t *report);  // USB keyboard input
+void keyboard_usb_input_mm(uint16_t *ch, uint count);    // USB multimedia input
 void keyboard_term(void);  // ASCII terminal input to Amiga
 void keyboard_set_defaults(void);
 uint keyboard_reset_warning(void);
@@ -40,6 +42,7 @@ void keyboard_init(void);
 extern uint8_t amiga_keyboard_sent_wake;
 extern uint8_t amiga_keyboard_has_sync;
 extern uint8_t amiga_keyboard_lost_sync;
+extern uint8_t keyboard_raw_mode;
 
 /* Newmouse keycodes */
 #define NM_WHEEL_UP       (0x7A)
