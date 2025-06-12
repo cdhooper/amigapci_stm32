@@ -539,60 +539,64 @@ cmd_power(int argc, char * const *argv)
 rc_t
 cmd_usb(int argc, char * const *argv)
 {
-    if (argc < 2)
+    if (strcmp(argv[0], "usb") == 0) {
+        argc--;
+        argv++;
+    }
+    if (argc == 0)
         return (RC_USER_HELP);
-    if (strncmp(argv[1], "debug", 2) == 0) {
+    if (strncmp(argv[0], "debug", 2) == 0) {
         uint debug_mask;
         int  pos = 0;
-        if (argc < 3) {
-            printf("usb %s requires an argument\n", argv[1]);
+        if (argc < 2) {
+            printf("usb %s requires an argument\n", argv[0]);
             return (RC_USER_HELP);
         }
-        if ((sscanf(argv[2], "%x%n", &debug_mask, &pos) != 1) ||
-            (argv[2][pos] != '\0')) {
-            printf("Invalid argument to debug: %s\n", argv[2]);
+        if ((sscanf(argv[1], "%x%n", &debug_mask, &pos) != 1) ||
+            (argv[1][pos] != '\0')) {
+            printf("Invalid argument to debug: %s\n", argv[1]);
             return (RC_USER_HELP);
         }
         usb_debug_mask = debug_mask;
-    } else if (strncmp(argv[1], "disable", 3) == 0) {
+    } else if (strncmp(argv[0], "disable", 3) == 0) {
         timer_delay_msec(1);
         usb_shutdown();
 //      usb_signal_reset_to_host(0);
         return (RC_SUCCESS);
-    } else if ((strcmp(argv[1], "kbd") == 0) ||
-               (strncmp(argv[1], "keyboard", 2) == 0)) {
-        if (argc < 3) {
+    } else if ((strcmp(argv[0], "kbd") == 0) ||
+               (strncmp(argv[0], "keyboard", 2) == 0)) {
+        if (argc < 2) {
             printf("USB keyboard input: %s\n",
                    usb_keyboard_terminal ? "on" : "off");
-        } else if (strcmp(argv[2], "on") == 0) {
+        } else if (strcmp(argv[1], "on") == 0) {
             usb_keyboard_terminal = 1;
-        } else if (strcmp(argv[2], "off") == 0) {
+        } else if (strcmp(argv[1], "off") == 0) {
             usb_keyboard_terminal = 0;
         } else {
-            printf("Invalid argument %s\n", argv[2]);
+            printf("Invalid argument %s\n", argv[1]);
             return (RC_BAD_PARAM);
         }
-    } else if (strcmp(argv[1], "ls") == 0) {
+    } else if (strncmp(argv[0], "ls", 2) == 0) {
         uint verbose = 0;
-        if ((argc >= 3) && (strncmp(argv[2], "verbose", 1) == 0))
+        if ((argc >= 2) && (strncmp(argv[1], "verbose", 1) == 0))
             verbose++;
         usb_ls(verbose);
-    } else if (strcmp(argv[1], "off") == 0) {
+    } else if (strcmp(argv[0], "off") == 0) {
         usb_set_power(0);
-    } else if (strcmp(argv[1], "on") == 0) {
+    } else if (strcmp(argv[0], "on") == 0) {
         usb_set_power(1);
-    } else if (strncmp(argv[1], "regs", 3) == 0) {
+    } else if (strncmp(argv[0], "regs", 3) == 0) {
         usb_show_regs();
-    } else if (strcmp(argv[1], "reset") == 0) {
+    } else if (strcmp(argv[0], "reset") == 0) {
         timer_delay_msec(1);
         usb_shutdown();
 //      usb_signal_reset_to_host(1);
         usb_init();
         return (RC_SUCCESS);
-    } else if (strncmp(argv[1], "stat", 2) == 0) {
+    } else if (strncmp(argv[0], "stat", 2) == 0) {
         usb_show_stats();
     } else {
-        printf("Unknown argument %s\n", argv[1]);
+        printf("Unknown argument %s\n", argv[0]);
         return (RC_USER_HELP);
     }
     return (RC_SUCCESS);
@@ -848,6 +852,7 @@ cmd_set(int argc, char * const *argv)
     } else if (strcmp(argv[1], "debug") == 0) {
         int      arg;
         int      pos = 0;
+        int      add_sub = 0;
         uint     bit;
         uint     do_save = 0;
         uint     did_set = 0;
@@ -867,18 +872,28 @@ cmd_set(int argc, char * const *argv)
             return (RC_SUCCESS);
         }
         for (arg = 2; arg < argc; arg++) {
-            if (strcasecmp(argv[arg], "save") == 0) {
+            char *flagname = argv[arg];
+            if (*flagname == '+') {
+                flagname++;
+                add_sub = 1;
+            } else if (*flagname == '-') {
+                flagname++;
+                add_sub = -1;
+            }
+            if (*flagname == '\0')
+                continue;
+            if (strcasecmp(flagname, "save") == 0) {
                 do_save = 1;
                 continue;
-            } else if ((bit = match_bits(debug_flag_bits, argv[arg])) < 32) {
+            } else if ((bit = match_bits(debug_flag_bits, flagname)) < 32) {
                 if (did_set == 0)
                     nvalue = 0;
                 nvalue |= BIT(bit);
                 did_set = 1;
             } else {
-                if ((sscanf(argv[arg], "%x%n", &value, &pos) != 1) ||
-                    (argv[arg][pos] != '\0')) {
-                    printf("Invalid argument: %s\n", argv[arg]);
+                if ((sscanf(flagname, "%x%n", &value, &pos) != 1) ||
+                    (flagname[pos] != '\0')) {
+                    printf("Invalid argument: %s\n", flagname);
                     return (RC_USER_HELP);
                 }
                 if ((pos >= 4) || (value >= 32))
@@ -888,6 +903,11 @@ cmd_set(int argc, char * const *argv)
                 did_set = 1;
             }
         }
+        if (add_sub > 0)
+            nvalue = config.debug_flag | nvalue;
+        else if (add_sub < 0)
+            nvalue = config.debug_flag & ~nvalue;
+
         if (config.debug_flag != nvalue) {
             config.debug_flag = nvalue;
             printf("Debug flags %08lx ", nvalue);
@@ -901,7 +921,9 @@ cmd_set(int argc, char * const *argv)
             keyboard_set_defaults();
             config_updated();
         } else {
+            uint board_rev = config.board_rev;
             config_set_defaults();
+            config.board_rev = board_rev;
         }
     } else if (strcmp(argv[1], "fan_rpm_max") == 0) {
         int pos = 0;
@@ -969,6 +991,7 @@ cmd_set(int argc, char * const *argv)
     } else if (strncmp(argv[1], "flags", 4) == 0) {
         int      arg;
         int      pos = 0;
+        int      add_sub = 0;
         uint     bit;
         uint     do_save = 0;
         uint     did_set = 0;
@@ -988,18 +1011,28 @@ cmd_set(int argc, char * const *argv)
             return (RC_SUCCESS);
         }
         for (arg = 2; arg < argc; arg++) {
-            if (strcasecmp(argv[arg], "save") == 0) {
+            char *flagname = argv[arg];
+            if (*flagname == '+') {
+                flagname++;
+                add_sub = 1;
+            } else if (*flagname == '-') {
+                flagname++;
+                add_sub = -1;
+            }
+            if (*flagname == '\0')
+                continue;
+            if (strcasecmp(flagname, "save") == 0) {
                 do_save = 1;
                 continue;
-            } else if ((bit = match_bits(config_flag_bits, argv[arg])) < 32) {
+            } else if ((bit = match_bits(config_flag_bits, flagname)) < 32) {
                 if (did_set == 0)
                     nvalue = 0;
                 nvalue |= BIT(bit);
                 did_set = 1;
             } else {
-                if ((sscanf(argv[arg], "%x%n", &value, &pos) != 1) ||
-                    (argv[arg][pos] != '\0')) {
-                    printf("Invalid argument: %s\n", argv[arg]);
+                if ((sscanf(flagname, "%x%n", &value, &pos) != 1) ||
+                    (flagname[pos] != '\0')) {
+                    printf("Invalid argument: %s\n", flagname);
                     return (RC_USER_HELP);
                 }
                 if ((pos >= 4) || (value >= 32))
@@ -1009,6 +1042,11 @@ cmd_set(int argc, char * const *argv)
                 did_set = 1;
             }
         }
+        if (add_sub > 0)
+            nvalue = config.flags | nvalue;
+        else if (add_sub < 0)
+            nvalue = config.flags & ~nvalue;
+
         if (config.flags != nvalue) {
             config.flags = nvalue;
             printf("Config flags %08lx ", nvalue);

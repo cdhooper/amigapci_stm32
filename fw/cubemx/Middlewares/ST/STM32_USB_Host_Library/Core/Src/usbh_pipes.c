@@ -19,6 +19,7 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include "usbh_pipes.h"
+#define MAX_PIPES		USBH_MAX_PIPES_NBR
 
 /** @addtogroup USBH_LIB
   * @{
@@ -86,6 +87,11 @@ USBH_StatusTypeDef USBH_OpenPipe(USBH_HandleTypeDef *phost, uint8_t pipe_num,
                                  uint8_t epnum, uint8_t dev_address,
                                  uint8_t speed, uint8_t ep_type, uint16_t mps)
 {
+  if (epnum & 0x80) {
+    phost->InEp = epnum;
+  } else {
+    phost->OutEp = epnum;
+  }
   USBH_LL_OpenPipe(phost, pipe_num, epnum, dev_address, speed, ep_type, mps);
 
   return USBH_OK;
@@ -117,9 +123,12 @@ USBH_StatusTypeDef USBH_ClosePipe(USBH_HandleTypeDef *phost, uint8_t pipe_num)
 uint8_t USBH_AllocPipe(USBH_HandleTypeDef *phost, uint8_t ep_addr)
 {
   uint16_t pipe;
+  uint devnum;
+  uint port = get_portdev(phost, &devnum);
 
   pipe =  USBH_GetFreePipe(phost);
 
+  USBH_UsrLog("USB%u.%u AllocPipe: 0x%02X, pipe: %d", port, devnum, ep_addr, pipe);
   if (pipe != 0xFFFFU)
   {
     phost->Pipes[pipe & 0xFU] = 0x8000U | ep_addr;
@@ -138,7 +147,7 @@ uint8_t USBH_AllocPipe(USBH_HandleTypeDef *phost, uint8_t ep_addr)
   */
 USBH_StatusTypeDef USBH_FreePipe(USBH_HandleTypeDef *phost, uint8_t idx)
 {
-  if (idx < 11U)
+  if (idx < MAX_PIPES)
   {
     phost->Pipes[idx] &= 0x7FFFU;
   }
@@ -157,13 +166,14 @@ static uint16_t USBH_GetFreePipe(USBH_HandleTypeDef *phost)
 {
   uint8_t idx = 0U;
 
-  for (idx = 0U ; idx < 11U ; idx++)
+  for (idx = 0U ; idx < MAX_PIPES ; idx++)
   {
     if ((phost->Pipes[idx] & 0x8000U) == 0U)
     {
       return (uint16_t)idx;
     }
   }
+  USBH_UsrLog("USB%u Error: No free pipes", get_port(phost));
 
   return 0xFFFFU;
 }

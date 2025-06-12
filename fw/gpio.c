@@ -252,7 +252,9 @@ static const gpio_names_t gpio_names[] = {
     { "HSCLKIN",    GPIO_H, 0 },
     { "HSCLKOUT",   GPIO_H, 1 },
     { "Forward",    GPIO_C, 0 },
+    { "Down",       GPIO_C, 0 },
     { "Back",       GPIO_C, 1 },
+    { "Up",         GPIO_C, 1 },
     { "Left",       GPIO_C, 2 },
     { "Right",      GPIO_C, 3 },
     { "VMON5",      GPIO_A, 0 },
@@ -260,7 +262,9 @@ static const gpio_names_t gpio_names[] = {
     { "VMON3V3",    GPIO_A, 2 },
     { "VMON12",     GPIO_A, 3 },
     { "PotX",       GPIO_A, 4 },
+    { "Button2",    GPIO_A, 4 },
     { "PotY",       GPIO_A, 5 },
+    { "Button1",    GPIO_A, 5 },
     { "VMONx",      GPIO_A, 6 },
     { "VMONy",      GPIO_A, 7 },
     { "VMON12",     GPIO_C, 4 },
@@ -275,6 +279,7 @@ static const gpio_names_t gpio_names[] = {
     { "USB2_DM",    GPIO_B, 14 },
     { "USB2_DP",    GPIO_B, 15 },
     { "Fire",       GPIO_C, 6 },
+    { "Button0",    GPIO_C, 6 },
     { "KBRST",      GPIO_C, 7 },
     { "KBData",     GPIO_C, 8 },
     { "KBCLK",      GPIO_C, 9 },
@@ -301,6 +306,8 @@ gpio_name_match(const char **namep, uint16_t pins[NUM_GPIO_BANKS])
     uint len;
     uint wildcard = 0;
     uint matched = 0;
+    uint lport = 0xff;
+    uint lpin  = 0xff;
     for (ptr = name; *ptr != ' '; ptr++) {
         if (((*ptr < '0') || ((*ptr > '9') && (*ptr < 'A')) ||
              (*ptr > 'z') || ((*ptr > 'Z') && (*ptr < 'a'))) &&
@@ -311,8 +318,14 @@ gpio_name_match(const char **namep, uint16_t pins[NUM_GPIO_BANKS])
     len = ptr - name;
     if (strncmp(name, "?", len) == 0) {
         printf("GPIO names\n ");
-        for (cur = 0; cur < ARRAY_SIZE(gpio_names); cur++)
+        for (cur = 0; cur < ARRAY_SIZE(gpio_names); cur++) {
+            if ((lport == gpio_names[cur].port) &&
+                (lpin  == gpio_names[cur].pin))
+                continue;
             printf(" %s", gpio_names[cur].name);
+            lport = gpio_names[cur].port;
+            lpin  = gpio_names[cur].pin;
+        }
         printf("\n");
         return (1);
     }
@@ -325,9 +338,14 @@ gpio_name_match(const char **namep, uint16_t pins[NUM_GPIO_BANKS])
         if ((strncasecmp(name, gpio_names[cur].name, len) == 0) &&
             (wildcard || (gpio_names[cur].name[len] == '\0'))) {
             uint port = gpio_names[cur].port;
+            uint pin = gpio_names[cur].pin;
             if (port >= NUM_GPIO_BANKS)
                 return (1);
+            if ((lport == port) && (lpin == pin))
+                continue;
             pins[port] |= BIT(gpio_names[cur].pin);
+            lport = gpio_names[cur].port;
+            lpin  = gpio_names[cur].pin;
             matched++;
         }
     }

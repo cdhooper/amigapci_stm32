@@ -162,8 +162,8 @@ void USBH_HID_Process_HIDReportDescriptor(USBH_HandleTypeDef *phost, HID_HandleT
 #ifdef DEBUG_HIDREPORT_DESCRIPTOR
     const char *spaces = "                 ";
 #endif
-    DPRINTF("Process_HIDReportDescriptor: IF=%u rlen=%x\n",
-            HID_Handle->interface, desc_len);
+    DPRINTF("USB%u.%u.%u Process_HIDReportDescriptor rlen=%x\n",
+            get_port(phost), phost->address, HID_Handle->interface, desc_len);
 
     if (desc_len > 512)
         desc_len = 512;  // Let's not go crazy here
@@ -173,7 +173,8 @@ void USBH_HID_Process_HIDReportDescriptor(USBH_HandleTypeDef *phost, HID_HandleT
     while (USBH_HID_GetHIDReportDescriptor(phost, HID_Handle->interface,
                                            desc_len) != USBH_OK) {
         if (--timeout == 0) {
-            printf("Get report descriptor failed\n");
+            printf("USB%u.%u.%u Get report descriptor failed\n",
+                   get_port(phost), phost->address, HID_Handle->interface);
             return;
         }
         timer_delay_msec(1);
@@ -559,17 +560,17 @@ static USBH_StatusTypeDef USBH_HID_InterfaceInit_ll(USBH_HandleTypeDef *phost, u
   /* Decode Bootclass Protocol: Mouse or Keyboard */
   if (phost->device.CfgDesc.Itf_Desc[interface].bInterfaceProtocol == HID_KEYBRD_BOOT_CODE)
   {
-    USBH_UsrLog("USB%u.%u Keyboard device found", phost->address, interface);
+    USBH_UsrLog("USB%u.%u.%u Keyboard device found", get_port(phost), phost->address, interface);
     HID_Handle->Init = USBH_HID_KeybdInit;
   }
   else if (phost->device.CfgDesc.Itf_Desc[interface].bInterfaceProtocol == HID_MOUSE_BOOT_CODE)
   {
-    USBH_UsrLog("USB%u.%u Mouse device found", phost->address, interface);
+    USBH_UsrLog("USB%u.%u.%u Mouse device found", get_port(phost), phost->address, interface);
     HID_Handle->Init = USBH_HID_MouseInit;
   }
   else
   {
-    USBH_UsrLog("USB%u.%u Generic device found", phost->address, interface);
+    USBH_UsrLog("USB%u.%u.%u Generic device found", get_port(phost), phost->address, interface);
     HID_Handle->Init = USBH_HID_GenericInit;
 //  return USBH_FAIL;
   }
@@ -658,6 +659,8 @@ static USBH_StatusTypeDef USBH_HID_InterfaceDeInit_ll(USBH_HandleTypeDef *phost)
 
   if (HID_Handle->InPipe != 0x00U)
   {
+    USBH_LL_StopHC(phost, HID_Handle->InPipe);
+
     USBH_ClosePipe(phost, HID_Handle->InPipe);
     USBH_FreePipe(phost, HID_Handle->InPipe);
     HID_Handle->InPipe = 0U;     /* Reset the pipe as Free */
@@ -665,6 +668,8 @@ static USBH_StatusTypeDef USBH_HID_InterfaceDeInit_ll(USBH_HandleTypeDef *phost)
 
   if (HID_Handle->OutPipe != 0x00U)
   {
+    USBH_LL_StopHC(phost, HID_Handle->OutPipe);
+
     USBH_ClosePipe(phost, HID_Handle->OutPipe);
     USBH_FreePipe(phost, HID_Handle->OutPipe);
     HID_Handle->OutPipe = 0U;     /* Reset the pipe as Free */

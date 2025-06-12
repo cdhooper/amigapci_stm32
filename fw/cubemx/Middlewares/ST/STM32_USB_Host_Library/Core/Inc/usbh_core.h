@@ -109,6 +109,7 @@ uint8_t              USBH_IsPortEnabled(USBH_HandleTypeDef *phost);
 
 USBH_StatusTypeDef  USBH_Start(USBH_HandleTypeDef *phost);
 USBH_StatusTypeDef  USBH_Stop(USBH_HandleTypeDef *phost);
+USBH_StatusTypeDef  USBH_LL_StopHC(USBH_HandleTypeDef *phost, uint8_t chnum);
 USBH_StatusTypeDef  USBH_Process(USBH_HandleTypeDef *phost);
 USBH_StatusTypeDef  USBH_ReEnumerate(USBH_HandleTypeDef *phost);
 
@@ -168,6 +169,13 @@ void USBH_LL_SetTimer(USBH_HandleTypeDef *phost, uint32_t time);
 void USBH_LL_IncTimer(USBH_HandleTypeDef *phost);
 
 void USBH_Delay(uint32_t Delay);
+
+uint get_port(USBH_HandleTypeDef *phost);
+uint get_portdev(USBH_HandleTypeDef *phost, uint *portdev);
+USBH_StatusTypeDef USBH_register_class(USBH_HandleTypeDef *handle, USBH_ClassTypeDef *class, uint size);
+HAL_StatusTypeDef USBH_switch_to_dev(USBH_HandleTypeDef *phost);
+USBH_HandleTypeDef *USBH_get_root_device(USBH_HandleTypeDef *phost);
+void USBH_remove_subdevices(USBH_HandleTypeDef *phost);
 
 /**
   * @}

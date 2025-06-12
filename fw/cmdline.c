@@ -76,6 +76,7 @@ static const cmd_t cmd_list[] = {
     { cmd_history, "history", 4, NULL, "", "show history" },
     { cmd_loop,    "loop",    0, NULL,
                         " <count> <cmd>", "execute command multiple times" },
+    { cmd_usb,     "lsusb",   3, NULL, NULL, NULL },
 #ifdef EMBEDDED_CMD
     { cmd_map,     "map",     1, NULL, "", "show memory map" },
 #endif
@@ -104,7 +105,7 @@ static const cmd_t cmd_list[] = {
 #endif
     { cmd_time,    "time",    0, cmd_time_help, " cmd|now|watch>",
                         "measure or show time" },
-    { cmd_usb,     "usb",    0, cmd_usb_help, " disable|regs|reset",
+    { cmd_usb,     "usb",     0, cmd_usb_help, " disable|regs|reset",
                         "show or change USB status" },
 #else
     { cmd_time,    "time",    0, cmd_time_help, " cmd <cmd>",

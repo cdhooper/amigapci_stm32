@@ -427,7 +427,7 @@ static void USBH_ParseCfgDesc(USBH_HandleTypeDef *phost, USBH_CfgDescTypeDef *cf
     while ((if_ix < USBH_MAX_NUM_INTERFACES) && (ptr < cfg_desc->wTotalLength))
     {
       if (count++ > 100) {
-          printf("Descrptor processing failure\n");
+          printf("USB%u.%u.%u Descrptor processing failure\n", get_port(phost), phost->address, if_ix);
           break;
       }
       pdesc = USBH_GetNextDesc((uint8_t *)(void *)pdesc, &ptr);
@@ -442,7 +442,7 @@ static void USBH_ParseCfgDesc(USBH_HandleTypeDef *phost, USBH_CfgDescTypeDef *cf
         while ((ep_ix < pif->bNumEndpoints) && (ptr < cfg_desc->wTotalLength))
         {
           if (count++ > 100) {
-              printf("Descrptor processing failure (inner)\n");
+              printf("USB%u.%u.%u Descrptor processing failure (inner)\n", get_port(phost), phost->address, if_ix);
               break;
           }
           pdesc = USBH_GetNextDesc((uint8_t *)(void *)pdesc, &ptr);
@@ -455,6 +455,12 @@ static void USBH_ParseCfgDesc(USBH_HandleTypeDef *phost, USBH_CfgDescTypeDef *cf
         }
         if_ix++;
       }
+    }
+    if (cfg_desc->bNumInterfaces != if_ix) {
+        USBH_ErrLog("USB%u.%u num interfaces %u != descriptor %u\n",
+                    get_port(phost), phost->address,
+                    if_ix, cfg_desc->bNumInterfaces);
+        cfg_desc->bNumInterfaces = if_ix;
     }
   }
 }
@@ -589,6 +595,7 @@ USBH_StatusTypeDef USBH_CtlReq(USBH_HandleTypeDef *phost, uint8_t *buff,
       phost->Control.state = CTRL_SETUP;
       phost->RequestState = CMD_WAIT;
       status = USBH_BUSY;
+      phost->busy++;
 
 #if (USBH_USE_OS == 1U)
       phost->os_msg = (uint32_t)USBH_CONTROL_EVENT;
@@ -622,7 +629,7 @@ USBH_StatusTypeDef USBH_CtlReq(USBH_HandleTypeDef *phost, uint8_t *buff,
         {
           /* Failure Mode */
           phost->RequestState = CMD_SEND;  // Return to "ready to send" state
-          USBH_UsrLog("USBH_CtlReq FAIL\n");
+          USBH_UsrLog("USB%u.%u USBH_CtlReq FAIL\n", get_port(phost), phost->address);
           status = USBH_FAIL;
         }
       }
@@ -633,6 +640,8 @@ USBH_StatusTypeDef USBH_CtlReq(USBH_HandleTypeDef *phost, uint8_t *buff,
     default:
       break;
   }
+  if (status != USBH_BUSY)
+      phost->busy--;
   return status;
 }
 
@@ -657,6 +666,7 @@ static USBH_StatusTypeDef USBH_HandleControl(USBH_HandleTypeDef *phost)
                         phost->Control.pipe_out);
 
       phost->Control.state = CTRL_SETUP_WAIT;
+      phost->Control.timer = phost->Timer;
       break;
 
     case CTRL_SETUP_WAIT:
@@ -998,7 +1008,7 @@ static USBH_StatusTypeDef USBH_HandleControl(USBH_HandleTypeDef *phost)
         if (phost->pUser != NULL)
             phost->pUser(phost, HOST_USER_UNRECOVERED_ERROR);
         phost->Control.errorcount = 0U;
-        USBH_ErrLog("Control error: Device not responding");
+        USBH_ErrLog("USB%u.%u Control error: Device not responding", get_port(phost), phost->address);
         phost->gState = HOST_IDLE;
         status = USBH_FAIL;
       }

@@ -2225,6 +2225,51 @@ HAL_StatusTypeDef USB_StopHost(USB_OTG_GlobalTypeDef *USBx)
   return ret;
 }
 
+/* It's not clear that this code from STM32F4HUB is needed. */
+
+/**
+  * @brief  Stop Host Channel
+  * @param  USBx : Selected device
+  * @param  chnum : Channel number
+  * @retval HAL state
+  */
+HAL_StatusTypeDef USB_StopHostChannel(USB_OTG_GlobalTypeDef *USBx, uint8_t chnum)
+{
+  uint32_t count = 0;
+  uint32_t value;
+  uint32_t USBx_BASE = (uint32_t)USBx;
+
+  USB_DisableGlobalInt(USBx);
+
+  /* Flush out any leftover queued requests. */
+  value = USBx_HC(chnum)->HCCHAR ;
+  value |=  USB_OTG_HCCHAR_CHDIS;
+  value &= ~USB_OTG_HCCHAR_CHENA;
+  value &= ~USB_OTG_HCCHAR_EPDIR;
+  USBx_HC(chnum)->HCCHAR = value;
+
+  /* Halt all channels to put them into a known state. */
+  value = USBx_HC(chnum)->HCCHAR;
+
+  value |= USB_OTG_HCCHAR_CHDIS;
+  value |= USB_OTG_HCCHAR_CHENA;
+  value &= ~USB_OTG_HCCHAR_EPDIR;
+
+  USBx_HC(chnum)->HCCHAR = value;
+  do
+  {
+    if (++count > 1000)
+    {
+      break;
+    }
+  }
+  while ((USBx_HC(chnum)->HCCHAR & USB_OTG_HCCHAR_CHENA) == USB_OTG_HCCHAR_CHENA);
+
+  USB_EnableGlobalInt(USBx);
+
+  return HAL_OK;
+}
+
 /**
   * @brief  USB_ActivateRemoteWakeup active remote wakeup signalling
   * @param  USBx Selected device

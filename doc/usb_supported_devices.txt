@@ -33,6 +33,19 @@ USB Hub Keyboard
         Multimedia keys present as 1-bit USAGEs, which have Consumer
             Controls defined in the HID report descriptor.
             224 225 226 227 223 18a 194 192 b5 b6 cd bc 183
+    Das Keyboard 4 Ultimate Blank Wired Cherry MX Blue
+        ID 24f0:0140 Metadot Das Keyboard
+        DASK4ULTMBLU-3G7-r1.2, part number KBA-D4215A-UU-E1-RC
+        Volume knob reports both Volume Up/Down and Track Prev/Next multimedia keys
+    XArmor U9BL-S mechanical keyboard
+        ID 1a40:0101 Terminus Technology Inc. Hub
+        ID 04b4:0101 Cypress Semiconductor Corp. Keyboard/Hub
+        Requires both USB hub connector and PS/2 keyboard connector
+            (through passive adapter).
+        If PS/2 is looped back through onboard USB Hub ports, the
+            HUB shows up, but keyboard appears as 0000.0000, class 0
+        If PS/2 is connected direct to USB port, it shows as 04b4.0101,
+            but class is 0 and product string is blank.
 
 USB Keyboard
     Acer Scorpius=M11SFL
@@ -89,15 +102,11 @@ USB Hub Keyboard
         ID 05ac:1006 Apple, Inc. Hub in Aluminum Keyboard
         ID 05ac:024f Apple, Inc. Aluminium Keyboard (ANSI)
         HUB shows up, but Apple keyboard appears as 0000.0000, class 0
-    XArmor U9BL-S mechanical keyboard
-        ID 1a40:0101 Terminus Technology Inc. Hub
-        ID 04b4:0101 Cypress Semiconductor Corp. Keyboard/Hub
-        Requires both USB hub connector and PS/2 keyboard connector
-            (through passive adapter).
-        If PS/2 is looped back through onboard USB Hub ports, the
-            HUB shows up, but keyboard appears as 0000.0000, class 0
-        If PS/2 is connected direct to USB port, it shows as 04b4.0101,
-            but class is 0 and product string is blank.
+
+USB Keyboard
+    Corsair K55 RGB PRO Wired Gaming Keyboard
+        ID 1b1c:1b3d Corsair Gaming K55 RGB Keyboard
+        Jason's keyboard -- shows up and identifies, but no input
 
 USB Gamepad / Joystick
     NVIDIA Shield P2920 game controller

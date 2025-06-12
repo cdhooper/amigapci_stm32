@@ -1107,6 +1107,14 @@ HAL_StatusTypeDef HAL_HCD_Stop(HCD_HandleTypeDef *hhcd)
   return HAL_OK;
 }
 
+HAL_StatusTypeDef HAL_HCD_StopHC(HCD_HandleTypeDef *hhcd, uint8_t chnum)
+{
+  __HAL_LOCK(hhcd);
+  USB_StopHostChannel(hhcd->Instance, chnum);
+  __HAL_UNLOCK(hhcd);
+  return HAL_OK;
+}
+
 /**
   * @brief  Reset the host port.
   * @param  hhcd HCD handle

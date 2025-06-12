@@ -351,6 +351,7 @@ typedef enum
   ENUM_GET_MFC_STRING_DESC,
   ENUM_GET_PRODUCT_STRING_DESC,
   ENUM_GET_SERIALNUM_STRING_DESC,
+  ENUM_DONE,
 } ENUM_StateTypeDef;
 
 /* Following states are used for CtrlXferStateMachine */
@@ -455,13 +456,7 @@ typedef struct
   USBH_StatusTypeDef(*Requests)(struct _USBH_HandleTypeDef *phost);
   USBH_StatusTypeDef(*BgndProcess)(struct _USBH_HandleTypeDef *phost);
   USBH_StatusTypeDef(*SOFProcess)(struct _USBH_HandleTypeDef *phost);
-#if 0
-// MORI
-  USBH_StatusTypeDef(*Parameter)(struct _USBH_HandleTypeDef *phost, uint8_t param, uint8_t *data, uint16_t *length);
-//void                *pData;
-#else
   void                *pData;
-#endif
 } USBH_ClassTypeDef;
 
 /* USB Host handle structure */
@@ -478,7 +473,6 @@ typedef struct _USBH_HandleTypeDef
 //uint32_t              Pipes[16];
   uint32_t              *Pipes;  // MORI
   __IO uint32_t         Timer;
-  uint8_t               id;
   void                 *pData;
   void (* pUser)(struct _USBH_HandleTypeDef *pHandle, uint8_t id);
 
@@ -492,19 +486,21 @@ typedef struct _USBH_HandleTypeDef
 #endif
   uint32_t              os_msg;
 #endif
+  uint8_t               id;         // Physical Port ID
+  __IO uint8_t valid;               // 0 = Device is no longer attached
+  __IO uint8_t busy;                // Do not poll other devices on this port
 
-// MORI
-  __IO uint8_t valid;
-  __IO uint8_t busy;
-
-//  __IO uint8_t transfering;
-
-  uint8_t hub;
-  uint8_t address;
+  uint8_t hub;                      // Device is a Hub
+  uint8_t address;                  // Logical device address to assign
 
   uint8_t prescaler;
-  uint8_t interfaces;
-  void*   USBH_ClassTypeDef_pData[USBH_MAX_NUM_INTERFACES];
+  uint8_t interfaces;               // Number of interfaces on "this" Hub
+  uint8_t InEp;                     // Current "In" endpoint
+  uint8_t OutEp;                    // Current "Out" endpoint
+  void   *USBH_ClassTypeDef_pData[USBH_MAX_NUM_INTERFACES];  // For Hub
+  uint64_t tick_max;                // Max timer ticks a poll pass took
+  uint64_t tick_total;              // Total timer ticks poll passes have taken
+  uint32_t poll_count;              // Total polls
 } USBH_HandleTypeDef;
 
 
