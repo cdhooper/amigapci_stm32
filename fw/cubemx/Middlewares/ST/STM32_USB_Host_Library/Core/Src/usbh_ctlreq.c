@@ -431,26 +431,26 @@ static void USBH_ParseCfgDesc(USBH_HandleTypeDef *phost, USBH_CfgDescTypeDef *cf
           break;
       }
       pdesc = USBH_GetNextDesc((uint8_t *)(void *)pdesc, &ptr);
-      if ((pdesc->bDescriptorType == USB_DESC_TYPE_INTERFACE) &&
-          (USBH_ClassIsValid(phost, (uint8_t *)pdesc)))
-      {
-        pif = &cfg_desc->Itf_Desc[if_ix];
-        USBH_ParseInterfaceDesc(pif, (uint8_t *)(void *)pdesc);
+      if (pdesc->bDescriptorType == USB_DESC_TYPE_INTERFACE) {
+        if (USBH_ClassIsValid(phost, (uint8_t *)pdesc)) {
+          pif = &cfg_desc->Itf_Desc[if_ix];
+          USBH_ParseInterfaceDesc(pif, (uint8_t *)(void *)pdesc);
 
-        ep_ix = 0U;
-        pep = (USBH_EpDescTypeDef *)0;
-        while ((ep_ix < pif->bNumEndpoints) && (ptr < cfg_desc->wTotalLength))
-        {
-          if (count++ > 100) {
-              printf("USB%u.%u.%u Descrptor processing failure (inner)\n", get_port(phost), phost->address, if_ix);
-              break;
-          }
-          pdesc = USBH_GetNextDesc((uint8_t *)(void *)pdesc, &ptr);
-          if (pdesc->bDescriptorType   == USB_DESC_TYPE_ENDPOINT)
+          ep_ix = 0U;
+          pep = (USBH_EpDescTypeDef *)0;
+          while ((ep_ix < pif->bNumEndpoints) && (ptr < cfg_desc->wTotalLength))
           {
-            pep = &cfg_desc->Itf_Desc[if_ix].Ep_Desc[ep_ix];
-            USBH_ParseEPDesc(pep, (uint8_t *)(void *)pdesc);
-            ep_ix++;
+            if (count++ > 100) {
+                printf("USB%u.%u.%u Descrptor processing failure (inner)\n", get_port(phost), phost->address, if_ix);
+                break;
+            }
+            pdesc = USBH_GetNextDesc((uint8_t *)(void *)pdesc, &ptr);
+            if (pdesc->bDescriptorType == USB_DESC_TYPE_ENDPOINT)
+            {
+              pep = &cfg_desc->Itf_Desc[if_ix].Ep_Desc[ep_ix];
+              USBH_ParseEPDesc(pep, (uint8_t *)(void *)pdesc);
+              ep_ix++;
+            }
           }
         }
         if_ix++;

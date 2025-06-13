@@ -689,6 +689,7 @@ USBH_StatusTypeDef  USBH_Process(USBH_HandleTypeDef *phost)
           {
             phost->gState = HOST_ABORT_STATE;
             USBH_UsrLog("USB%u.%u Device not supporting %s class.", get_port(phost), phost->address, phost->pActiveClass->Name);
+            phost->busy--;  // Paired with = 1 in HOST_DEV_ATTACHED
           }
           else
           {
@@ -701,6 +702,7 @@ USBH_StatusTypeDef  USBH_Process(USBH_HandleTypeDef *phost)
           USBH_UsrLog("USB%u.%u No registered class (%x) for this device.",
                       get_port(phost), phost->address,
                       phost->device.CfgDesc.Itf_Desc[0].bInterfaceClass);
+          phost->busy--;  // Paired with = 1 in HOST_DEV_ATTACHED
         }
       }
 
