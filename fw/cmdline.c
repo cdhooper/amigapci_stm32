@@ -117,6 +117,7 @@ static const cmd_t cmd_list[] = {
 static const char *do_not_eval_cmds[] = {
 #ifdef EMBEDDED_CMD
     "pld",
+    "set",
     "time",
 #endif
 };

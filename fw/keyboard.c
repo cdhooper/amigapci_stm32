@@ -92,12 +92,12 @@ uint8_t keyboard_raw_mode;   // Send USB keystrokes through unaltered
 #define AS_KP6         (0x2f)  // Keypad '6'
 #define AS_UNLABELED2  (0x30)  // Key next to Left Shift
 #define AS_Z           (0x31)  // 'Z' and 'z'
-#define AS_X           (0x32)  // 'Z' and 'z'
-#define AS_C           (0x33)  // 'Z' and 'z'
-#define AS_V           (0x34)  // 'Z' and 'z'
-#define AS_B           (0x35)  // 'Z' and 'z'
-#define AS_N           (0x36)  // 'Z' and 'z'
-#define AS_M           (0x37)  // 'Z' and 'z'
+#define AS_X           (0x32)  // 'X' and 'x'
+#define AS_C           (0x33)  // 'C' and 'c'
+#define AS_V           (0x34)  // 'V' and 'v'
+#define AS_B           (0x35)  // 'B' and 'b'
+#define AS_N           (0x36)  // 'N' and 'n'
+#define AS_M           (0x37)  // 'M' and 'm'
 #define AS_COMMA       (0x38)  // '<' and ','
 #define AS_DOT         (0x39)  // '>' and '.'
 #define AS_SLASH       (0x3a)  // '>' and '/'
@@ -202,7 +202,7 @@ static const struct {
     { AS_S,          0, 0x00 },  // 0x16  'S' and 's'
     { AS_T,          0, 0x00 },  // 0x17  'T' and 't'
     { AS_U,          0, 0x00 },  // 0x18  'U' and 'u'
-    { AS_Y,          0, 0x00 },  // 0x19  'Y' and 'y'
+    { AS_V,          0, 0x00 },  // 0x19  'V' and 'v'
     { AS_W,          0, 0x00 },  // 0x1a  'W' and 'w'
     { AS_X,          0, 0x00 },  // 0x1b  'X' and 'x'
     { AS_Y,          0, 0x00 },  // 0x1c  'Y' and 'y'
@@ -278,7 +278,7 @@ static const struct {
     { AS_KP0,        0, 0x00 },  // 0x62  Keypad '0'
     { AS_KPDOT,      0, 0x00 },  // 0x63  Keypad '.'
     { AS_BACKSLASH,  0, 0x00 },  // 0x64  102ND '\' and '|' (non-US)
-    { AS_NONE,       0, 0x00 },  // 0x65  Compose
+    { AS_RIGHTAMIGA, 0, 0x00 },  // 0x65  Compose
     { AS_NONE,       0, 0x00 },  // 0x66  Power Key
     { AS_EQUAL,      0, 0x00 },  // 0x67  Keypad '='
     { AS_NONE,       0, 0x00 },  // 0x68  F13
@@ -1337,6 +1337,7 @@ keyboard_usb_input(usb_keyboard_report_t *report)
                     uint8_t amiga_modifier;
                     uint32_t tcode;
 
+                    dprintf(DF_USB_KEYBOARD, ">%02x<", keycode);
                     tcode = convert_scancode_to_amiga(keycode, modifier,
                                                       &amiga_modifier);
                     while (tcode != 0) {
