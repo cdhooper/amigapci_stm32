@@ -84,7 +84,7 @@ const char cmd_reset_help[] =
 const char cmd_set_help[] =
 "set cpu_temp_bias <num>  - Bias (+/-) for CPU temperature\n"
 "set debug <flags> [save] - set debug flags\n"
-"set defaults [keymap]    - Force all settings to default values\n"
+"set defaults [keymap]    - Force settings to default values\n"
 "set fan_rpm_max <num>    - Fan maximum speed in RPM\n"
 "set fan_speed <num>|auto - Fan speed\n"
 "set fan_speed_min <num>  - Fan speed minimum percent\n"
@@ -916,20 +916,22 @@ cmd_set(int argc, char * const *argv)
         }
         if (do_save)
             config_updated();
-    } else if (strcmp(argv[1], "defaults") == 0) {
+    } else if (strncmp(argv[1], "defaults", 7) == 0) {
         if (argc > 2) {
             if (strncmp(argv[2], "keymap", 1) == 0) {
+                printf("Resetting keymap\n");
                 keyboard_set_defaults();
                 config_updated();
             } else {
                 printf("Unknown argument %s\n", argv[2]);
                 return (RC_USER_HELP);
             }
+        } else {
+            /* Reset all defaults */
+            uint board_rev = config.board_rev;
+            config_set_defaults();
+            config.board_rev = board_rev;
         }
-        /* Reset all defaults */
-        uint board_rev = config.board_rev;
-        config_set_defaults();
-        config.board_rev = board_rev;
     } else if (strcmp(argv[1], "fan_rpm_max") == 0) {
         int pos = 0;
         int rpm;

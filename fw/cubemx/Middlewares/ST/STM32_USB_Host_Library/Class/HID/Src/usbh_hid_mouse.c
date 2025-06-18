@@ -184,8 +184,7 @@ static const HID_Report_ItemTypedef prop_y =
   */
 USBH_StatusTypeDef USBH_HID_MouseInit(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle)
 {
-  dprintf(DF_USB_MOUSE, "USB%u mouseinit class=%lu\n",
-          phost->id, phost->ClassNumber);
+  dprintf(DF_USB_MOUSE, "USB%u.%u mouseinit\n", phost->id, phost->address);
   HID_RDescTypeDef *rd = &HID_Handle->HID_RDesc;
 
   /* Defaults (hopefully these are BOOT MODE mouse settings) */

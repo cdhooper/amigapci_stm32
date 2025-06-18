@@ -19,8 +19,7 @@ extern uint32_t                  mouse_rx_report_buf[2];
   */
 USBH_StatusTypeDef USBH_HID_GenericInit(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle)
 {
-    dprintf(DF_USB_MOUSE, "USB%u genericinit class=%lu\n",
-    phost->id, phost->ClassNumber);
+    dprintf(DF_USB_MOUSE, "USB%u.%u genericinit\n", phost->id, phost->address);
 
     USBH_HID_Process_HIDReportDescriptor(phost, HID_Handle);
 

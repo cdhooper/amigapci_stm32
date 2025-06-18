@@ -50,6 +50,7 @@ USB_DEFS += \
 	    -I$(CUBEUHL)/Class/HUB \
 	    -I$(CUBEUHL)/Class/CDC/Inc -I$(CUBEUHL)/Class/HID/Inc \
 	    -I$(CUBEUHL)/Class/MSC/Inc -I$(CUBEUHL)/Class/MTP/Inc \
+	    -I$(CUBEUHL)/Class/XUSB \
 	    -I$(CUBE)/Drivers/CMSIS/Device/ST/STM32F2xx/Include \
 	    -I$(CUBE)/Drivers/CMSIS/Include \
 	    -I$(CUBE)/Drivers/STM32F2xx_HAL_Driver/Inc \

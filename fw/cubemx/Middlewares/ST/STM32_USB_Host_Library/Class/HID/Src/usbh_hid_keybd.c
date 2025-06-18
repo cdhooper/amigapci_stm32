@@ -319,6 +319,8 @@ static  const  uint8_t  HID_KEYBRD_Codes[] =
   58,   44,   60,  127,   64,   57,   62,  128        /* 0xE0 - 0xE7 */
 };
 
+#include "config.h"
+
 /**
   * @brief  USBH_HID_KeybdInit
   *         The function init the HID keyboard.
@@ -328,7 +330,7 @@ static  const  uint8_t  HID_KEYBRD_Codes[] =
 USBH_StatusTypeDef USBH_HID_KeybdInit(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle)
 {
   uint32_t x;
-printf("USB%u kbdinit class=%lu\n", phost->id, phost->ClassNumber);
+  dprintf(DF_USB_KEYBOARD, "USB%u.%u kbdinit\n", phost->id, phost->address);
 
   USBH_HID_Process_HIDReportDescriptor(phost, HID_Handle);
 

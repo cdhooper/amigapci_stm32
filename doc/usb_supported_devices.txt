@@ -46,13 +46,17 @@ USB Hub Keyboard
             HUB shows up, but keyboard appears as 0000.0000, class 0
         If PS/2 is connected direct to USB port, it shows as 04b4.0101,
             but class is 0 and product string is blank.
+    Apple wired keyboard A1243
+        ID 05ac:1006 Apple, Inc. Hub in Aluminum Keyboard
+        ID 05ac:024f Apple, Inc. Aluminium Keyboard (ANSI)
+        HUB shows up, but Apple keyboard appears as 0000.0000, class 0
 
 USB Keyboard
-    Acer Scorpius=M11SFL
+    Acer Scorpius-M11SFL (wired)
         Predator RGB Color Gaming Keyboard
         ID 195d:2047 iOne Internation Co.Ltd. Full Color Gaming Keyboard
         FN+F7 to FN+F12 drive various mouse button combinations
-    SIIG USB Low Profile Multimedia Keyboard
+    SIIG USB Low Profile Multimedia Keyboard (wired)
         ID 046e.6000 BTC USB Keyboard
         Multimedia keys cause keyboard to timeout and reset at 1 second.
             Probably needs the host to poll the second interface:
@@ -60,15 +64,22 @@ USB Keyboard
             USB1 kbdinit class=5
             USB1.0.0 type 2 Keyboard
             USB1.0.1 type ff Unknown
-    WASD Model V3 custom keyboard
+    WASD Model V3 custom keyboard (wired)
         ID 0c45:7692 Microdia USB Keyboard
+    Logitech K340 wireless keyboard
+        ID 046d:c52b Logitech, Inc. Unifying Receiver
+        Function key provides power button and other multimedia keys.
     Logitech K360 wireless keyboard
         ID 046d:c52b Logitech, Inc. Unifying Receiver
         Multimedia keys present as USAGE Consumer Control, two 16-bit entries
             which correspond to one or two Consumer Page codes as the keys
             are pressed.
+    Logitech K400r wireless keyboard with multi-touch touchpad
+        ID 046d:c52b Logitech, Inc. Unifying Receiver
+        Has PC power button and other multimedia buttons.
+        Touchpad acts as mouse.
 
-USB Keyboard / Mouse adapter
+Active PS/2 -> USB Keyboard + Mouse adapter
     Dual PS/2 to USB adapter PCP-BCG4209
         ID 13ba:0018 PCPlay Barcode PCP-BCG4209
         https://www.amazon.com/dp/B075T1LS3V
@@ -81,7 +92,7 @@ PS/2 Keyboard (through active PS/2 -> USB adapter)
     Dell SK-8110 wired PS/2 keyboard
     V7 CKU200US wired PS/2 keyboard
 
-PS/2 Mouse/Keyboard combination
+PS/2 Mouse/Keyboard combination (through active PS/2 -> USB adapter)
     Lantronix SpiderDuo KVM
         PS/2 keybonad and mouse ports through PCP-BCG4209
 
@@ -92,21 +103,39 @@ USB Gamepad / Joystick
         ID 054c:0cda Sony Interactive Entertainment Controller
         ID 20d6:a713 UNIVERSAL ARCADE FIGHTSTICK F500 ELITE
         ID 2f24:00ae UNIVERSAL ARCADE FIGHTSTICK F500 ELITE
+    Rii Game Controller GP100 (Grey) by teenemo
+        ID 081f:e401 Manta gamepad
+    Hyperkin "Trooper II" Premium Atari 2600 Style Wired USB Joystick M07466
+        ID 2e24:386a Trooper V2
+        As HID Joystick. Top left button is B0 and right is B1,
+            back has B2 and B3, and front has B4 and B5.
+
+=========================================================================
+
+Unknown
+=======
+USB Keyboard
+    Logitech K830 Wireless Illuminated Living-Room Keyboard
+        Keyboard I have unfortunately won't pair with the spare
+        Unifying receiver that I have, so can't test it.
 
 =========================================================================
 
 Not working
 ===========
 USB Hub Keyboard
-    Apple wired keyboard A1243
-        ID 05ac:1006 Apple, Inc. Hub in Aluminum Keyboard
-        ID 05ac:024f Apple, Inc. Aluminium Keyboard (ANSI)
-        HUB shows up, but Apple keyboard appears as 0000.0000, class 0
+    <All tested devices are working>
 
 USB Keyboard
     Corsair K55 RGB PRO Wired Gaming Keyboard
         ID 1b1c:1b3d Corsair Gaming K55 RGB Keyboard
         Jason's keyboard -- shows up and identifies, but no input
+        ** Might work now.
+    Das Keyboard 5Q Soft Tactile RGB Smart Mechanical Keyboard (Kickstarter)
+        ID 24f0.2020 Das Keyboard 5Q RGB Mechanical Keyboard
+            v7.3.253 (latest is 7.4.51)
+        Hang in STM32 USB state machine (stays busy) because device wants
+        to send 64-byte report when an 8-byte read was performed.
 
 USB Gamepad / Joystick
     NVIDIA Shield P2920 game controller
@@ -119,3 +148,6 @@ USB Gamepad / Joystick
         ID 057e:2009 Nintendo Co., Ltd Switch Pro Controller
         Wireless USB device responds, but no events come in.
         USB port stuck in CTRL_SETUP_WAIT
+    8Bitdo SN30 Pro USB Wired Gamepad (Grey edition) for Switch / Win / Pi
+        ID 045e:028e Microsoft Corp. Xbox360 Controller
+        Requires custom XUSB protocol support, and no way to switch it.

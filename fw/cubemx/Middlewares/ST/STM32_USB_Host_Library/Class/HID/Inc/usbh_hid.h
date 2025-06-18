@@ -28,7 +28,7 @@ extern "C" {
 /* Includes ------------------------------------------------------------------*/
 #include "usbh_core.h"
 
-typedef struct _HID_Process HID_HandleTypeDef;
+typedef struct _HID_HandleTypeDef HID_HandleTypeDef;
 #include "usbh_hid_mouse.h"
 #include "usbh_hid_keybd.h"
 
@@ -113,6 +113,7 @@ typedef enum
   HID_SYNC,
   HID_POLL,
   HID_ERROR,
+  HID_NO_SUPPORT,       // Unsupported HID device
 }
 HID_StateTypeDef;
 
@@ -236,8 +237,8 @@ typedef struct
 } FIFO_TypeDef;
 
 
-/* Structure for HID process */
-struct _HID_Process
+/* Structure for HID handle */
+struct _HID_HandleTypeDef
 {
   uint8_t              interface;  // USB device interface for this handle
   uint8_t              OutPipe;
@@ -249,14 +250,16 @@ struct _HID_Process
   FIFO_TypeDef         fifo;
   uint8_t              *pData;
   uint16_t             length;
+  uint16_t             length_max;
   uint8_t              ep_addr;
   uint16_t             poll;
   uint32_t             timer;
   uint8_t              DataReady;
+  uint8_t              error_count;
   HID_DescTypeDef      HID_Desc;
   HID_RDescTypeDef     HID_RDesc;
   USBH_StatusTypeDef(* Init)(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle);
-  struct _HID_Process *next;
+  struct _HID_HandleTypeDef *next;
 };
 
 /**
@@ -267,6 +270,7 @@ struct _HID_Process
   * @{
   */
 
+/* HID class request codes */
 #define USB_HID_GET_REPORT                            0x01U
 #define USB_HID_GET_IDLE                              0x02U
 #define USB_HID_GET_PROTOCOL                          0x03U

@@ -81,6 +81,10 @@ mouse_put_macro(uint32_t macro, uint is_pressed, uint was_pressed)
             if (was_pressed != is_pressed)
                 keyboard_put_macro(NM_BUTTON_FOURTH, is_pressed);
             break;
+        case 4:
+            if (was_pressed != is_pressed)
+                keyboard_put_macro(NM_BUTTON_FIFTH, is_pressed);
+            break;
         case 6:  // Joystick up
             *BACK_GPIO = !is_pressed;
             break;
@@ -102,7 +106,7 @@ mouse_put_macro(uint32_t macro, uint is_pressed, uint was_pressed)
     if (config.debug_flag & (DF_USB_MOUSE | DF_AMIGA_MOUSE |
                              DF_AMIGA_JOYSTICK)) {
         if (is_pressed && (macro < 10)) {
-            if (macro < 5)
+            if (macro < 6)
                 putchar('B');
             putchar("012345UDLR"[macro]);
         }
@@ -127,15 +131,14 @@ mouse_action(int off_x, int off_y, int off_wheel, int off_pan, uint32_t buttons)
     uint32_t macro;
 
     if (config.debug_flag & DF_USB_MOUSE) {
-        printf(" ");
         if (off_x != 0)
-            printf("Mx ");
+            printf(" Mx");
         if (off_y != 0)
-            printf("My ");
+            printf(" My");
         if (off_wheel != 0)
-            printf("Mw ");
+            printf(" Mw");
         if (off_pan != 0)
-            printf("Mp ");
+            printf(" Mp");
     }
 
     if (config.flags & CF_MOUSE_INVERT_X)

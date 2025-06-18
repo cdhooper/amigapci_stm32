@@ -50,5 +50,6 @@ extern uint8_t keyboard_raw_mode;
 #define NM_WHEEL_LEFT     (0x7C)
 #define NM_WHEEL_RIGHT    (0x7D)
 #define NM_BUTTON_FOURTH  (0x7E)
+#define NM_BUTTON_FIFTH   (0x7F)
 
 #endif /* _KEYBOARD_H */

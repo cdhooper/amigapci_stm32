@@ -173,11 +173,10 @@ extern "C" {
 
 #define USBH_DEVICE_ADDRESS_DEFAULT                        0x00U
 
-// #define USBH_DEVICE_ADDRESS                                0x01U
-// XXX: CDH - I don't know why STM32F4HUB changes this to 5
+/* Default address is 5 because devices below a hub use device get 1 - 4 */
 #define USBH_DEVICE_ADDRESS                                0x05U
 
-#define USBH_MAX_ERROR_COUNT                               0x02U
+#define USBH_MAX_ERROR_COUNT                               0x03U
 
 #if (USBH_USE_OS == 1U)
 #define MSGQUEUE_OBJECTS                                   0x10U
@@ -383,14 +382,17 @@ typedef enum
   CMD_ERROR = 3U,
 } CMD_StateTypeDef;
 
+/*
+ * See also USB_URBStateTypeDef. This enum must remain in sync with that enum.
+ */
 typedef enum
 {
-  USBH_URB_IDLE = 0U,
-  USBH_URB_DONE,
-  USBH_URB_NOTREADY,
-  USBH_URB_NYET,
-  USBH_URB_ERROR,
-  USBH_URB_STALL
+  USBH_URB_IDLE = 0U,       // URB_IDLE
+  USBH_URB_DONE,            // URB_DONE
+  USBH_URB_NOTREADY,        // URB_NOTREADY
+  USBH_URB_NYET,            // URB_NYET
+  USBH_URB_ERROR,           // URB_ERROR
+  USBH_URB_STALL            // URB_STALL
 } USBH_URBStateTypeDef;
 
 typedef enum
@@ -469,7 +471,7 @@ typedef struct _USBH_HandleTypeDef
   USBH_DeviceTypeDef    device;
   USBH_ClassTypeDef    *pClass[USBH_MAX_NUM_SUPPORTED_CLASS];
   USBH_ClassTypeDef    *pActiveClass;
-  uint32_t              ClassNumber;
+  uint32_t              ClassNumber;    // Count of initialized classes
 //uint32_t              Pipes[16];
   uint32_t              *Pipes;  // MORI
   __IO uint32_t         Timer;
@@ -501,6 +503,7 @@ typedef struct _USBH_HandleTypeDef
   uint64_t tick_max;                // Max timer ticks a poll pass took
   uint64_t tick_total;              // Total timer ticks poll passes have taken
   uint32_t poll_count;              // Total polls
+  uint32_t iface_waiting;           // Bitmask of interfaces waiting
 } USBH_HandleTypeDef;
 
 

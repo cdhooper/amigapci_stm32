@@ -20,6 +20,16 @@
 /* Includes ------------------------------------------------------------------*/
 #include "usbh_ctlreq.h"
 
+#undef DPRINTF
+
+#undef DEBUG_CONTROL
+#ifdef DEBUG_CONTROL
+#define DPRINTF(x...) printf(x)
+#else
+#define DPRINTF(x...) do { } while (0)
+#endif
+
+
 /** @addtogroup USBH_LIB
 * @{
 */
@@ -645,7 +655,6 @@ USBH_StatusTypeDef USBH_CtlReq(USBH_HandleTypeDef *phost, uint8_t *buff,
   return status;
 }
 
-
 /**
   * @brief  USBH_HandleControl
   *         Handles the USB control transfer state machine
@@ -662,6 +671,8 @@ static USBH_StatusTypeDef USBH_HandleControl(USBH_HandleTypeDef *phost)
   {
     case CTRL_SETUP:
       /* send a SETUP packet */
+      DPRINTF("USB%u.%u ctrlsetup in=%x out=%x l=%x pipe=%x [%02x %02x %02x]\n", get_port(phost), phost->address, phost->InEp, phost->OutEp, phost->Control.length, phost->Control.pipe_out, phost->Control.buff[0], phost->Control.buff[1], phost->Control.buff[2]);
+
       USBH_CtlSendSetup(phost, (uint8_t *)(void *)phost->Control.setup.d8,
                         phost->Control.pipe_out);
 
@@ -675,6 +686,7 @@ static USBH_StatusTypeDef USBH_HandleControl(USBH_HandleTypeDef *phost)
       /* case SETUP packet sent successfully */
       if (URB_Status == USBH_URB_DONE)
       {
+        DPRINTF(" CTRL_SETUP_WAIT=done");
         direction = (phost->Control.setup.b.bmRequestType & USB_REQ_DIR_MASK);
 
         /* check if there is a data stage */
@@ -684,11 +696,13 @@ static USBH_StatusTypeDef USBH_HandleControl(USBH_HandleTypeDef *phost)
           {
             /* Data Direction is IN */
             phost->Control.state = CTRL_DATA_IN;
+            DPRINTF(" CTRL_DATA_IN");
           }
           else
           {
             /* Data Direction is OUT */
             phost->Control.state = CTRL_DATA_OUT;
+            DPRINTF(" CTRL_DATA_OUT 1");
           }
         }
         /* No DATA stage */
@@ -699,11 +713,13 @@ static USBH_StatusTypeDef USBH_HandleControl(USBH_HandleTypeDef *phost)
           {
             /* Data Direction is IN */
             phost->Control.state = CTRL_STATUS_OUT;
+            DPRINTF(" CTRL_STATUS_OUT 1");
           }
           else
           {
             /* Data Direction is OUT */
             phost->Control.state = CTRL_STATUS_IN;
+            DPRINTF(" CTRL_STATUS_IN 1");
           }
         }
 
@@ -721,6 +737,7 @@ static USBH_StatusTypeDef USBH_HandleControl(USBH_HandleTypeDef *phost)
         if ((URB_Status == USBH_URB_ERROR) || (URB_Status == USBH_URB_NOTREADY))
         {
           phost->Control.state = CTRL_ERROR;
+          DPRINTF(" CTRL_ERROR 1");
 
 #if (USBH_USE_OS == 1U)
           phost->os_msg = (uint32_t)USBH_CONTROL_EVENT;
@@ -730,6 +747,13 @@ static USBH_StatusTypeDef USBH_HandleControl(USBH_HandleTypeDef *phost)
           (void)osMessageQueuePut(phost->os_event, &phost->os_msg, 0U, NULL);
 #endif
 #endif
+        } else {
+          if ((phost->Timer - phost->Control.timer) > 1000U) {
+            DPRINTF("Timeout");
+            status = USBH_FAIL;
+            return (USBH_FAIL);
+//          phost->Control.state = CTRL_ERROR;
+          }
         }
       }
       break;
@@ -741,6 +765,7 @@ static USBH_StatusTypeDef USBH_HandleControl(USBH_HandleTypeDef *phost)
                           phost->Control.pipe_in);
 
       phost->Control.state = CTRL_DATA_IN_WAIT;
+      DPRINTF(" CTRL_DATA_IN_WAIT");
       break;
 
     case CTRL_DATA_IN_WAIT:
@@ -751,6 +776,7 @@ static USBH_StatusTypeDef USBH_HandleControl(USBH_HandleTypeDef *phost)
       if (URB_Status == USBH_URB_DONE)
       {
         phost->Control.state = CTRL_STATUS_OUT;
+        DPRINTF(" CTRL_STATUS_OUT 2");
 
 #if (USBH_USE_OS == 1U)
         phost->os_msg = (uint32_t)USBH_CONTROL_EVENT;
@@ -765,8 +791,9 @@ static USBH_StatusTypeDef USBH_HandleControl(USBH_HandleTypeDef *phost)
       /* manage error cases*/
       if (URB_Status == USBH_URB_STALL)
       {
-        /* In stall case, return to previous machine state*/
+        /* In stall case, return to previous machine state */
         status = USBH_NOT_SUPPORTED;
+        DPRINTF(" STALL");
 
 #if (USBH_USE_OS == 1U)
         phost->os_msg = (uint32_t)USBH_CONTROL_EVENT;
@@ -783,6 +810,7 @@ static USBH_StatusTypeDef USBH_HandleControl(USBH_HandleTypeDef *phost)
         {
           /* Device error */
           phost->Control.state = CTRL_ERROR;
+          DPRINTF(" CTRL_ERROR 2");
 
 #if (USBH_USE_OS == 1U)
           phost->os_msg = (uint32_t)USBH_CONTROL_EVENT;
@@ -803,6 +831,7 @@ static USBH_StatusTypeDef USBH_HandleControl(USBH_HandleTypeDef *phost)
 
       phost->Control.timer = (uint16_t)phost->Timer;
       phost->Control.state = CTRL_DATA_OUT_WAIT;
+      DPRINTF(" CTRL_DATA_OUT_WAIT");
       break;
 
     case CTRL_DATA_OUT_WAIT:
@@ -813,6 +842,7 @@ static USBH_StatusTypeDef USBH_HandleControl(USBH_HandleTypeDef *phost)
       {
         /* If the Setup Pkt is sent successful, then change the state */
         phost->Control.state = CTRL_STATUS_IN;
+        DPRINTF(" CTRL_STATUS_IN 2");
 
 #if (USBH_USE_OS == 1U)
         phost->os_msg = (uint32_t)USBH_CONTROL_EVENT;
@@ -830,6 +860,7 @@ static USBH_StatusTypeDef USBH_HandleControl(USBH_HandleTypeDef *phost)
         /* In stall case, return to previous machine state*/
         phost->Control.state = CTRL_STALLED;
         status = USBH_NOT_SUPPORTED;
+        DPRINTF(" CTRL_STALLED");
 
 #if (USBH_USE_OS == 1U)
         phost->os_msg = (uint32_t)USBH_CONTROL_EVENT;
@@ -844,6 +875,7 @@ static USBH_StatusTypeDef USBH_HandleControl(USBH_HandleTypeDef *phost)
       {
         /* Nack received from device */
         phost->Control.state = CTRL_DATA_OUT;
+        DPRINTF(" CTRL_DATA_OUT 2");
 
 #if (USBH_USE_OS == 1U)
         phost->os_msg = (uint32_t)USBH_CONTROL_EVENT;
@@ -860,6 +892,7 @@ static USBH_StatusTypeDef USBH_HandleControl(USBH_HandleTypeDef *phost)
         {
           /* device error */
           phost->Control.state = CTRL_ERROR;
+          DPRINTF(" CTRL_ERROR 3");
           status = USBH_FAIL;
 
 #if (USBH_USE_OS == 1U)
@@ -880,6 +913,7 @@ static USBH_StatusTypeDef USBH_HandleControl(USBH_HandleTypeDef *phost)
 
       phost->Control.timer = (uint16_t)phost->Timer;
       phost->Control.state = CTRL_STATUS_IN_WAIT;
+      DPRINTF(" CTRL_STATUS_IN_WAIT");
 
       break;
 
@@ -891,6 +925,7 @@ static USBH_StatusTypeDef USBH_HandleControl(USBH_HandleTypeDef *phost)
       {
         /* Control transfers completed, Exit the State Machine */
         phost->Control.state = CTRL_COMPLETE;
+        DPRINTF(" CTRL_COMPLETE 1");
         status = USBH_OK;
 
 #if (USBH_USE_OS == 1U)
@@ -905,6 +940,7 @@ static USBH_StatusTypeDef USBH_HandleControl(USBH_HandleTypeDef *phost)
       else if (URB_Status == USBH_URB_ERROR)
       {
         phost->Control.state = CTRL_ERROR;
+        DPRINTF(" CTRL_ERROR 4");
 
 #if (USBH_USE_OS == 1U)
         phost->os_msg = (uint32_t)USBH_CONTROL_EVENT;
@@ -921,6 +957,7 @@ static USBH_StatusTypeDef USBH_HandleControl(USBH_HandleTypeDef *phost)
         {
           /* Control transfers completed, Exit the State Machine */
           status = USBH_NOT_SUPPORTED;
+          DPRINTF(" NOT_SUPPORTED");
 
 #if (USBH_USE_OS == 1U)
           phost->os_msg = (uint32_t)USBH_CONTROL_EVENT;
@@ -939,6 +976,7 @@ static USBH_StatusTypeDef USBH_HandleControl(USBH_HandleTypeDef *phost)
 
       phost->Control.timer = (uint16_t)phost->Timer;
       phost->Control.state = CTRL_STATUS_OUT_WAIT;
+      DPRINTF(" CTRL_STATUS_OUT_WAIT");
       break;
 
     case CTRL_STATUS_OUT_WAIT:
@@ -947,6 +985,7 @@ static USBH_StatusTypeDef USBH_HandleControl(USBH_HandleTypeDef *phost)
       {
         status = USBH_OK;
         phost->Control.state = CTRL_COMPLETE;
+        DPRINTF(" CTRL_COMPLETE 2");
 
 #if (USBH_USE_OS == 1U)
         phost->os_msg = (uint32_t)USBH_CONTROL_EVENT;
@@ -960,6 +999,7 @@ static USBH_StatusTypeDef USBH_HandleControl(USBH_HandleTypeDef *phost)
       else if (URB_Status == USBH_URB_NOTREADY)
       {
         phost->Control.state = CTRL_STATUS_OUT;
+        DPRINTF(" CTRL_STATUS_OUT");
 
 #if (USBH_USE_OS == 1U)
         phost->os_msg = (uint32_t)USBH_CONTROL_EVENT;
@@ -975,6 +1015,7 @@ static USBH_StatusTypeDef USBH_HandleControl(USBH_HandleTypeDef *phost)
         if (URB_Status == USBH_URB_ERROR)
         {
           phost->Control.state = CTRL_ERROR;
+          DPRINTF(" CTRL_ERROR 5");
 
 #if (USBH_USE_OS == 1U)
           phost->os_msg = (uint32_t)USBH_CONTROL_EVENT;

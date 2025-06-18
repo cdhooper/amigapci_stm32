@@ -917,7 +917,7 @@ convert_mm_scancode_to_amiga(uint keycode)
     for (pos = 0; pos < ARRAY_SIZE(scancode_mm_to_usb); pos++) {
         if (scancode_mm_to_usb[pos].sc_mmusb == keycode) {
             code_usb = scancode_mm_to_usb[pos].sc_usb;
-            dprintf(DF_USB_KEYBOARD, "<%02x>", code_usb);
+            dprintf(DF_USB_KEYBOARD, "=>%02x", code_usb);
             return (convert_scancode_to_amiga(code_usb,
                                     last_key_report_modifier, &amiga_modifier));
         }
@@ -1028,6 +1028,8 @@ amiga_keyboard_send(void)
     else
         code = ak_rb[ak_rb_consumer];
     dprintf(DF_AMIGA_KEYBOARD, "[tx %x]", code);
+
+    code = ~((code << 1) | (code >> 7));
     for (mask = 0x80; mask != 0; mask >>= 1) {
         if (code & mask)
             set_kbdat_1();
@@ -1119,7 +1121,7 @@ keyboard_put_amiga(uint8_t code)
     }
 
     /* Rotate and invert for send */
-    ak_rb[ak_rb_producer] = ~((code << 1) | (code >> 7));
+    ak_rb[ak_rb_producer] = code;
     __sync_synchronize();  // Memory barrier
     ak_rb_producer = new_prod;
 }
@@ -1447,12 +1449,11 @@ keyboard_usb_input_mm(uint16_t *ch, uint count)
         if (pos == count) {
             /* Key down */
             tcode = convert_mm_scancode_to_amiga(ch[cur]);
-            printf(" MKEYDOWN %x -> %lx", last[cur], tcode);
+            dprintf(DF_USB_KEYBOARD, " MKEYDOWN %lx ", tcode);
             while (tcode != 0) {
                 uint8_t code = tcode & 0xff;
                 if (code != AS_NONE) {
-                    if (code & 0x80) // Button press or macro expansion
-                        /* Button press or macro expansion */
+                    if (code & 0x80)  // Button press or macro expansion
                         mouse_buttons_add |= BIT(code & 31);
                     else
                         keyboard_put_amiga(code);
@@ -1472,7 +1473,7 @@ keyboard_usb_input_mm(uint16_t *ch, uint count)
         if (pos == count) {
             /* Key up */
             tcode = convert_mm_scancode_to_amiga(last[cur]);
-            printf(" MKEYUP %x -> %lx", last[cur], tcode);
+            dprintf(DF_USB_KEYBOARD, " MKEYUP %lx ", tcode);
             while (tcode != 0) {
                 uint8_t code = tcode & 0xff;
                 if (code != AS_NONE) {
