@@ -42,6 +42,24 @@ EndBSPDependencies */
 #include "usbh_hid.h"
 #include "usbh_hid_parser.h"
 
+#include <stdbool.h>
+#include "config.h"
+#include "timer.h"
+#include "utils.h"
+#define DEBUG_HIDREPORT_DESCRIPTOR
+#ifdef DEBUG_HIDREPORT_DESCRIPTOR
+#define DPRINTF(...) dprintf(DF_USB_REPORT, __VA_ARGS__)
+#else
+#define DPRINTF(...)
+#endif
+
+#undef DEBUG_HID_PROTOCOL
+#ifdef DEBUG_HID_PROTOCOL
+#define PPRINTF(...) dprintf(DF_USB, __VA_ARGS__);
+#else
+#define PPRINTF(...) do { } while (0)
+#endif
+
 
 /** @addtogroup USBH_LIB
 * @{
@@ -127,16 +145,6 @@ USBH_ClassTypeDef  HID_Class =
 * @{
 */
 
-#include <stdbool.h>
-#include "config.h"
-#include "timer.h"
-#include "utils.h"
-#define DEBUG_HIDREPORT_DESCRIPTOR
-#ifdef DEBUG_HIDREPORT_DESCRIPTOR
-#define DPRINTF(...) dprintf(DF_USB_REPORT, __VA_ARGS__)
-#else
-#define DPRINTF(...)
-#endif
 
 /** @defgroup USBH_HID_MOUSE_Private_Functions
   * @{
@@ -302,7 +310,8 @@ void USBH_HID_Process_HIDReportDescriptor(USBH_HandleTypeDef *phost, HID_HandleT
                         DPRINTF("%.*s%s", coll_depth, spaces, "FEATURE");
                         break;
                     case HID_MAIN_ITEM_TAG_ENDCOLLECTION:
-                        coll_depth--;
+                        if (coll_depth > 0)
+                            coll_depth--;
                         if (coll_depth == 0) {
                             bitpos = 0;
                             usage = 0;
@@ -555,7 +564,7 @@ static USBH_StatusTypeDef USBH_HID_InterfaceInit_ll(USBH_HandleTypeDef *phost, u
 #endif
 
   HID_Handle->interface = interface;
-  HID_Handle->state = HID_ERROR;
+  HID_Handle->state = HID_NO_SUPPORT;
 
   /* Decode Bootclass Protocol: Mouse or Keyboard */
   if (phost->device.CfgDesc.Itf_Desc[interface].bInterfaceProtocol == HID_KEYBRD_BOOT_CODE)
@@ -571,14 +580,18 @@ static USBH_StatusTypeDef USBH_HID_InterfaceInit_ll(USBH_HandleTypeDef *phost, u
   else
   {
     USBH_UsrLog("USB%u.%u.%u Generic device found", get_port(phost), phost->address, interface);
+#if 0
+    USBH_UsrLog("Protocol not supported.");
+    return USBH_FAIL;
+#endif
     HID_Handle->Init = USBH_HID_GenericInit;
-//  return USBH_FAIL;
   }
 
   HID_Handle->state     = HID_INIT;
   HID_Handle->ctl_state = HID_REQ_INIT;
   HID_Handle->ep_addr   = phost->device.CfgDesc.Itf_Desc[interface].Ep_Desc[0].bEndpointAddress;
   HID_Handle->length    = phost->device.CfgDesc.Itf_Desc[interface].Ep_Desc[0].wMaxPacketSize;
+  HID_Handle->length_max = phost->device.DevDesc.bMaxPacketSize;
   HID_Handle->poll      = phost->device.CfgDesc.Itf_Desc[interface].Ep_Desc[0].bInterval;
 
   if (HID_Handle->poll  < HID_MIN_POLL)
@@ -603,7 +616,7 @@ static USBH_StatusTypeDef USBH_HID_InterfaceInit_ll(USBH_HandleTypeDef *phost, u
 
       /* Open pipe for IN endpoint */
       USBH_OpenPipe(phost, HID_Handle->InPipe, HID_Handle->InEp, phost->device.address,
-                    phost->device.speed, USB_EP_TYPE_INTR, HID_Handle->length);
+                    phost->device.speed, USB_EP_TYPE_INTR, HID_Handle->length_max);
 
       USBH_LL_SetToggle(phost, HID_Handle->InPipe, 0U);
     }
@@ -754,8 +767,8 @@ static USBH_StatusTypeDef USBH_HID_ClassRequest_ll(USBH_HandleTypeDef *phost, HI
       break;
 
     case HID_REQ_SET_PROTOCOL:
-      /* set protocol */
-      status = USBH_HID_SetProtocol(phost, 0U);
+      /* set report protocol */
+      status = USBH_HID_SetProtocol(phost, 1U);
       if ((status == USBH_OK) || (status == USBH_NOT_SUPPORTED))
       {
         HID_Handle->ctl_state = HID_REQ_IDLE;
@@ -783,7 +796,6 @@ static USBH_StatusTypeDef USBH_HID_ClassRequest_ll(USBH_HandleTypeDef *phost, HI
   */
 static USBH_StatusTypeDef USBH_HID_ClassRequest(USBH_HandleTypeDef *phost)
 {
-    static uint32_t waiting = 0;
     uint bit = 0;
     USBH_StatusTypeDef status;
     HID_HandleTypeDef *HID_Handle = (HID_HandleTypeDef *) phost->pActiveClass->pData;
@@ -793,23 +805,23 @@ static USBH_StatusTypeDef USBH_HID_ClassRequest(USBH_HandleTypeDef *phost)
      * on the USB host at any time.
      */
     while (HID_Handle != NULL) {
-        if (waiting) {
-            if (waiting & BIT(bit)) {
+        if (phost->iface_waiting) {
+            if (phost->iface_waiting & BIT(bit)) {
                 status = USBH_HID_ClassRequest_ll(phost, HID_Handle);
                 if (status == USBH_OK)
-                    waiting &= ~BIT(bit);
+                    phost->iface_waiting &= ~BIT(bit);
             }
         } else {
             status = USBH_HID_ClassRequest_ll(phost, HID_Handle);
-            if (status != USBH_OK) {
-                waiting |= BIT(bit);
+            if (status == USBH_BUSY) {
+                phost->iface_waiting |= BIT(bit);
                 break;  // Check again later
             }
         }
         bit++;
         HID_Handle = HID_Handle->next;
     }
-    return (waiting ? USBH_FAIL: USBH_OK);
+    return (phost->iface_waiting ? USBH_FAIL: USBH_OK);
 }
 
 static USBH_StatusTypeDef USBH_HID_Process_ll(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle)
@@ -834,7 +846,8 @@ static USBH_StatusTypeDef USBH_HID_Process_ll(USBH_HandleTypeDef *phost, HID_Han
       break;
 
     case HID_IDLE:
-      status = USBH_HID_GetReport(phost, 0x01U, 0U, HID_Handle->pData, (uint8_t)HID_Handle->length);
+      // HID_Handle pData and length_max are updated in the HID protocol handler
+      status = USBH_HID_GetReport(phost, 0x01U, 0U, HID_Handle->pData, (uint8_t)HID_Handle->length_max);
       if (status == USBH_OK)
       {
         HID_Handle->state = HID_SYNC;
@@ -842,16 +855,21 @@ static USBH_StatusTypeDef USBH_HID_Process_ll(USBH_HandleTypeDef *phost, HID_Han
       else if (status == USBH_BUSY)
       {
         HID_Handle->state = HID_IDLE;
-        status = USBH_OK;
       }
       else if (status == USBH_NOT_SUPPORTED)
       {
+        PPRINTF(" ->NOSUP");
         HID_Handle->state = HID_SYNC;
         status = USBH_OK;
       }
       else
       {
-        HID_Handle->state = HID_ERROR;
+        PPRINTF(" ->ERROR");
+        if (++HID_Handle->error_count < 5) {
+          HID_Handle->state = HID_ERROR;
+        } else {
+          HID_Handle->state = HID_ERROR;
+        }
         status = USBH_FAIL;
       }
 
@@ -863,6 +881,10 @@ static USBH_StatusTypeDef USBH_HID_Process_ll(USBH_HandleTypeDef *phost, HID_Han
       (void)osMessageQueuePut(phost->os_event, &phost->os_msg, 0U, NULL);
 #endif
 #endif
+      break;
+
+    case HID_ERROR:
+      /* Terminal state */
       break;
 
     case HID_SYNC:
@@ -884,7 +906,7 @@ static USBH_StatusTypeDef USBH_HID_Process_ll(USBH_HandleTypeDef *phost, HID_Han
 
     case HID_GET_DATA:
       USBH_InterruptReceiveData(phost, HID_Handle->pData,
-                                (uint8_t)HID_Handle->length,
+                                (uint8_t)HID_Handle->length_max,
                                 HID_Handle->InPipe);
 
       HID_Handle->state = HID_POLL;
@@ -899,7 +921,7 @@ static USBH_StatusTypeDef USBH_HID_Process_ll(USBH_HandleTypeDef *phost, HID_Han
 
         if ((HID_Handle->DataReady == 0U) && (XferSize != 0U))
         {
-          USBH_HID_FifoWrite(&HID_Handle->fifo, HID_Handle->pData, HID_Handle->length);
+          USBH_HID_FifoWrite(&HID_Handle->fifo, HID_Handle->pData, XferSize);
           HID_Handle->DataReady = 1U;
           USBH_HID_EventCallback(phost, HID_Handle);
 
@@ -944,16 +966,29 @@ static USBH_StatusTypeDef USBH_HID_Process_ll(USBH_HandleTypeDef *phost, HID_Han
   */
 static USBH_StatusTypeDef USBH_HID_Process(USBH_HandleTypeDef *phost)
 {
-  USBH_StatusTypeDef tstatus;
-  USBH_StatusTypeDef status = USBH_OK;
-  HID_HandleTypeDef *HID_Handle = (HID_HandleTypeDef *) phost->pActiveClass->pData;
+    uint bit = 0;
+    USBH_StatusTypeDef status;
+    HID_HandleTypeDef *HID_Handle =
+                       (HID_HandleTypeDef *) phost->pActiveClass->pData;
 
-  for (; HID_Handle != NULL; HID_Handle = HID_Handle->next) {
-    tstatus = USBH_HID_Process_ll(phost, HID_Handle);
-    if (status == USBH_OK)
-        status = tstatus;
-  }
-  return status;
+    while (HID_Handle != NULL) {
+        if (phost->iface_waiting) {
+            printf(" Waiting %lx", phost->iface_waiting);
+            if (phost->iface_waiting & BIT(bit)) {
+                status = USBH_HID_Process_ll(phost, HID_Handle);
+                if (status == USBH_OK)
+                    phost->iface_waiting &= ~BIT(bit);
+            }
+        } else {
+            status = USBH_HID_Process_ll(phost, HID_Handle);
+            if (status == USBH_BUSY) {
+                break;  // Check again later
+            }
+        }
+        bit++;
+        HID_Handle = HID_Handle->next;
+    }
+    return (phost->iface_waiting ? USBH_FAIL: USBH_OK);
 }
 
 static USBH_StatusTypeDef USBH_HID_SOFProcess_ll(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle)
@@ -999,7 +1034,7 @@ static USBH_StatusTypeDef USBH_HID_SOFProcess(USBH_HandleTypeDef *phost)
 }
 
 /**
-* @brief  USBH_Get_HID_ReportDescriptor
+* @brief  USBH_HID_GetHIDReportDescriptor
   *         Issue report Descriptor command to the device. Once the response
   *         received, parse the report descriptor and update the status.
   * @param  phost: Host handle
@@ -1076,6 +1111,7 @@ USBH_StatusTypeDef USBH_HID_SetIdle(USBH_HandleTypeDef *phost,
   phost->Control.setup.b.wIndex.w = 0U;
   phost->Control.setup.b.wLength.w = 0U;
 
+  PPRINTF("SetIdle\n");
   return USBH_CtlReq(phost, 0U, 0U);
 }
 
@@ -1107,6 +1143,7 @@ USBH_StatusTypeDef USBH_HID_SetReport(USBH_HandleTypeDef *phost,
   phost->Control.setup.b.wIndex.w = 0U;
   phost->Control.setup.b.wLength.w = reportLen;
 
+  PPRINTF("SetReport\n");
   return USBH_CtlReq(phost, reportBuff, (uint16_t)reportLen);
 }
 
@@ -1155,18 +1192,12 @@ USBH_StatusTypeDef USBH_HID_SetProtocol(USBH_HandleTypeDef *phost,
                                          | USB_REQ_TYPE_CLASS;
 
   phost->Control.setup.b.bRequest = USB_HID_SET_PROTOCOL;
-  if (protocol)
-  {
-    phost->Control.setup.b.wValue.w = 0U;
-  }
-  else
-  {
-    phost->Control.setup.b.wValue.w = 1U;
-  }
+  phost->Control.setup.b.wValue.w = protocol;
 
   phost->Control.setup.b.wIndex.w = 0U;
   phost->Control.setup.b.wLength.w = 0U;
 
+  PPRINTF("SetProtocol %u\n", protocol);
   return USBH_CtlReq(phost, 0U, 0U);
 
 }
@@ -1409,13 +1440,15 @@ readbits_joy(void *ptr, uint startbit, uint bits)
 {
     int val = readbits(ptr, startbit, bits);
     switch (val) {
-        case 0:
+        case 0:             // 0x00
             val = -1;
             break;
-        case -128:
+        default:
+        case  127:          // 0x7f
+        case -128:          // 0x80
             val = 0;
             break;
-        case -1:
+        case -1:            // 0xff
             val = 1;
             break;
     }
@@ -1446,11 +1479,15 @@ readbits_buttons(void *ptr, HID_RDescTypeDef *rd)
   * @param  phost: Host handle
   * @retval USBH Status
   */
-USBH_StatusTypeDef USBH_HID_DecodeReport(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle, HID_TypeTypeDef devtype, HID_MISC_Info_TypeDef *report_info)
+USBH_StatusTypeDef
+USBH_HID_DecodeReport(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle, HID_TypeTypeDef devtype, HID_MISC_Info_TypeDef *report_info)
 {
     HID_RDescTypeDef *rd = &HID_Handle->HID_RDesc;
     uint32_t          report_data[4];
+    static uint32_t   report_last[ARRAY_SIZE(report_data)];
+    uint16_t          len = sizeof (report_data);
     uint button;
+    uint rlen;
 
     if (HID_Handle == NULL)
         return USBH_FAIL;
@@ -1458,11 +1495,13 @@ USBH_StatusTypeDef USBH_HID_DecodeReport(USBH_HandleTypeDef *phost, HID_HandleTy
     if (HID_Handle->length == 0U)
         return USBH_FAIL;
 
+    if (len > HID_Handle->length)
+        len = HID_Handle->length;
     memset(&report_data, 0, sizeof (report_data));
+    rlen = USBH_HID_FifoRead(&HID_Handle->fifo, &report_data, len);
 
     /* Fill report */
-    if (USBH_HID_FifoRead(&HID_Handle->fifo, &report_data,
-                          HID_Handle->length) ==  HID_Handle->length) {
+    if (rlen > 0) {
         uint cur;
         uint8_t id = report_data[0];
         memset(report_info, 0, sizeof (*report_info));
@@ -1500,14 +1539,19 @@ is_mouse:
             dprintf(DF_USB_DECODE_MISC, "Sysctl %x", report_info->sysctl);
         } else if ((rd->id_mouse == 0) && (rd->usage == HID_USAGE_MOUSE)) {
             goto is_mouse;
-        } else if (rd->usage == HID_USAGE_GAMEPAD) {
-            dprintf(DF_USB_DECODE_JOY, "\n%08lx %08lx %08lx ",
-                    report_data[0], report_data[1], report_data[2]);
+        } else if ((rd->usage == HID_USAGE_JOYSTICK) ||
+                   (rd->usage == HID_USAGE_GAMEPAD)) {
+            if ((config.debug_flag & DF_USB_DECODE_JOY) &&
+                (memcmp(report_data, report_last, sizeof (report_data)) != 0)) {
+                printf("\n%08lx %08lx %08lx",
+                       report_data[0], report_data[1], report_data[2]);
+                memcpy(report_last, report_data, sizeof (report_last));
+            }
             report_info->buttons = readbits_buttons(report_data, rd);
             report_info->x = readbits_joy(report_data, rd->pos_x, rd->bits_x);
             report_info->y = readbits_joy(report_data, rd->pos_y, rd->bits_y);
         } else {
-            dprintf(DF_USB_DECODE_MISC, "ID %x", id);
+            dprintf(DF_USB_DECODE_MISC, "Misc ID %x", id);
         }
         cur = 0;
         for (button = 0; button < rd->num_mmbuttons; button++) {
@@ -1524,8 +1568,24 @@ is_mouse:
                     break;
             }
         }
-
         return USBH_OK;
     }
     return   USBH_FAIL;
+}
+
+static uint32_t hid_rx_report_buf[2][HID_QUEUE_SIZE * 4];
+
+void
+USBH_HID_PrepareFifo(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle)
+{
+    uint port = phost->id;
+
+    if (HID_Handle->length_max > sizeof (hid_rx_report_buf[port]))
+        HID_Handle->length_max = sizeof (hid_rx_report_buf[port]);
+
+    memset(hid_rx_report_buf[port], 0, sizeof (hid_rx_report_buf[port]));
+
+    HID_Handle->pData = (uint8_t *)(void *) hid_rx_report_buf[port];
+    USBH_HID_FifoInit(&HID_Handle->fifo, phost->device.Data,
+                      sizeof (hid_rx_report_buf[port]));
 }

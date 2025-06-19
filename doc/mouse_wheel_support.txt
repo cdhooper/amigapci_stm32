@@ -1,0 +1,28 @@
+There are various projects supporting a scroll wheel Mouse on the Amiga.
+The BEC controller in the AmigaPCI currently implements scroll wheel by
+sending keyboard scroll codes directly on the Keyboard interface, bypassing
+the need for any custom driver on the Amiga.
+
+https://github.com/paulroberthill/AmigaPS2Mouse
+    This project uses an Arduino to convert a PS/2 style mouse to
+    Amiga mouse. The pin for the middle mouse button is used for
+    message between the Amiga driver and the Arduino:
+    1. The driver on the Amiga drives Button 3 (PotX - middle mouse button)
+       low.
+    2. This triggers an interrupt on the Arduino.
+    3. If neither the left mouse button nor the right mouse button are
+       being held, then the Arduino firmware will drive button 1, 3, and 2
+       as a 3-bit code to the Amiga.
+               B1  B3  B2
+        Code  LMB MMB RMB  Meaning
+          0    0   0   0   Nothing
+          1    0   0   1   Wheel down
+          2    0   1   0   Wheel up
+          3    0   1   1   Middle button down
+          4    1   0   0   Middle button up
+    4. The Arduino will release the code after 20 microseconds and not
+       assert again for another 18 milliseconds.
+
+    Limitations:
+        The scroll wheel does not work when left or right Amiga mouse
+        button is being held.

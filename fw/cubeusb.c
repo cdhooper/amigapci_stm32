@@ -29,6 +29,7 @@
 #include <usbh_msc.h>  // MSC
 #include <usbh_mtp.h>  // MTP
 #include <usbh_hub.h>  // HUB
+// #include <usbh_xusb.h>  // XUSB
 #include <usbh_hid_usage.h>  // HID_USAGE_*
 
 void otg_fs_isr(void);
@@ -168,7 +169,8 @@ static const char * const host_controlstate_types[] = {
 
 static const char * const hid_state_types[] = {
     "HID_INIT", "HID_IDLE", "HID_SEND_DATA", "HID_BUSY",
-    "HID_GET_DATA", "HID_SYNC", "HID_POLL", "HID_ERROR"
+    "HID_GET_DATA", "HID_SYNC", "HID_POLL", "HID_ERROR",
+    "HID_NO_SUPPORT"
 };
 
 static const char * const hid_ctl_state_types[] = {
@@ -193,6 +195,18 @@ static const char * const hub_ctl_state_types[] = {
         "HUB_REQ_SET_POWER", "HUB_WAIT_PWRGOOD",
     "HUB_REQ_DONE",
 };
+
+#if 0
+static const char * const xusb_state_types[] = {
+    "XUSB_INIT", "XUSB_IDLE", "XUSB_SEND_DATA", "XUSB_BUSY",
+    "XUSB_GET_DATA", "XUSB_SYNC", "XUSB_POLL", "XUSB_ERROR"
+};
+
+static const char * const xusb_ctl_state_types[] = {
+    "XUSB_INIT", "XUSB_IDLE", "XUSB_GET_REPORT_DESC", "XUSB_GET_DESC",
+    "XUSB_SET_IDLE", "XUSB_SET_PROTOCOL", "XUSB_SET_REPORT"
+};
+#endif
 
 uint
 get_port(USBH_HandleTypeDef *phost)
@@ -323,6 +337,12 @@ usb_show_stats(void)
            usb_stats.otg_hs_wkup_ints);
 }
 
+/*
+ * USB Class Codes
+ *
+ * These codes define both the bDeviceClass field in the Device Descriptor
+ * and the bInterfaceClass field in the Interface Descriptor.
+ */
 static const char *const usb_class_codes[] =
 {
     "IF",       // 0x00
@@ -346,6 +366,9 @@ static const char *const usb_class_codes[] =
     "C-Bridge", // 0x12
     "USB-Bulk", // 0x13
     "MCTP",     // 0x14
+                // 0xdc Diagnostic
+                // 0xfe Application-specific
+                // 0xff Vendor-specific
 };
 
 static void
@@ -363,7 +386,9 @@ usb_ls_classes(USBH_HandleTypeDef *phost, uint verbose)
         numif = USBH_MAX_NUM_INTERFACES;
 
     for (ifnum = 0; ifnum < numif; ifnum++) {
-        void *data = phost->pClass[phost->ClassNumber]->pData;
+        void *data = NULL;
+        uint classnum;
+
         ifclass = phost->device.CfgDesc.Itf_Desc[ifnum].bInterfaceClass;
         if (ifclass == 0)
             continue;
@@ -371,6 +396,13 @@ usb_ls_classes(USBH_HandleTypeDef *phost, uint verbose)
         ifproto  = phost->device.CfgDesc.Itf_Desc[ifnum].bInterfaceProtocol;
         protostr = "";
         ifsclass_str = "";
+
+        for (classnum = 0; classnum < phost->ClassNumber; classnum++) {
+            if (ifclass == phost->pClass[classnum]->ClassCode) {
+                data = phost->pClass[classnum]->pData;
+                break;
+            }
+        }
         switch (ifclass) {
             case USB_HID_CLASS:
                 switch (ifproto) {
@@ -394,7 +426,8 @@ usb_ls_classes(USBH_HandleTypeDef *phost, uint verbose)
                 }
                 break;
         }
-        printf("    IF %u: class=%x %s subclass=%02x %s protocol=%02x %s\n",
+        printf("  %c IF %u: class=%x %s subclass=%02x %s protocol=%02x %s\n",
+               (phost->iface_waiting & BIT(ifnum)) ? '>' : ' ',
                ifnum, ifclass,
                (ifclass < ARRAY_SIZE(usb_class_codes)) ?
                                      usb_class_codes[ifclass] : "Unknown",
@@ -405,8 +438,7 @@ usb_ls_classes(USBH_HandleTypeDef *phost, uint verbose)
                 case USB_HID_CLASS: {
                     HID_HandleTypeDef *HID_Handle = data;
                     for (; HID_Handle != NULL; HID_Handle = HID_Handle->next) {
-                        if ((HID_Handle->interface != ifnum) ||
-                            (HID_Handle->interface != ifnum))
+                        if (HID_Handle->interface != ifnum)
                             continue;
 
                         if (HID_Handle == NULL) {
@@ -434,6 +466,40 @@ usb_ls_classes(USBH_HandleTypeDef *phost, uint verbose)
                     }
                     break;
                 }
+#if 0
+                case USB_XUSB_CLASS: {
+                    XUSB_HandleTypeDef *XUSB_Handle = data;
+                    for (; XUSB_Handle != NULL; XUSB_Handle = XUSB_Handle->next) {
+                        if ((XUSB_Handle->interface != ifnum) ||
+                            (XUSB_Handle->interface != ifnum))
+                            continue;
+
+                        if (XUSB_Handle == NULL) {
+                            printf("          NULL XUSB Handle\n");
+                            continue;
+                        }
+                        printf("          OutEp=%x InEp=%x state=%x %s "
+                               "ctl_state=%x %s\n",
+                               XUSB_Handle->OutEp, XUSB_Handle->InEp,
+                               XUSB_Handle->state,
+                               (XUSB_Handle->state <
+                                ARRAY_SIZE(xusb_state_types)) ?
+                               xusb_state_types[XUSB_Handle->state] : "Unknown",
+                               XUSB_Handle->ctl_state,
+                               (XUSB_Handle->ctl_state <
+                                ARRAY_SIZE(xusb_ctl_state_types)) ?
+                               xusb_ctl_state_types[XUSB_Handle->ctl_state] :
+                               "Unknown");
+                        printf("          timer=%lx dataready=%x idmouse=%x "
+                               "idconsumer=%x idsysctl=%x\n",
+                               XUSB_Handle->timer, XUSB_Handle->DataReady,
+                               XUSB_Handle->XUSB_RDesc.id_mouse,
+                               XUSB_Handle->XUSB_RDesc.id_consumer,
+                               XUSB_Handle->XUSB_RDesc.id_sysctl);
+                    }
+                    break;
+                }
+#endif
                 case USB_HUB_CLASS: {
                     extern __IO USB_PORT_CHANGE HUB_Change[2];
                     extern __IO uint8_t         HUB_CurPort[2];
@@ -482,10 +548,11 @@ usb_ls(uint verbose)
     for (port = 0; port < 2; port++) {
         for (hubport = 0; hubport < MAX_HUB_PORTS + 1; hubport++) {
             USBH_HandleTypeDef *phost = &usb_handle[port][hubport];
-            USBH_ClassTypeDef  *cl;
+            uint8_t devclass = phost->device.DevDesc.bDeviceClass;
+            const char *devclass_s;
+            uint    classnum;
             if (phost->valid == 0)
                 continue;
-            cl = phost->pClass[phost->ClassNumber];
             printf("%u.%u %04x.%04x ",
                    port, hubport,
                    phost->device.DevDesc.idVendor,
@@ -495,46 +562,63 @@ usb_ls(uint verbose)
                 printf("No device\n");
                 continue;
             }
-            printf("Addr=%x Out=%u In=%u %s: %s",
+
+            printf("addr=%x %s: %s",
                    phost->device.address,
-                   phost->Control.pipe_out, phost->Control.pipe_in,
                    phost->device.manufacturer_string,
                    phost->device.product_string);
             if (hp_cur[port] == hubport)
                 printf(" <<");
 
-            printf("\n          class=%x %s",
-                   (cl == NULL) ? 0 : cl->ClassCode,
-                   (cl == NULL) ? "?" : cl->Name);
+            for (classnum = 0; classnum < phost->ClassNumber; classnum++) {
+                if (devclass == phost->pClass[classnum]->ClassCode)
+                    break;
+            }
+            if (devclass < ARRAY_SIZE(usb_class_codes))
+                devclass_s = usb_class_codes[devclass];
+            else if (devclass == 0xfe)
+                devclass_s = "App";
+            else if (devclass == 0xfe)
+                devclass_s = "Vendor";
+            else
+                devclass_s = "Unknown";
+            printf("\n          class=%x %s ", devclass, devclass_s);
             if (verbose) {
-                printf(" gstate=%x %s",
+                printf(" gstate=%x %s ",
                        phost->gState,
                        (phost->gState < ARRAY_SIZE(host_gstate_types)) ?
                        host_gstate_types[phost->gState] : "Unknown");
-                printf(" rstate=%x %s",
+                printf(" rstate=%x %s ",
                        phost->RequestState,
                        (phost->RequestState <
                         ARRAY_SIZE(host_requeststate_types)) ?
                        host_requeststate_types[phost->RequestState] :
                        "Unknown");
-                printf("\n          estate=%x %s",
+                printf("\n          estate=%x %s ",
                        phost->EnumState,
                        (phost->EnumState < ARRAY_SIZE(host_enumstate_types)) ?
                        host_enumstate_types[phost->EnumState] : "Unknown");
-                printf(" ifs=%u hub=%x hubifs=%x",
-                       phost->device.CfgDesc.bNumInterfaces,
-                       phost->hub, phost->interfaces);
-                printf("\n          ctlstate=%x %s  polls=%lu  usec %llu "
-                       "max %llu",
+                printf(" polls=%lu  usec %llu max %llu",
+                       phost->poll_count, timer_tick_to_usec(phost->tick_total),
+                       timer_tick_to_usec(phost->tick_max));
+                printf("\n          ctlstate=%x %s ",
                        phost->Control.state,
                        (phost->Control.state <
                         ARRAY_SIZE(host_controlstate_types)) ?
                        host_controlstate_types[phost->Control.state] :
-                       "Unknown",
-                       phost->poll_count, timer_tick_to_usec(phost->tick_total),
-                       timer_tick_to_usec(phost->tick_max));
+                       "Unknown");
+                printf(" ifs=%u hub=%x hubifs=%x",
+                       phost->device.CfgDesc.bNumInterfaces,
+                       phost->hub, phost->interfaces);
+                printf(" out=%u in=%u",
+                       phost->Control.pipe_out, phost->Control.pipe_in);
+                printf("\n          lastreq=%02x val=%02x ind=%02x len=%02x",
+                       phost->Control.setup.b.bRequest,
+                       phost->Control.setup.b.wValue.w,
+                       phost->Control.setup.b.wIndex.w,
+                       phost->Control.setup.b.wLength.w);
                 if (phost->busy) {
-                    printf("\n          BUSY");
+                    printf("  BUSY");
                     if (phost->busy > 1)
                         printf(" %x", phost->busy);
                 }
@@ -544,6 +628,19 @@ usb_ls(uint verbose)
         }
     }
 }
+
+#if 0
+void
+USBH_XUSB_EventCallback(USBH_HandleTypeDef *phost, XUSB_HandleTypeDef *XUSB_Handle)
+{
+printf("ECB");
+    uint32_t *data = (uint32_t *)XUSB_Handle->pData;
+    uint pos;
+    for (pos = 0; pos < 5; pos++)
+        printf(" %08lx", data[pos]);
+    printf("\n");
+}
+#endif
 
 void
 USBH_HID_EventCallback(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle)
@@ -569,7 +666,6 @@ USBH_HID_EventCallback(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle)
     } else if (devtype == HID_KEYBOARD) {  // Keyboard
         HID_KEYBD_Info_TypeDef *kinfo;
         kinfo = USBH_HID_GetKeybdInfo(phost, HID_Handle);  // get the info
-
         usb_keyboard_report_t kinput;
         kinput.modifier = (kinfo->lctrl  ? KEYBOARD_MODIFIER_LEFTCTRL   : 0) |
                           (kinfo->lshift ? KEYBOARD_MODIFIER_LEFTSHIFT  : 0) |
@@ -593,7 +689,7 @@ USBH_HID_EventCallback(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle)
 }
 
 static void
-handle_dev(USBH_HandleTypeDef *phost, uint port, uint devnum)
+handle_recovery(USBH_HandleTypeDef *phost, uint port, uint devnum)
 {
     uint iface;
     uint numif = phost->device.CfgDesc.bNumInterfaces;
@@ -621,30 +717,6 @@ handle_dev(USBH_HandleTypeDef *phost, uint port, uint devnum)
             hiden_set(1);
         usbdev[port][devnum].appstate = APPLICATION_RUNNING;
     }
-
-#if 0
-    HID_HandleTypeDef *HID_Handle;
-    HID_Handle = (HID_HandleTypeDef *) phost->pActiveClass->pData;
-    if (usbdev[port][devnum].appstate == APPLICATION_RUNNING) {
-        for (iface = 0; iface < numif; iface++) {
-            devtype = USBH_HID_GetDeviceType(phost, iface);
-            if (devtype == HID_KEYBOARD) {
-                HID_KEYBD_Info_TypeDef *info;
-                info = USBH_HID_GetKeybdInfo(phost, HID_Handle);
-                if (info != NULL) {
-                    printf("lctrl = %d lshift = %d lalt   = %d\r\n"
-                           "lgui  = %d rctrl  = %d rshift = %d\r\n"
-                           "ralt  = %d rgui   = %d\r\n",
-                           info->lctrl, info->lshift, info->lalt,
-                           info->lgui, info->rctrl, info->rshift,
-                           info->ralt, info->rgui);
-                    // info->keys[]
-                }
-// XXX: No need to process here, as it can be handled by event callback
-            }
-        }
-    }
-#endif
 }
 
 static void
@@ -766,6 +838,31 @@ USBH_remove_subdevices(USBH_HandleTypeDef *phost)
 
 #define LOG(...) printf(__VA_ARGS__)
 
+
+#if 0
+    HID_HandleTypeDef *HID_Handle;
+    HID_Handle = (HID_HandleTypeDef *) phost->pActiveClass->pData;
+    if (usbdev[port][devnum].appstate == APPLICATION_RUNNING) {
+        for (iface = 0; iface < numif; iface++) {
+            devtype = USBH_HID_GetDeviceType(phost, iface);
+            if (devtype == HID_KEYBOARD) {
+                HID_KEYBD_Info_TypeDef *info;
+                info = USBH_HID_GetKeybdInfo(phost, HID_Handle);
+                if (info != NULL) {
+                    printf("lctrl = %d lshift = %d lalt   = %d\r\n"
+                           "lgui  = %d rctrl  = %d rshift = %d\r\n"
+                           "ralt  = %d rgui   = %d\r\n",
+                           info->lctrl, info->lshift, info->lalt,
+                           info->lgui, info->rctrl, info->rshift,
+                           info->ralt, info->rgui);
+                    // info->keys[]
+                }
+// XXX: No need to process here, as it can be handled by event callback
+            }
+        }
+    }
+
+#endif
 static void
 process_usb_ports(uint port)
 {
@@ -848,6 +945,7 @@ cubeusb_poll(void)
 {
     /* USB Host Background task */
     for (uint port = 0; port < 2; port++) {
+#if 1
         if ((usbport[port].recovery_state != 0) &&
             timer_tick_has_elapsed(usbport[port].recovery_timer)) {
             const uint usb_retry_fast_limit = 10;
@@ -870,21 +968,7 @@ cubeusb_poll(void)
                 uint msec;
                 printf("\n\nUSB%u port disabled\n", port);
                 usbport[port].disabled = 0;
-#if 0
-                cubeusb_shutdown();
-                cubeusb_init();
-#else
                 cubeusb_shutdown_port(port);
-
-#if 0
-                if (port == 0) {
-                    __HAL_RCC_USB_OTG_FS_FORCE_RESET();
-                    __HAL_RCC_USB_OTG_FS_RELEASE_RESET();
-                } else {
-                    __HAL_RCC_USB_OTG_HS_FORCE_RESET();
-                    __HAL_RCC_USB_OTG_HS_RELEASE_RESET();
-                }
-#endif
 //              wait_sof(port);
 
 #if 0
@@ -902,9 +986,8 @@ cubeusb_poll(void)
                     __HAL_RCC_USB_OTG_HS_CLK_ENABLE();
                 timer_delay_usec(32 * usbport[port].recovery_state);
 #endif
-
                 cubeusb_init_port(port);
-#endif
+
                 if (usbport[port].recovery_state++ < usb_retry_fast_limit) {
                     msec = 512 * usbport[port].recovery_state;
                 } else {
@@ -918,8 +1001,12 @@ cubeusb_poll(void)
                 usbport[port].recovery_state = 0;
             }
         }
-        handle_dev(&usb_handle[port][0], port, 0);  // Handle host port recovery
-        process_usb_ports(port);                    // Handle host & hub ports
+#endif
+        /* Handle host port recovery in case of spontaneous USB link down */
+        handle_recovery(&usb_handle[port][0], port, 0);
+
+        /* Handle host and hub port processing */
+        process_usb_ports(port);
     }
 }
 
@@ -1328,7 +1415,13 @@ cubeusb_init_port(uint port)
         USBH_register_class(handle, USBH_MSC_CLASS, sizeof (*USBH_MSC_CLASS)) ||
         USBH_register_class(handle, USBH_HID_CLASS, sizeof (*USBH_HID_CLASS)) ||
         USBH_register_class(handle, USBH_HUB_CLASS, sizeof (*USBH_HUB_CLASS)) ||
-        USBH_register_class(handle, USBH_MTP_CLASS, sizeof (*USBH_MTP_CLASS))) {
+//      USBH_register_class(handle, USBH_MTP_CLASS, sizeof (*USBH_MTP_CLASS)) ||
+#if 0
+        USBH_register_class(handle, USBH_XUSB_CLASS,
+                                                sizeof (*USBH_XUSB_CLASS))) {
+#else
+        0) {
+#endif
         printf("USB%u %s register fail\n", port, pname);
         return;
     }

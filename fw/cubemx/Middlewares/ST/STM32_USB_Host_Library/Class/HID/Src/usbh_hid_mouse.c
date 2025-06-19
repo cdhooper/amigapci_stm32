@@ -84,9 +84,11 @@ static USBH_StatusTypeDef USBH_HID_MouseDecode(USBH_HandleTypeDef *phost, HID_Ha
 /** @defgroup USBH_HID_MOUSE_Private_Variables
   * @{
   */
+#if 0
 HID_MOUSE_Info_TypeDef    mouse_info;
 uint32_t                  mouse_report_data[2];
-uint32_t                  mouse_rx_report_buf[2];
+uint32_t                  mouse_rx_report_buf[HID_QUEUE_SIZE * 2];
+#endif
 
 #if 0
 /* Structures defining how to access items in a HID mouse report */
@@ -202,6 +204,7 @@ USBH_StatusTypeDef USBH_HID_MouseInit(USBH_HandleTypeDef *phost, HID_HandleTypeD
 
   USBH_HID_Process_HIDReportDescriptor(phost, HID_Handle);
 
+#if 0
   memset(&mouse_info, 0, sizeof (mouse_info));
   memset(mouse_report_data, 0, sizeof (mouse_report_data));
   memset(mouse_rx_report_buf, 0, sizeof (mouse_rx_report_buf));
@@ -212,6 +215,9 @@ USBH_StatusTypeDef USBH_HID_MouseInit(USBH_HandleTypeDef *phost, HID_HandleTypeD
   }
   HID_Handle->pData = (uint8_t *)(void *)mouse_rx_report_buf;
   USBH_HID_FifoInit(&HID_Handle->fifo, phost->device.Data, HID_QUEUE_SIZE * sizeof(mouse_report_data));
+#else
+  USBH_HID_PrepareFifo(phost, HID_Handle);
+#endif
 
   return USBH_OK;
 }

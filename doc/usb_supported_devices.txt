@@ -78,6 +78,9 @@ USB Keyboard
         ID 046d:c52b Logitech, Inc. Unifying Receiver
         Has PC power button and other multimedia buttons.
         Touchpad acts as mouse.
+    Das Keyboard 5Q Soft Tactile RGB Smart Mechanical Keyboard (Kickstarter)
+        ID 24f0.2020 Das Keyboard 5Q RGB Mechanical Keyboard
+            v7.3.253 (latest is 7.4.51)
 
 Active PS/2 -> USB Keyboard + Mouse adapter
     Dual PS/2 to USB adapter PCP-BCG4209
@@ -112,15 +115,6 @@ USB Gamepad / Joystick
 
 =========================================================================
 
-Unknown
-=======
-USB Keyboard
-    Logitech K830 Wireless Illuminated Living-Room Keyboard
-        Keyboard I have unfortunately won't pair with the spare
-        Unifying receiver that I have, so can't test it.
-
-=========================================================================
-
 Not working
 ===========
 USB Hub Keyboard
@@ -131,11 +125,6 @@ USB Keyboard
         ID 1b1c:1b3d Corsair Gaming K55 RGB Keyboard
         Jason's keyboard -- shows up and identifies, but no input
         ** Might work now.
-    Das Keyboard 5Q Soft Tactile RGB Smart Mechanical Keyboard (Kickstarter)
-        ID 24f0.2020 Das Keyboard 5Q RGB Mechanical Keyboard
-            v7.3.253 (latest is 7.4.51)
-        Hang in STM32 USB state machine (stays busy) because device wants
-        to send 64-byte report when an 8-byte read was performed.
 
 USB Gamepad / Joystick
     NVIDIA Shield P2920 game controller

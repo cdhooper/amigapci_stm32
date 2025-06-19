@@ -94,7 +94,7 @@ static USBH_StatusTypeDef USBH_HID_KeybdDecode(USBH_HandleTypeDef *phost, HID_Ha
 */
 
 HID_KEYBD_Info_TypeDef     keybd_info;
-uint32_t                   keybd_rx_report_buf[2];
+// uint32_t                   keybd_rx_report_buf[2];
 uint32_t                   keybd_report_data[2];
 
 static const HID_Report_ItemTypedef imp_0_lctrl =
@@ -343,15 +343,19 @@ USBH_StatusTypeDef USBH_HID_KeybdInit(USBH_HandleTypeDef *phost, HID_HandleTypeD
   for (x = 0U; x < (sizeof(keybd_report_data) / sizeof(uint32_t)); x++)
   {
     keybd_report_data[x] = 0U;
-    keybd_rx_report_buf[x] = 0U;
+//  keybd_rx_report_buf[x] = 0U;
   }
 
+#if 0
   if (HID_Handle->length > (sizeof(keybd_report_data)))
   {
     HID_Handle->length = (sizeof(keybd_report_data));
   }
   HID_Handle->pData = (uint8_t *)(void *)keybd_rx_report_buf;
   USBH_HID_FifoInit(&HID_Handle->fifo, phost->device.Data, HID_QUEUE_SIZE * sizeof(keybd_report_data));
+#else
+    USBH_HID_PrepareFifo(phost, HID_Handle);
+#endif
 
   return USBH_OK;
 }
@@ -383,6 +387,8 @@ HID_KEYBD_Info_TypeDef *USBH_HID_GetKeybdInfo(USBH_HandleTypeDef *phost, HID_Han
 static USBH_StatusTypeDef USBH_HID_KeybdDecode(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle)
 {
   uint8_t x;
+  uint recvlen;
+  uint len;
 
   if (HID_Handle == NULL)
   {
@@ -393,8 +399,14 @@ static USBH_StatusTypeDef USBH_HID_KeybdDecode(USBH_HandleTypeDef *phost, HID_Ha
   {
     return USBH_FAIL;
   }
-  /*Fill report */
-  if (USBH_HID_FifoRead(&HID_Handle->fifo, &keybd_report_data, HID_Handle->length) ==  HID_Handle->length)
+  /* Fill report */
+  len = HID_Handle->length;
+  if (len > sizeof (keybd_report_data))
+      len = sizeof (keybd_report_data);
+
+  memset(keybd_report_data, 0, sizeof (keybd_report_data));
+  recvlen = USBH_HID_FifoRead(&HID_Handle->fifo, &keybd_report_data, len);
+  if (recvlen >= sizeof (keybd_report_data))
   {
     keybd_info.lctrl = (uint8_t)HID_ReadItem((HID_Report_ItemTypedef *) &imp_0_lctrl, 0U);
     keybd_info.lshift = (uint8_t)HID_ReadItem((HID_Report_ItemTypedef *) &imp_0_lshift, 0U);

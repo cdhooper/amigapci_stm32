@@ -368,6 +368,8 @@ typedef struct
 HID_MISC_Info_TypeDef;
 
 USBH_StatusTypeDef USBH_HID_DecodeReport(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle, HID_TypeTypeDef devtype, HID_MISC_Info_TypeDef *report_info);
+void USBH_HID_PrepareFifo(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle);
+
 
 /**
   * @}
