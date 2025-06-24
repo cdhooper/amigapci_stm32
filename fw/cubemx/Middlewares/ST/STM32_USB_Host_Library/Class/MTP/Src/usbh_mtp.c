@@ -113,6 +113,7 @@ USBH_ClassTypeDef  MTP_Class =
 {
   "MTP",
   USB_MTP_CLASS,
+  NULL,
   USBH_MTP_InterfaceInit,
   USBH_MTP_InterfaceDeInit,
   USBH_MTP_ClassRequest,

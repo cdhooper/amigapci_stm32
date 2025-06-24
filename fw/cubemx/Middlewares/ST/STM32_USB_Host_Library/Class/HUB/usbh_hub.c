@@ -65,6 +65,7 @@ USBH_ClassTypeDef  HUB_Class =
 {
         "HUB",
         USB_HUB_CLASS,
+        NULL,
         USBH_HUB_InterfaceInit,
         USBH_HUB_InterfaceDeInit,
         USBH_HUB_ClassRequest,

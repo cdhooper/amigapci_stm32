@@ -11,6 +11,7 @@
 
 #include <stdint.h>
 #include "main.h"
+#include "config.h"
 #include "gpio.h"
 #include "printf.h"
 #include "hiden.h"
@@ -26,7 +27,7 @@ hiden_set(unsigned int enable)
 {
     if (hiden_is_set != enable) {
         hiden_is_set = enable;
-//      printf("HID %s\n", enable ? "enabled" : "disabled");
+        dprintf(DF_HIDEN, "HID %s\n", enable ? "enabled" : "disabled");
         gpio_setv(HIDEN_PORT, HIDEN_PIN, !enable);
     }
     hiden_timeout = 0;
@@ -45,7 +46,7 @@ hiden_poll(void)
             return;
         }
         if (timer_tick_has_elapsed(hiden_timeout)) {
-//          printf("Auto ");
+            dprintf(DF_HIDEN, "Auto ");
             hiden_set(0);
             hiden_timeout = 0;
 

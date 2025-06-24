@@ -29,7 +29,7 @@
 #include <usbh_msc.h>  // MSC
 #include <usbh_mtp.h>  // MTP
 #include <usbh_hub.h>  // HUB
-// #include <usbh_xusb.h>  // XUSB
+#include <usbh_xusb.h>  // XUSB
 #include <usbh_hid_usage.h>  // HID_USAGE_*
 
 void otg_fs_isr(void);
@@ -196,17 +196,11 @@ static const char * const hub_ctl_state_types[] = {
     "HUB_REQ_DONE",
 };
 
-#if 0
 static const char * const xusb_state_types[] = {
-    "XUSB_INIT", "XUSB_IDLE", "XUSB_SEND_DATA", "XUSB_BUSY",
-    "XUSB_GET_DATA", "XUSB_SYNC", "XUSB_POLL", "XUSB_ERROR"
+    "XUSB_INIT", "XUSB_FEATURE_REQUEST", "XUSB_IDLE", "XUSB_SEND_DATA",
+    "XUSB_BUSY", "XUSB_GET_DATA", "XUSB_SYNC", "XUSB_POLL",
+    "XUSB_ERROR" "XUSB_NO_SUPPORT",
 };
-
-static const char * const xusb_ctl_state_types[] = {
-    "XUSB_INIT", "XUSB_IDLE", "XUSB_GET_REPORT_DESC", "XUSB_GET_DESC",
-    "XUSB_SET_IDLE", "XUSB_SET_PROTOCOL", "XUSB_SET_REPORT"
-};
-#endif
 
 uint
 get_port(USBH_HandleTypeDef *phost)
@@ -267,9 +261,6 @@ USBH_UserProcess(USBH_HandleTypeDef *phost, uint8_t id)
         case HOST_USER_DISCONNECTION:
             usb_keyboard_count -= usbdev[port][devnum].keyboard_count;
             usb_mouse_count    -= usbdev[port][devnum].mouse_count;
-
-            if (usb_mouse_count == 0)
-                hiden_set(0);
 
             memset(&usbdev[port][devnum], 0, sizeof (usbdev[port][devnum]));
             usbdev[port][devnum].appstate = APPLICATION_DISCONNECT;
@@ -371,6 +362,19 @@ static const char *const usb_class_codes[] =
                 // 0xff Vendor-specific
 };
 
+static const char *
+get_devclass_str(uint8_t devclass)
+{
+    if (devclass < ARRAY_SIZE(usb_class_codes))
+        return (usb_class_codes[devclass]);
+    else if (devclass == 0xfe)
+        return ("App");
+    else if (devclass == 0xff)
+        return ("Vendor");
+    else
+        return ("Unknown");
+}
+
 static void
 usb_ls_classes(USBH_HandleTypeDef *phost, uint verbose)
 {
@@ -428,9 +432,7 @@ usb_ls_classes(USBH_HandleTypeDef *phost, uint verbose)
         }
         printf("  %c IF %u: class=%x %s subclass=%02x %s protocol=%02x %s\n",
                (phost->iface_waiting & BIT(ifnum)) ? '>' : ' ',
-               ifnum, ifclass,
-               (ifclass < ARRAY_SIZE(usb_class_codes)) ?
-                                     usb_class_codes[ifclass] : "Unknown",
+               ifnum, ifclass, get_devclass_str(ifclass),
                ifsclass, ifsclass_str,
                ifproto, protostr);
         if (verbose) {
@@ -466,9 +468,8 @@ usb_ls_classes(USBH_HandleTypeDef *phost, uint verbose)
                     }
                     break;
                 }
-#if 0
                 case USB_XUSB_CLASS: {
-                    XUSB_HandleTypeDef *XUSB_Handle = data;
+                    XUSB_Handle_t *XUSB_Handle = data;
                     for (; XUSB_Handle != NULL; XUSB_Handle = XUSB_Handle->next) {
                         if ((XUSB_Handle->interface != ifnum) ||
                             (XUSB_Handle->interface != ifnum))
@@ -478,28 +479,18 @@ usb_ls_classes(USBH_HandleTypeDef *phost, uint verbose)
                             printf("          NULL XUSB Handle\n");
                             continue;
                         }
-                        printf("          OutEp=%x InEp=%x state=%x %s "
-                               "ctl_state=%x %s\n",
+                        printf("          OutEp=%x InEp=%x state=%x %s \n",
                                XUSB_Handle->OutEp, XUSB_Handle->InEp,
                                XUSB_Handle->state,
                                (XUSB_Handle->state <
                                 ARRAY_SIZE(xusb_state_types)) ?
-                               xusb_state_types[XUSB_Handle->state] : "Unknown",
-                               XUSB_Handle->ctl_state,
-                               (XUSB_Handle->ctl_state <
-                                ARRAY_SIZE(xusb_ctl_state_types)) ?
-                               xusb_ctl_state_types[XUSB_Handle->ctl_state] :
+                               xusb_state_types[XUSB_Handle->state] :
                                "Unknown");
-                        printf("          timer=%lx dataready=%x idmouse=%x "
-                               "idconsumer=%x idsysctl=%x\n",
-                               XUSB_Handle->timer, XUSB_Handle->DataReady,
-                               XUSB_Handle->XUSB_RDesc.id_mouse,
-                               XUSB_Handle->XUSB_RDesc.id_consumer,
-                               XUSB_Handle->XUSB_RDesc.id_sysctl);
+                        printf("          timer=%lx dataready=%x\n",
+                               XUSB_Handle->timer, XUSB_Handle->DataReady);
                     }
                     break;
                 }
-#endif
                 case USB_HUB_CLASS: {
                     extern __IO USB_PORT_CHANGE HUB_Change[2];
                     extern __IO uint8_t         HUB_CurPort[2];
@@ -549,7 +540,6 @@ usb_ls(uint verbose)
         for (hubport = 0; hubport < MAX_HUB_PORTS + 1; hubport++) {
             USBH_HandleTypeDef *phost = &usb_handle[port][hubport];
             uint8_t devclass = phost->device.DevDesc.bDeviceClass;
-            const char *devclass_s;
             uint    classnum;
             if (phost->valid == 0)
                 continue;
@@ -574,15 +564,8 @@ usb_ls(uint verbose)
                 if (devclass == phost->pClass[classnum]->ClassCode)
                     break;
             }
-            if (devclass < ARRAY_SIZE(usb_class_codes))
-                devclass_s = usb_class_codes[devclass];
-            else if (devclass == 0xfe)
-                devclass_s = "App";
-            else if (devclass == 0xfe)
-                devclass_s = "Vendor";
-            else
-                devclass_s = "Unknown";
-            printf("\n          class=%x %s ", devclass, devclass_s);
+            printf("\n          class=%x %s ",
+                   devclass, get_devclass_str(devclass));
             if (verbose) {
                 printf(" gstate=%x %s ",
                        phost->gState,
@@ -629,18 +612,98 @@ usb_ls(uint verbose)
     }
 }
 
-#if 0
 void
-USBH_XUSB_EventCallback(USBH_HandleTypeDef *phost, XUSB_HandleTypeDef *XUSB_Handle)
+USBH_XUSB_EventCallback(USBH_HandleTypeDef *phost, XUSB_Handle_t *XUSB_Handle)
 {
-printf("ECB");
+    static uint32_t last[4];
+    static uint8_t last_was_joypad;
+    static uint32_t buttons;
+    static uint8_t joypad;
+    static int16_t mouse_x;
+    static int16_t mouse_y;
+    static int16_t wheel_x;
+    static int16_t wheel_y;
+    static uint64_t throttle_timer;
+    XUSB_MISC_Info_t info;
     uint32_t *data = (uint32_t *)XUSB_Handle->pData;
     uint pos;
-    for (pos = 0; pos < 5; pos++)
-        printf(" %08lx", data[pos]);
-    printf("\n");
+
+    if (memcmp(last, data, sizeof (last)) == 0) {
+        if (last_was_joypad) {
+            if (joypad | buttons) {
+                joystick_action(joypad & BIT(0), joypad & BIT(1),
+                                joypad & BIT(2), joypad & BIT(3), buttons);
+            }
+        } else {
+            /* Replay mouse */
+            int16_t twheel_x;
+            int16_t twheel_y;
+            if (timer_tick_has_elapsed(throttle_timer)) {
+                if ((wheel_x > 1) || (wheel_x < -1) ||
+                    (wheel_y > 1) || (wheel_y < -1)) {
+                    throttle_timer = timer_tick_plus_msec(50);
+                } else {
+                    throttle_timer = timer_tick_plus_msec(200);
+                }
+                twheel_x = wheel_x;
+                twheel_y = wheel_y;
+            } else {
+                twheel_x = 0;
+                twheel_y = 0;
+            }
+            if (mouse_x | mouse_y | wheel_x | wheel_y | buttons) {
+                mouse_action(mouse_x, mouse_y, twheel_y, twheel_x, buttons);
+            }
+        }
+        return;
+    }
+
+    if (config.debug_flag & DF_USB_DECODE_MISC) {
+        for (pos = 0; pos < ARRAY_SIZE(last); pos++) {
+            last[pos] = data[pos];
+            printf(" %08lx", data[pos]);
+        }
+        printf(" ");
+    }
+
+    USBH_XUSB_DecodeReport(phost, XUSB_Handle, &info);
+    if (info.joypad ||
+        (last_was_joypad &&
+         (info.mouse_x == 0) && (info.mouse_y == 0) &&
+         (info.wheel_x == 0) && (info.wheel_y == 0))) {
+        joypad = info.joypad;
+        buttons = info.buttons;
+        joystick_action(joypad & BIT(0), joypad & BIT(1),
+                        joypad & BIT(2), joypad & BIT(3), buttons);
+        last_was_joypad = 1;
+    } else {
+        int16_t twheel_x;
+        int16_t twheel_y;
+        mouse_x = info.mouse_x;
+        mouse_y = info.mouse_y;
+        wheel_x = info.wheel_x;
+        wheel_y = info.wheel_y;
+        buttons = info.buttons;
+        if (timer_tick_has_elapsed(throttle_timer)) {
+            if ((wheel_x > 1) || (wheel_x < -1) ||
+                (wheel_y > 1) || (wheel_y < -1)) {
+                throttle_timer = timer_tick_plus_msec(50);
+            } else {
+                throttle_timer = timer_tick_plus_msec(200);
+            }
+            twheel_x = wheel_x;
+            twheel_y = wheel_y;
+        } else {
+            twheel_x = 0;
+            twheel_y = 0;
+        }
+        dprintf(DF_USB_DECODE_MISC, "%d %d %d %d ",
+                mouse_x, mouse_y, twheel_x, twheel_y);
+        mouse_action(mouse_x, mouse_y, twheel_y, twheel_x, buttons);
+        last_was_joypad = 0;
+    }
+    dprintf(DF_USB_DECODE_MISC, "\n");
 }
-#endif
 
 void
 USBH_HID_EventCallback(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle)
@@ -759,12 +822,12 @@ host_hc_init(USB_OTG_GlobalTypeDef *USBx, uint ch_num, uint epnum,
     }
 }
 
-/**
-  * @brief  USBH_switch_to_dev
-  *         Setup endpoint with selected device info
-  * @param  phost: Host handle
-  * @retval Status
-  */
+/*
+ * @brief  USBH_switch_to_dev
+ *         Setup endpoint with selected device info
+ * @param  phost: Host handle
+ * @retval Status
+ */
 HAL_StatusTypeDef
 USBH_switch_to_dev(USBH_HandleTypeDef *phost)
 {
@@ -1308,7 +1371,7 @@ USBH_StatusTypeDef
 USBH_LL_StopHC(USBH_HandleTypeDef *phost, uint8_t chnum)
 {
     HAL_HCD_StopHC(phost->pData, chnum);
-    return USBH_OK;
+    return (USBH_OK);
 }
 
 USBH_SpeedTypeDef
@@ -1385,7 +1448,8 @@ USBH_Delay(uint32_t Delay)
  */
 
 USBH_StatusTypeDef
-USBH_register_class(USBH_HandleTypeDef *handle, USBH_ClassTypeDef *class, uint size)
+USBH_register_class(USBH_HandleTypeDef *handle, USBH_ClassTypeDef *class,
+                    uint size)
 {
     USBH_ClassTypeDef *nclass = USBH_malloc(size);
     memcpy(nclass, class, size);
@@ -1416,12 +1480,8 @@ cubeusb_init_port(uint port)
         USBH_register_class(handle, USBH_HID_CLASS, sizeof (*USBH_HID_CLASS)) ||
         USBH_register_class(handle, USBH_HUB_CLASS, sizeof (*USBH_HUB_CLASS)) ||
 //      USBH_register_class(handle, USBH_MTP_CLASS, sizeof (*USBH_MTP_CLASS)) ||
-#if 0
         USBH_register_class(handle, USBH_XUSB_CLASS,
                                                 sizeof (*USBH_XUSB_CLASS))) {
-#else
-        0) {
-#endif
         printf("USB%u %s register fail\n", port, pname);
         return;
     }

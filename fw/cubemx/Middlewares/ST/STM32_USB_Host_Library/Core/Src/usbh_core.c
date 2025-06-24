@@ -669,6 +669,10 @@ USBH_StatusTypeDef  USBH_Process(USBH_HandleTypeDef *phost)
           if ((phost->pClass[idx] != NULL) &&
               (phost->pClass[idx]->ClassCode == phost->device.CfgDesc.Itf_Desc[0].bInterfaceClass))
           {
+            if ((phost->pClass[idx]->Probe != NULL) &&
+                (phost->pClass[idx]->Probe(phost) != USBH_OK)) {
+                continue;  // Probe did not find a match
+            }
             phost->pActiveClass = phost->pClass[idx];
             break;
           }

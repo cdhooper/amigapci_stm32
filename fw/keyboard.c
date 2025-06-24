@@ -177,262 +177,262 @@ static const struct {
     uint8_t sa_flags;    // special flags
 } scancode_to_amiga[] = {
                             //       Shifted Unshifted
-    { AS_NONE,       0, 0x00 },  // 0x00 No key pressed
-    { AS_NONE,       0, 0x00 },  // 0x01 Keyboard Error Roll Over
-    { AS_POST_FAIL,  0, 0x00 },  // 0x02 Keyboard POST Fail
-    { AS_NONE,       0, 0x00 },  // 0x03 Keyboard Error
-    { AS_A,          0, 0x00 },  // 0x04  'A' and 'a'
-    { AS_B,          0, 0x00 },  // 0x05  'B' and 'b'
-    { AS_C,          0, 0x00 },  // 0x06  'C' and 'c'
-    { AS_D,          0, 0x00 },  // 0x07  'D' and 'd'
-    { AS_E,          0, 0x00 },  // 0x08  'E' and 'e'
-    { AS_F,          0, 0x00 },  // 0x09  'F' and 'f'
-    { AS_G,          0, 0x00 },  // 0x0a  'G' and 'g'
-    { AS_H,          0, 0x00 },  // 0x0b  'H' and 'h'
-    { AS_I,          0, 0x00 },  // 0x0c  'I' and 'i'
-    { AS_J,          0, 0x00 },  // 0x0d  'J' and 'j'
-    { AS_K,          0, 0x00 },  // 0x0e  'K' and 'k'
-    { AS_L,          0, 0x00 },  // 0x0f  'L' and 'l'
-    { AS_M,          0, 0x00 },  // 0x10  'M' and 'm'
-    { AS_N,          0, 0x00 },  // 0x11  'N' and 'n'
-    { AS_O,          0, 0x00 },  // 0x12  'O' and 'o'
-    { AS_P,          0, 0x00 },  // 0x13  'P' and 'p'
-    { AS_Q,          0, 0x00 },  // 0x14  'Q' and 'q'
-    { AS_R,          0, 0x00 },  // 0x15  'R' and 'r'
-    { AS_S,          0, 0x00 },  // 0x16  'S' and 's'
-    { AS_T,          0, 0x00 },  // 0x17  'T' and 't'
-    { AS_U,          0, 0x00 },  // 0x18  'U' and 'u'
-    { AS_V,          0, 0x00 },  // 0x19  'V' and 'v'
-    { AS_W,          0, 0x00 },  // 0x1a  'W' and 'w'
-    { AS_X,          0, 0x00 },  // 0x1b  'X' and 'x'
-    { AS_Y,          0, 0x00 },  // 0x1c  'Y' and 'y'
-    { AS_Z,          0, 0x00 },  // 0x1d  'Z' and 'z'
-    { AS_1,          0, 0x00 },  // 0x1e  '!' and '1'
-    { AS_2,          0, 0x00 },  // 0x1f  '@' and '2'
-    { AS_3,          0, 0x00 },  // 0x20  '#' and '3'
-    { AS_4,          0, 0x00 },  // 0x21  '$' and '4'
-    { AS_5,          0, 0x00 },  // 0x22  '%' and '5'
-    { AS_6,          0, 0x00 },  // 0x23  '^' and '6'
-    { AS_7,          0, 0x00 },  // 0x24  '&' and '7'
-    { AS_8,          0, 0x00 },  // 0x25  '*' and '8'
-    { AS_9,          0, 0x00 },  // 0x26  '(' and '9'
-    { AS_0,          0, 0x00 },  // 0x27  ')' and '0'
-    { AS_RETURN,     0, 0x00 },  // 0x28  Enter / Return
-    { AS_ESC,        0, 0x00 },  // 0x29  ESC
-    { AS_BACKSPACE,  0, 0x00 },  // 0x2a  Backspace
-    { AS_TAB,        0, 0x00 },  // 0x2b  Tab
-    { AS_SPACE,      0, 0x00 },  // 0x2c  Space
-    { AS_MINUS,      0, 0x00 },  // 0x2d  '_' and '-'
-    { AS_EQUAL,      0, 0x00 },  // 0x2e  '+' and '='
-    { AS_LBRACKET,   0, 0x00 },  // 0x2f  '{' and '['
-    { AS_RBRACKET,   0, 0x00 },  // 0x30  '}' and ']'
-    { AS_BACKSLASH,  0, 0x00 },  // 0x31  '|' and '\'
+    { AS_NONE,       AS_NONE, 0x00 },  // 0x00 No key pressed
+    { AS_NONE,       AS_NONE, 0x00 },  // 0x01 Keyboard Error Roll Over
+    { AS_POST_FAIL,  AS_NONE, 0x00 },  // 0x02 Keyboard POST Fail
+    { AS_NONE,       AS_NONE, 0x00 },  // 0x03 Keyboard Error
+    { AS_A,          AS_NONE, 0x00 },  // 0x04  'A' and 'a'
+    { AS_B,          AS_NONE, 0x00 },  // 0x05  'B' and 'b'
+    { AS_C,          AS_NONE, 0x00 },  // 0x06  'C' and 'c'
+    { AS_D,          AS_NONE, 0x00 },  // 0x07  'D' and 'd'
+    { AS_E,          AS_NONE, 0x00 },  // 0x08  'E' and 'e'
+    { AS_F,          AS_NONE, 0x00 },  // 0x09  'F' and 'f'
+    { AS_G,          AS_NONE, 0x00 },  // 0x0a  'G' and 'g'
+    { AS_H,          AS_NONE, 0x00 },  // 0x0b  'H' and 'h'
+    { AS_I,          AS_NONE, 0x00 },  // 0x0c  'I' and 'i'
+    { AS_J,          AS_NONE, 0x00 },  // 0x0d  'J' and 'j'
+    { AS_K,          AS_NONE, 0x00 },  // 0x0e  'K' and 'k'
+    { AS_L,          AS_NONE, 0x00 },  // 0x0f  'L' and 'l'
+    { AS_M,          AS_NONE, 0x00 },  // 0x10  'M' and 'm'
+    { AS_N,          AS_NONE, 0x00 },  // 0x11  'N' and 'n'
+    { AS_O,          AS_NONE, 0x00 },  // 0x12  'O' and 'o'
+    { AS_P,          AS_NONE, 0x00 },  // 0x13  'P' and 'p'
+    { AS_Q,          AS_NONE, 0x00 },  // 0x14  'Q' and 'q'
+    { AS_R,          AS_NONE, 0x00 },  // 0x15  'R' and 'r'
+    { AS_S,          AS_NONE, 0x00 },  // 0x16  'S' and 's'
+    { AS_T,          AS_NONE, 0x00 },  // 0x17  'T' and 't'
+    { AS_U,          AS_NONE, 0x00 },  // 0x18  'U' and 'u'
+    { AS_V,          AS_NONE, 0x00 },  // 0x19  'V' and 'v'
+    { AS_W,          AS_NONE, 0x00 },  // 0x1a  'W' and 'w'
+    { AS_X,          AS_NONE, 0x00 },  // 0x1b  'X' and 'x'
+    { AS_Y,          AS_NONE, 0x00 },  // 0x1c  'Y' and 'y'
+    { AS_Z,          AS_NONE, 0x00 },  // 0x1d  'Z' and 'z'
+    { AS_1,          AS_NONE, 0x00 },  // 0x1e  '!' and '1'
+    { AS_2,          AS_NONE, 0x00 },  // 0x1f  '@' and '2'
+    { AS_3,          AS_NONE, 0x00 },  // 0x20  '#' and '3'
+    { AS_4,          AS_NONE, 0x00 },  // 0x21  '$' and '4'
+    { AS_5,          AS_NONE, 0x00 },  // 0x22  '%' and '5'
+    { AS_6,          AS_NONE, 0x00 },  // 0x23  '^' and '6'
+    { AS_7,          AS_NONE, 0x00 },  // 0x24  '&' and '7'
+    { AS_8,          AS_NONE, 0x00 },  // 0x25  '*' and '8'
+    { AS_9,          AS_NONE, 0x00 },  // 0x26  '(' and '9'
+    { AS_0,          AS_NONE, 0x00 },  // 0x27  ')' and '0'
+    { AS_RETURN,     AS_NONE, 0x00 },  // 0x28  Enter / Return
+    { AS_ESC,        AS_NONE, 0x00 },  // 0x29  ESC
+    { AS_BACKSPACE,  AS_NONE, 0x00 },  // 0x2a  Backspace
+    { AS_TAB,        AS_NONE, 0x00 },  // 0x2b  Tab
+    { AS_SPACE,      AS_NONE, 0x00 },  // 0x2c  Space
+    { AS_MINUS,      AS_NONE, 0x00 },  // 0x2d  '_' and '-'
+    { AS_EQUAL,      AS_NONE, 0x00 },  // 0x2e  '+' and '='
+    { AS_LBRACKET,   AS_NONE, 0x00 },  // 0x2f  '{' and '['
+    { AS_RBRACKET,   AS_NONE, 0x00 },  // 0x30  '}' and ']'
+    { AS_BACKSLASH,  AS_NONE, 0x00 },  // 0x31  '|' and '\'
     { AS_3, AS_BACKTICK, 0x01 }, // 0x32  '~' and '#' (Non-US)
-    { AS_SEMICOLON,  0, 0x00 },  // 0x33  ':' and ';'
-    { AS_APOSTROPHE, 0, 0x00 },  // 0x34  '"' and '''
-    { AS_BACKTICK,   0, 0x00 },  // 0x35  '~' and '`'
-    { AS_COMMA,      0, 0x00 },  // 0x36  '<' and ','
-    { AS_DOT,        0, 0x00 },  // 0x37  '>' and '.'
-    { AS_SLASH,      0, 0x00 },  // 0x38  '?' and '/'
-    { AS_CAPSLOCK,   0, 0x00 },  // 0x39  Capslock
-    { AS_F1,         0, 0x00 },  // 0x3a  F1
-    { AS_F2,         0, 0x00 },  // 0x3b  F2
-    { AS_F3,         0, 0x00 },  // 0x3c  F3
-    { AS_F4,         0, 0x00 },  // 0x3d  F4
-    { AS_F5,         0, 0x00 },  // 0x3e  F5
-    { AS_F6,         0, 0x00 },  // 0x3f  F6
-    { AS_F7,         0, 0x00 },  // 0x40  F7
-    { AS_F8,         0, 0x00 },  // 0x41  F8
-    { AS_F9,         0, 0x00 },  // 0x42  F9
-    { AS_F10,        0, 0x00 },  // 0x43  F10
-    { AS_F11,        0, 0x00 },  // 0x44  F11
-    { AS_F12,        0, 0x00 },  // 0x45  F12
-    { AS_NONE,       0, 0x00 },  // 0x46  SysRq
-    { AS_NONE,       0, 0x00 },  // 0x47  Scroll Lock
-    { AS_PLAYPAUSE,  0, 0x00 },  // 0x48  Pause
-    { AS_BACKSLASH,  0, 0x00 },  // 0x49  Insert
-    { AS_KP_LPAREN,  0, 0x00 },  // 0x4a  Home      (FS-UAE mapping)
-    { AS_KP_RPAREN,  0, 0x00 },  // 0x4b  Page Up   (FS-UAE mapping)
-    { AS_DELETE,     0, 0x00 },  // 0x4c  Delete
-    { AS_HELP,       0, 0x00 },  // 0x4d  End       (FS-UAE mapping)
-    { AS_RIGHTAMIGA, 0, 0x00 },  // 0x4e  Page Down (FS-UAE mapping)
-    { AS_RIGHT,      0, 0x00 },  // 0x4f  Cursor Right
-    { AS_LEFT,       0, 0x00 },  // 0x50  Cursor Left
-    { AS_DOWN,       0, 0x00 },  // 0x51  Cursor Down
-    { AS_UP,         0, 0x00 },  // 0x52  Cursor Up
-    { AS_NONE,       0, 0x00 },  // 0x53  Numlock
-    { AS_KPSLASH,    0, 0x00 },  // 0x54  Keypad '/'
-    { AS_KPASTERISK, 0, 0x00 },  // 0x55  Keypad '*'
-    { AS_KPMINUS,    0, 0x00 },  // 0x56  Keypad '-'
-    { AS_KPPLUS,     0, 0x00 },  // 0x57  Keypad '+'
-    { AS_KPENTER,    0, 0x00 },  // 0x58  Keypad Enter
-    { AS_KP1,        0, 0x00 },  // 0x59  Keypad '1'
-    { AS_KP2,        0, 0x00 },  // 0x5a  Keypad '2'
-    { AS_KP3,        0, 0x00 },  // 0x5b  Keypad '3'
-    { AS_KP4,        0, 0x00 },  // 0x5c  Keypad '4'
-    { AS_KP5,        0, 0x00 },  // 0x5d  Keypad '5'
-    { AS_KP6,        0, 0x00 },  // 0x5e  Keypad '6'
-    { AS_KP7,        0, 0x00 },  // 0x5f  Keypad '7'
-    { AS_KP8,        0, 0x00 },  // 0x60  Keypad '8'
-    { AS_KP9,        0, 0x00 },  // 0x61  Keypad '9'
-    { AS_KP0,        0, 0x00 },  // 0x62  Keypad '0'
-    { AS_KPDOT,      0, 0x00 },  // 0x63  Keypad '.'
-    { AS_BACKSLASH,  0, 0x00 },  // 0x64  102ND '\' and '|' (non-US)
-    { AS_RIGHTAMIGA, 0, 0x00 },  // 0x65  Compose
-    { AS_NONE,       0, 0x00 },  // 0x66  Power Key
-    { AS_EQUAL,      0, 0x00 },  // 0x67  Keypad '='
-    { AS_NONE,       0, 0x00 },  // 0x68  F13
-    { AS_NONE,       0, 0x00 },  // 0x69  F14
-    { AS_NONE,       0, 0x00 },  // 0x6a  F15
-    { AS_NONE,       0, 0x00 },  // 0x6b  F16
-    { AS_NONE,       0, 0x00 },  // 0x6c  F17
-    { AS_NONE,       0, 0x00 },  // 0x6d  F18
-    { AS_NONE,       0, 0x00 },  // 0x6e  F19
-    { AS_NONE,       0, 0x00 },  // 0x6f  F20
-    { AS_NONE,       0, 0x00 },  // 0x70  F21
-    { AS_NONE,       0, 0x00 },  // 0x71  F22
-    { AS_NONE,       0, 0x00 },  // 0x72  F23
-    { AS_NONE,       0, 0x00 },  // 0x73  F24
-    { AS_NONE,       0, 0x00 },  // 0x74  Open (Execute)
-    { AS_HELP,       0, 0x00 },  // 0x75  Help
-    { AS_NONE,       0, 0x00 },  // 0x76  Props
-    { AS_NONE,       0, 0x00 },  // 0x77  Front
-    { AS_NONE,       0, 0x00 },  // 0x78  Stop
-    { AS_NONE,       0, 0x00 },  // 0x79  Again
-    { AS_NONE,       0, 0x00 },  // 0x7a  Undo
-    { AS_NONE,       0, 0x00 },  // 0x7b  Cut
-    { AS_NONE,       0, 0x00 },  // 0x7c  Copy
-    { AS_NONE,       0, 0x00 },  // 0x7d  Paste
-    { AS_NONE,       0, 0x00 },  // 0x7e  Find
-    { AS_NONE,       0, 0x00 },  // 0x7f  Mute
-    { AS_NONE,       0, 0x00 },  // 0x80  Volume Up
-    { AS_NONE,       0, 0x00 },  // 0x81  Volume Down
-    { AS_CAPSLOCK,   0, 0x00 },  // 0x82  Locking Caps Lock
-    { AS_NONE,       0, 0x00 },  // 0x83  Locking Num Lock
-    { AS_NONE,       0, 0x00 },  // 0x84  Locking Scroll Lock
-    { AS_COMMA,      0, 0x00 },  // 0x85  Keypad ','
-    { AS_EQUAL,      0, 0x00 },  // 0x86  Keypad '='
-    { AS_NONE,       0, 0x00 },  // 0x87  International1 RO
-    { AS_NONE,       0, 0x00 },  // 0x88  International2 Katakana Hiragana
-    { AS_NONE,       0, 0x00 },  // 0x89  International3 Yen
-    { AS_NONE,       0, 0x00 },  // 0x8a  International4 Henkan
-    { AS_NONE,       0, 0x00 },  // 0x8b  International5 Muhenkan
-    { AS_NONE,       0, 0x00 },  // 0x8c  International6 Keypad JP Comma
-    { AS_NONE,       0, 0x00 },  // 0x8d  International7
-    { AS_NONE,       0, 0x00 },  // 0x8e  International8
-    { AS_NONE,       0, 0x00 },  // 0x8f  International9
-    { AS_NONE,       0, 0x00 },  // 0x90  LANG1 Hangeul
-    { AS_NONE,       0, 0x00 },  // 0x91  LANG2 Hanja
-    { AS_NONE,       0, 0x00 },  // 0x92  LANG3 Katakana
-    { AS_NONE,       0, 0x00 },  // 0x93  LANG4 Hiragana
-    { AS_NONE,       0, 0x00 },  // 0x94  LANG5 Zenkakuhankaku
-    { AS_NONE,       0, 0x00 },  // 0x95  LANG6
-    { AS_NONE,       0, 0x00 },  // 0x96  LANG7
-    { AS_NONE,       0, 0x00 },  // 0x97  LANG8
-    { AS_NONE,       0, 0x00 },  // 0x98  LANG9
-    { AS_NONE,       0, 0x00 },  // 0x99  Alternate Erase
-    { AS_NONE,       0, 0x00 },  // 0x9a  SysReq / Attention
-    { AS_NONE,       0, 0x00 },  // 0x9b  Cancel
-    { AS_NONE,       0, 0x00 },  // 0x9c  Clear
-    { AS_NONE,       0, 0x00 },  // 0x9d  Prior
-    { AS_NONE,       0, 0x00 },  // 0x9e  Return
-    { AS_NONE,       0, 0x00 },  // 0x9f  Separator
-    { AS_NONE,       0, 0x00 },  // 0xa0  Out
-    { AS_NONE,       0, 0x00 },  // 0xa1  Oper
-    { AS_NONE,       0, 0x00 },  // 0xa2  Clear / Again
-    { AS_NONE,       0, 0x00 },  // 0xa3  CrSel / Props
-    { AS_NONE,       0, 0x00 },  // 0xa4  ExSel
-    { AS_NONE,       0, 0x00 },  // 0xa5
-    { AS_NONE,       0, 0x00 },  // 0xa6
-    { AS_NONE,       0, 0x00 },  // 0xa7
-    { AS_NONE,       0, 0x00 },  // 0xa8
-    { AS_NONE,       0, 0x00 },  // 0xa9
-    { AS_NONE,       0, 0x00 },  // 0xaa
-    { AS_NONE,       0, 0x00 },  // 0xab
-    { AS_NONE,       0, 0x00 },  // 0xac
-    { AS_NONE,       0, 0x00 },  // 0xad
-    { AS_NONE,       0, 0x00 },  // 0xae
-    { AS_NONE,       0, 0x00 },  // 0xaf
-    { AS_NONE,       0, 0x00 },  // 0xb0  Keypad 00
-    { AS_NONE,       0, 0x00 },  // 0xb1  Keypad 000
-    { AS_NONE,       0, 0x00 },  // 0xb2  Thousands Separator
-    { AS_NONE,       0, 0x00 },  // 0xb3  Decimal Separator
-    { AS_NONE,       0, 0x00 },  // 0xb4  Currency Unit
-    { AS_NONE,       0, 0x00 },  // 0xb5  Currency Sub-unit
-    { AS_KP_LPAREN,  0, 0x00 },  // 0xb6  Keypad '('
-    { AS_KP_RPAREN,  0, 0x00 },  // 0xb7  Keypad ')'
-    { AS_NONE,       0, 0x00 },  // 0xb8  Keypad '{'
-    { AS_NONE,       0, 0x00 },  // 0xb9  Keypad '}'
-    { AS_TAB,        0, 0x00 },  // 0xba  Keypad Tab
-    { AS_BACKSPACE,  0, 0x00 },  // 0xbb  Keypad Backspace
-    { AS_A,          0, 0x00 },  // 0xbc  Keypad 'A'
-    { AS_B,          0, 0x00 },  // 0xbd  Keypad 'B'
-    { AS_C,          0, 0x00 },  // 0xbe  Keypad 'C'
-    { AS_D,          0, 0x00 },  // 0xbf  Keypad 'D'
-    { AS_E,          0, 0x00 },  // 0xc0  Keypad 'E'
-    { AS_F,          0, 0x00 },  // 0xc1  Keypad 'F'
-    { AS_NONE,       0, 0x00 },  // 0xc2  Keypad XOR
-    { AS_6,          0, 0x01 },  // 0xc3  Keypad '^'
-    { AS_5,          0, 0x01 },  // 0xc4  Keypad '%'
-    { AS_COMMA,      0, 0x01 },  // 0xc5  Keypad '<'
-    { AS_DOT,        0, 0x01 },  // 0xc6  Keypad '>'
-    { AS_7,          0, 0x01 },  // 0xc7  Keypad '&'
-    { AS_NONE,       0, 0x00 },  // 0xc8  Keypad &&
-    { AS_BACKSLASH,  0, 0x01 },  // 0xc9  Keypad '|'
-    { AS_NONE,       0, 0x00 },  // 0xca  Keypad ||
-    { AS_SEMICOLON,  0, 0x01 },  // 0xcb  Keypad ':'
-    { AS_3,          0, 0x01 },  // 0xcc  Keypad '#'
-    { AS_SPACE,      0, 0x00 },  // 0xcd  Keypad Space
-    { AS_2,          0, 0x01 },  // 0xce  Keypad '@'
-    { AS_1,          0, 0x01 },  // 0xcf  Keypad '!'
-    { AS_NONE,       0, 0x00 },  // 0xd0  Keypad Memory Store
-    { AS_NONE,       0, 0x00 },  // 0xd1  Keypad Memory Recall
-    { AS_NONE,       0, 0x00 },  // 0xd2  Keypad Memory Clear
-    { AS_NONE,       0, 0x00 },  // 0xd3  Keypad Memory Add
-    { AS_NONE,       0, 0x00 },  // 0xd4  Keypad Memory Subtract
-    { AS_NONE,       0, 0x00 },  // 0xd5  Keypad Memory Multiply
-    { AS_NONE,       0, 0x00 },  // 0xd6  Keypad Memory Divide
-    { AS_NONE,       0, 0x00 },  // 0xd7  Keypad +/-
-    { AS_NONE,       0, 0x00 },  // 0xd8  Keypad Clear
-    { AS_NONE,       0, 0x00 },  // 0xd9  Keypad Clear Entry
-    { AS_NONE,       0, 0x00 },  // 0xda  Keypad Binary
-    { AS_NONE,       0, 0x00 },  // 0xdb  Keypad Octal
-    { AS_NONE,       0, 0x00 },  // 0xdc  Keypad Decimal
-    { AS_NONE,       0, 0x00 },  // 0xdd  Keypad Hexadecimal
-    { AS_NONE,       0, 0x00 },  // 0xde
-    { AS_NONE,       0, 0x00 },  // 0xdf
-    { AS_CTRL,       0, 0x00 },  // 0xe0  Left Control
-    { AS_LEFTSHIFT,  0, 0x00 },  // 0xe1  Left Shift
-    { AS_LEFTALT,    0, 0x00 },  // 0xe2  Left Alt
-    { AS_LEFTAMIGA,  0, 0x00 },  // 0xe3  Left Meta
-    { AS_CTRL,       0, 0x00 },  // 0xe4  Right Control
-    { AS_RIGHTSHIFT, 0, 0x00 },  // 0xe5  Right Shift
-    { AS_RIGHTALT,   0, 0x00 },  // 0xe6  Right Alt
-    { AS_RIGHTAMIGA, 0, 0x00 },  // 0xe7  Right Meta
-    { AS_PLAYPAUSE,  0, 0x00 },  // 0xe8  Media Play / Pause
-    { AS_STOP,       0, 0x00 },  // 0xe9  Media Stop CD
-    { AS_PREVTRACK,  0, 0x00 },  // 0xea  Media Previous Song
-    { AS_NEXTTRACK,  0, 0x00 },  // 0xeb  Media Next Song
-    { AS_NONE,       0, 0x00 },  // 0xec  Media Eject CD
-    { AS_NONE,       0, 0x00 },  // 0xed  Media Volume Up
-    { AS_NONE,       0, 0x00 },  // 0xee  Media Volume Down
-    { AS_NONE,       0, 0x00 },  // 0xef  Media Mute
-    { AS_NONE,       0, 0x00 },  // 0xf0  Media WWW
-    { AS_PREVTRACK,  0, 0x00 },  // 0xf1  Media Back
-    { AS_NEXTTRACK,  0, 0x00 },  // 0xf2  Media Forward
-    { AS_STOP,       0, 0x00 },  // 0xf3  Media Stop
-    { AS_NONE,       0, 0x00 },  // 0xf4  Media Find
-    { AS_WHEEL_UP,   0, 0x00 },  // 0xf5  Media Scroll Up
-    { AS_WHEEL_DOWN, 0, 0x00 },  // 0xf6  Media Scroll Down
-    { AS_NONE,       0, 0x00 },  // 0xf7  Media Edit
-    { AS_NONE,       0, 0x00 },  // 0xf8  Media Sleep
-    { AS_NONE,       0, 0x00 },  // 0xf9  Media Coffee
-    { AS_NONE,       0, 0x00 },  // 0xfa  Media Refresh
-    { AS_NONE,       0, 0x00 },  // 0xfb  Media Calc
-    { AS_NONE,       0, 0x00 },  // 0xfc
-    { AS_NONE,       0, 0x00 },  // 0xfd
-    { AS_NONE,       0, 0x00 },  // 0xfe
-    { AS_NONE,       0, 0x00 },  // 0xff
+    { AS_SEMICOLON,  AS_NONE, 0x00 },  // 0x33  ':' and ';'
+    { AS_APOSTROPHE, AS_NONE, 0x00 },  // 0x34  '"' and '''
+    { AS_BACKTICK,   AS_NONE, 0x00 },  // 0x35  '~' and '`'
+    { AS_COMMA,      AS_NONE, 0x00 },  // 0x36  '<' and ','
+    { AS_DOT,        AS_NONE, 0x00 },  // 0x37  '>' and '.'
+    { AS_SLASH,      AS_NONE, 0x00 },  // 0x38  '?' and '/'
+    { AS_CAPSLOCK,   AS_NONE, 0x00 },  // 0x39  Capslock
+    { AS_F1,         AS_NONE, 0x00 },  // 0x3a  F1
+    { AS_F2,         AS_NONE, 0x00 },  // 0x3b  F2
+    { AS_F3,         AS_NONE, 0x00 },  // 0x3c  F3
+    { AS_F4,         AS_NONE, 0x00 },  // 0x3d  F4
+    { AS_F5,         AS_NONE, 0x00 },  // 0x3e  F5
+    { AS_F6,         AS_NONE, 0x00 },  // 0x3f  F6
+    { AS_F7,         AS_NONE, 0x00 },  // 0x40  F7
+    { AS_F8,         AS_NONE, 0x00 },  // 0x41  F8
+    { AS_F9,         AS_NONE, 0x00 },  // 0x42  F9
+    { AS_F10,        AS_NONE, 0x00 },  // 0x43  F10
+    { AS_F11,        AS_NONE, 0x00 },  // 0x44  F11
+    { AS_F12,        AS_NONE, 0x00 },  // 0x45  F12
+    { AS_NONE,       AS_NONE, 0x00 },  // 0x46  SysRq
+    { AS_NONE,       AS_NONE, 0x00 },  // 0x47  Scroll Lock
+    { AS_PLAYPAUSE,  AS_NONE, 0x00 },  // 0x48  Pause
+    { AS_BACKSLASH,  AS_NONE, 0x00 },  // 0x49  Insert
+    { AS_KP_LPAREN,  AS_NONE, 0x00 },  // 0x4a  Home      (FS-UAE mapping)
+    { AS_KP_RPAREN,  AS_NONE, 0x00 },  // 0x4b  Page Up   (FS-UAE mapping)
+    { AS_DELETE,     AS_NONE, 0x00 },  // 0x4c  Delete
+    { AS_HELP,       AS_NONE, 0x00 },  // 0x4d  End       (FS-UAE mapping)
+    { AS_RIGHTAMIGA, AS_NONE, 0x00 },  // 0x4e  Page Down (FS-UAE mapping)
+    { AS_RIGHT,      AS_NONE, 0x00 },  // 0x4f  Cursor Right
+    { AS_LEFT,       AS_NONE, 0x00 },  // 0x50  Cursor Left
+    { AS_DOWN,       AS_NONE, 0x00 },  // 0x51  Cursor Down
+    { AS_UP,         AS_NONE, 0x00 },  // 0x52  Cursor Up
+    { AS_NONE,       AS_NONE, 0x00 },  // 0x53  Numlock
+    { AS_KPSLASH,    AS_NONE, 0x00 },  // 0x54  Keypad '/'
+    { AS_KPASTERISK, AS_NONE, 0x00 },  // 0x55  Keypad '*'
+    { AS_KPMINUS,    AS_NONE, 0x00 },  // 0x56  Keypad '-'
+    { AS_KPPLUS,     AS_NONE, 0x00 },  // 0x57  Keypad '+'
+    { AS_KPENTER,    AS_NONE, 0x00 },  // 0x58  Keypad Enter
+    { AS_KP1,        AS_NONE, 0x00 },  // 0x59  Keypad '1'
+    { AS_KP2,        AS_NONE, 0x00 },  // 0x5a  Keypad '2'
+    { AS_KP3,        AS_NONE, 0x00 },  // 0x5b  Keypad '3'
+    { AS_KP4,        AS_NONE, 0x00 },  // 0x5c  Keypad '4'
+    { AS_KP5,        AS_NONE, 0x00 },  // 0x5d  Keypad '5'
+    { AS_KP6,        AS_NONE, 0x00 },  // 0x5e  Keypad '6'
+    { AS_KP7,        AS_NONE, 0x00 },  // 0x5f  Keypad '7'
+    { AS_KP8,        AS_NONE, 0x00 },  // 0x60  Keypad '8'
+    { AS_KP9,        AS_NONE, 0x00 },  // 0x61  Keypad '9'
+    { AS_KP0,        AS_NONE, 0x00 },  // 0x62  Keypad '0'
+    { AS_KPDOT,      AS_NONE, 0x00 },  // 0x63  Keypad '.'
+    { AS_BACKSLASH,  AS_NONE, 0x00 },  // 0x64  102ND '\' and '|' (non-US)
+    { AS_RIGHTAMIGA, AS_NONE, 0x00 },  // 0x65  Compose
+    { AS_NONE,       AS_NONE, 0x00 },  // 0x66  Power Key
+    { AS_EQUAL,      AS_NONE, 0x00 },  // 0x67  Keypad '='
+    { AS_NONE,       AS_NONE, 0x00 },  // 0x68  F13
+    { AS_NONE,       AS_NONE, 0x00 },  // 0x69  F14
+    { AS_NONE,       AS_NONE, 0x00 },  // 0x6a  F15
+    { AS_NONE,       AS_NONE, 0x00 },  // 0x6b  F16
+    { AS_NONE,       AS_NONE, 0x00 },  // 0x6c  F17
+    { AS_NONE,       AS_NONE, 0x00 },  // 0x6d  F18
+    { AS_NONE,       AS_NONE, 0x00 },  // 0x6e  F19
+    { AS_NONE,       AS_NONE, 0x00 },  // 0x6f  F20
+    { AS_NONE,       AS_NONE, 0x00 },  // 0x70  F21
+    { AS_NONE,       AS_NONE, 0x00 },  // 0x71  F22
+    { AS_NONE,       AS_NONE, 0x00 },  // 0x72  F23
+    { AS_NONE,       AS_NONE, 0x00 },  // 0x73  F24
+    { AS_NONE,       AS_NONE, 0x00 },  // 0x74  Open (Execute)
+    { AS_HELP,       AS_NONE, 0x00 },  // 0x75  Help
+    { AS_NONE,       AS_NONE, 0x00 },  // 0x76  Props
+    { AS_NONE,       AS_NONE, 0x00 },  // 0x77  Front
+    { AS_NONE,       AS_NONE, 0x00 },  // 0x78  Stop
+    { AS_NONE,       AS_NONE, 0x00 },  // 0x79  Again
+    { AS_NONE,       AS_NONE, 0x00 },  // 0x7a  Undo
+    { AS_NONE,       AS_NONE, 0x00 },  // 0x7b  Cut
+    { AS_NONE,       AS_NONE, 0x00 },  // 0x7c  Copy
+    { AS_NONE,       AS_NONE, 0x00 },  // 0x7d  Paste
+    { AS_NONE,       AS_NONE, 0x00 },  // 0x7e  Find
+    { AS_NONE,       AS_NONE, 0x00 },  // 0x7f  Mute
+    { AS_NONE,       AS_NONE, 0x00 },  // 0x80  Volume Up
+    { AS_NONE,       AS_NONE, 0x00 },  // 0x81  Volume Down
+    { AS_CAPSLOCK,   AS_NONE, 0x00 },  // 0x82  Locking Caps Lock
+    { AS_NONE,       AS_NONE, 0x00 },  // 0x83  Locking Num Lock
+    { AS_NONE,       AS_NONE, 0x00 },  // 0x84  Locking Scroll Lock
+    { AS_COMMA,      AS_NONE, 0x00 },  // 0x85  Keypad ','
+    { AS_EQUAL,      AS_NONE, 0x00 },  // 0x86  Keypad '='
+    { AS_NONE,       AS_NONE, 0x00 },  // 0x87  International1 RO
+    { AS_NONE,       AS_NONE, 0x00 },  // 0x88  International2 Katakana Hiragana
+    { AS_NONE,       AS_NONE, 0x00 },  // 0x89  International3 Yen
+    { AS_NONE,       AS_NONE, 0x00 },  // 0x8a  International4 Henkan
+    { AS_NONE,       AS_NONE, 0x00 },  // 0x8b  International5 Muhenkan
+    { AS_NONE,       AS_NONE, 0x00 },  // 0x8c  International6 Keypad JP Comma
+    { AS_NONE,       AS_NONE, 0x00 },  // 0x8d  International7
+    { AS_NONE,       AS_NONE, 0x00 },  // 0x8e  International8
+    { AS_NONE,       AS_NONE, 0x00 },  // 0x8f  International9
+    { AS_NONE,       AS_NONE, 0x00 },  // 0x90  LANG1 Hangeul
+    { AS_NONE,       AS_NONE, 0x00 },  // 0x91  LANG2 Hanja
+    { AS_NONE,       AS_NONE, 0x00 },  // 0x92  LANG3 Katakana
+    { AS_NONE,       AS_NONE, 0x00 },  // 0x93  LANG4 Hiragana
+    { AS_NONE,       AS_NONE, 0x00 },  // 0x94  LANG5 Zenkakuhankaku
+    { AS_NONE,       AS_NONE, 0x00 },  // 0x95  LANG6
+    { AS_NONE,       AS_NONE, 0x00 },  // 0x96  LANG7
+    { AS_NONE,       AS_NONE, 0x00 },  // 0x97  LANG8
+    { AS_NONE,       AS_NONE, 0x00 },  // 0x98  LANG9
+    { AS_NONE,       AS_NONE, 0x00 },  // 0x99  Alternate Erase
+    { AS_NONE,       AS_NONE, 0x00 },  // 0x9a  SysReq / Attention
+    { AS_NONE,       AS_NONE, 0x00 },  // 0x9b  Cancel
+    { AS_NONE,       AS_NONE, 0x00 },  // 0x9c  Clear
+    { AS_NONE,       AS_NONE, 0x00 },  // 0x9d  Prior
+    { AS_NONE,       AS_NONE, 0x00 },  // 0x9e  Return
+    { AS_NONE,       AS_NONE, 0x00 },  // 0x9f  Separator
+    { AS_NONE,       AS_NONE, 0x00 },  // 0xa0  Out
+    { AS_NONE,       AS_NONE, 0x00 },  // 0xa1  Oper
+    { AS_NONE,       AS_NONE, 0x00 },  // 0xa2  Clear / Again
+    { AS_NONE,       AS_NONE, 0x00 },  // 0xa3  CrSel / Props
+    { AS_NONE,       AS_NONE, 0x00 },  // 0xa4  ExSel
+    { AS_NONE,       AS_NONE, 0x00 },  // 0xa5
+    { AS_NONE,       AS_NONE, 0x00 },  // 0xa6
+    { AS_NONE,       AS_NONE, 0x00 },  // 0xa7
+    { AS_NONE,       AS_NONE, 0x00 },  // 0xa8
+    { AS_NONE,       AS_NONE, 0x00 },  // 0xa9
+    { AS_NONE,       AS_NONE, 0x00 },  // 0xaa
+    { AS_NONE,       AS_NONE, 0x00 },  // 0xab
+    { AS_NONE,       AS_NONE, 0x00 },  // 0xac
+    { AS_NONE,       AS_NONE, 0x00 },  // 0xad
+    { AS_NONE,       AS_NONE, 0x00 },  // 0xae
+    { AS_NONE,       AS_NONE, 0x00 },  // 0xaf
+    { AS_NONE,       AS_NONE, 0x00 },  // 0xb0  Keypad 00
+    { AS_NONE,       AS_NONE, 0x00 },  // 0xb1  Keypad 000
+    { AS_NONE,       AS_NONE, 0x00 },  // 0xb2  Thousands Separator
+    { AS_NONE,       AS_NONE, 0x00 },  // 0xb3  Decimal Separator
+    { AS_NONE,       AS_NONE, 0x00 },  // 0xb4  Currency Unit
+    { AS_NONE,       AS_NONE, 0x00 },  // 0xb5  Currency Sub-unit
+    { AS_KP_LPAREN,  AS_NONE, 0x00 },  // 0xb6  Keypad '('
+    { AS_KP_RPAREN,  AS_NONE, 0x00 },  // 0xb7  Keypad ')'
+    { AS_NONE,       AS_NONE, 0x00 },  // 0xb8  Keypad '{'
+    { AS_NONE,       AS_NONE, 0x00 },  // 0xb9  Keypad '}'
+    { AS_TAB,        AS_NONE, 0x00 },  // 0xba  Keypad Tab
+    { AS_BACKSPACE,  AS_NONE, 0x00 },  // 0xbb  Keypad Backspace
+    { AS_A,          AS_NONE, 0x00 },  // 0xbc  Keypad 'A'
+    { AS_B,          AS_NONE, 0x00 },  // 0xbd  Keypad 'B'
+    { AS_C,          AS_NONE, 0x00 },  // 0xbe  Keypad 'C'
+    { AS_D,          AS_NONE, 0x00 },  // 0xbf  Keypad 'D'
+    { AS_E,          AS_NONE, 0x00 },  // 0xc0  Keypad 'E'
+    { AS_F,          AS_NONE, 0x00 },  // 0xc1  Keypad 'F'
+    { AS_NONE,       AS_NONE, 0x00 },  // 0xc2  Keypad XOR
+    { AS_6,          AS_NONE, 0x01 },  // 0xc3  Keypad '^'
+    { AS_5,          AS_NONE, 0x01 },  // 0xc4  Keypad '%'
+    { AS_COMMA,      AS_NONE, 0x01 },  // 0xc5  Keypad '<'
+    { AS_DOT,        AS_NONE, 0x01 },  // 0xc6  Keypad '>'
+    { AS_7,          AS_NONE, 0x01 },  // 0xc7  Keypad '&'
+    { AS_NONE,       AS_NONE, 0x00 },  // 0xc8  Keypad &&
+    { AS_BACKSLASH,  AS_NONE, 0x01 },  // 0xc9  Keypad '|'
+    { AS_NONE,       AS_NONE, 0x00 },  // 0xca  Keypad ||
+    { AS_SEMICOLON,  AS_NONE, 0x01 },  // 0xcb  Keypad ':'
+    { AS_3,          AS_NONE, 0x01 },  // 0xcc  Keypad '#'
+    { AS_SPACE,      AS_NONE, 0x00 },  // 0xcd  Keypad Space
+    { AS_2,          AS_NONE, 0x01 },  // 0xce  Keypad '@'
+    { AS_1,          AS_NONE, 0x01 },  // 0xcf  Keypad '!'
+    { AS_NONE,       AS_NONE, 0x00 },  // 0xd0  Keypad Memory Store
+    { AS_NONE,       AS_NONE, 0x00 },  // 0xd1  Keypad Memory Recall
+    { AS_NONE,       AS_NONE, 0x00 },  // 0xd2  Keypad Memory Clear
+    { AS_NONE,       AS_NONE, 0x00 },  // 0xd3  Keypad Memory Add
+    { AS_NONE,       AS_NONE, 0x00 },  // 0xd4  Keypad Memory Subtract
+    { AS_NONE,       AS_NONE, 0x00 },  // 0xd5  Keypad Memory Multiply
+    { AS_NONE,       AS_NONE, 0x00 },  // 0xd6  Keypad Memory Divide
+    { AS_NONE,       AS_NONE, 0x00 },  // 0xd7  Keypad +/-
+    { AS_NONE,       AS_NONE, 0x00 },  // 0xd8  Keypad Clear
+    { AS_NONE,       AS_NONE, 0x00 },  // 0xd9  Keypad Clear Entry
+    { AS_NONE,       AS_NONE, 0x00 },  // 0xda  Keypad Binary
+    { AS_NONE,       AS_NONE, 0x00 },  // 0xdb  Keypad Octal
+    { AS_NONE,       AS_NONE, 0x00 },  // 0xdc  Keypad Decimal
+    { AS_NONE,       AS_NONE, 0x00 },  // 0xdd  Keypad Hexadecimal
+    { AS_NONE,       AS_NONE, 0x00 },  // 0xde
+    { AS_NONE,       AS_NONE, 0x00 },  // 0xdf
+    { AS_CTRL,       AS_NONE, 0x00 },  // 0xe0  Left Control
+    { AS_LEFTSHIFT,  AS_NONE, 0x00 },  // 0xe1  Left Shift
+    { AS_LEFTALT,    AS_NONE, 0x00 },  // 0xe2  Left Alt
+    { AS_LEFTAMIGA,  AS_NONE, 0x00 },  // 0xe3  Left Meta
+    { AS_CTRL,       AS_NONE, 0x00 },  // 0xe4  Right Control
+    { AS_RIGHTSHIFT, AS_NONE, 0x00 },  // 0xe5  Right Shift
+    { AS_RIGHTALT,   AS_NONE, 0x00 },  // 0xe6  Right Alt
+    { AS_RIGHTAMIGA, AS_NONE, 0x00 },  // 0xe7  Right Meta
+    { AS_PLAYPAUSE,  AS_NONE, 0x00 },  // 0xe8  Media Play / Pause
+    { AS_STOP,       AS_NONE, 0x00 },  // 0xe9  Media Stop CD
+    { AS_PREVTRACK,  AS_NONE, 0x00 },  // 0xea  Media Previous Song
+    { AS_NEXTTRACK,  AS_NONE, 0x00 },  // 0xeb  Media Next Song
+    { AS_NONE,       AS_NONE, 0x00 },  // 0xec  Media Eject CD
+    { AS_NONE,       AS_NONE, 0x00 },  // 0xed  Media Volume Up
+    { AS_NONE,       AS_NONE, 0x00 },  // 0xee  Media Volume Down
+    { AS_NONE,       AS_NONE, 0x00 },  // 0xef  Media Mute
+    { AS_NONE,       AS_NONE, 0x00 },  // 0xf0  Media WWW
+    { AS_PREVTRACK,  AS_NONE, 0x00 },  // 0xf1  Media Back
+    { AS_NEXTTRACK,  AS_NONE, 0x00 },  // 0xf2  Media Forward
+    { AS_STOP,       AS_NONE, 0x00 },  // 0xf3  Media Stop
+    { AS_NONE,       AS_NONE, 0x00 },  // 0xf4  Media Find
+    { AS_WHEEL_UP,   AS_NONE, 0x00 },  // 0xf5  Media Scroll Up
+    { AS_WHEEL_DOWN, AS_NONE, 0x00 },  // 0xf6  Media Scroll Down
+    { AS_NONE,       AS_NONE, 0x00 },  // 0xf7  Media Edit
+    { AS_NONE,       AS_NONE, 0x00 },  // 0xf8  Media Sleep
+    { AS_NONE,       AS_NONE, 0x00 },  // 0xf9  Media Coffee
+    { AS_NONE,       AS_NONE, 0x00 },  // 0xfa  Media Refresh
+    { AS_NONE,       AS_NONE, 0x00 },  // 0xfb  Media Calc
+    { AS_NONE,       AS_NONE, 0x00 },  // 0xfc
+    { AS_NONE,       AS_NONE, 0x00 },  // 0xfd
+    { AS_NONE,       AS_NONE, 0x00 },  // 0xfe
+    { AS_NONE,       AS_NONE, 0x00 },  // 0xff
 };
 // 0x01 = Assert shift on non-shifted version (SAF_ADD_SHIFT)
 
@@ -875,8 +875,11 @@ void
 keyboard_set_defaults(void)
 {
     uint code;
-    for (code = 0; code < 256; code++)
+    for (code = 0; code < 256; code++) {
         config.keymap[code] = scancode_to_amiga[code].sa_amiga;
+        if (config.keymap[code] == 0)  // Backtick is Amiga code 0x00
+            config.keymap[code] = (AS_NONE << 8);  // Special case
+    }
     config.modkeymap[0] = AS_CTRL;
     config.modkeymap[1] = AS_LEFTSHIFT;
     config.modkeymap[2] = AS_LEFTALT;
@@ -895,7 +898,7 @@ convert_scancode_to_amiga(uint8_t keycode, uint8_t modifier,
     *amiga_modifier = 0;
     if (modifier & (KEYBOARD_MODIFIER_LEFTSHIFT |
                     KEYBOARD_MODIFIER_RIGHTSHIFT)) {
-        if (scancode_to_amiga[keycode].sa_shifted != 0)
+        if (scancode_to_amiga[keycode].sa_shifted != AS_NONE)
             code = scancode_to_amiga[keycode].sa_shifted;  // Can't remap these
     } else {
         if (scancode_to_amiga[keycode].sa_flags & SAF_ADD_SHIFT) {
@@ -1268,28 +1271,29 @@ keyboard_usb_input(usb_keyboard_report_t *report)
     last_key_report_modifier = modifier;
 
     if ((mod_diff != 0) & !usb_keyboard_terminal && !keyboard_raw_mode) {
-        uint32_t code;
         uint bit;
         for (bit = 0; bit < 8; bit++) {
             if (mod_diff & BIT(bit)) {
-                code = config.modkeymap[bit];
-                while (code != 0) {
-                    if (modifier & BIT(bit)) {
-                        if (code & 0x80) {
-                            /* Button press or macro expansion */
-                            mouse_buttons_add |= BIT(code & 31);
+                uint32_t tcode = config.modkeymap[bit];
+                for (; tcode != 0; tcode >>= 8) {
+                    uint8_t code = (uint8_t) tcode;
+                    if (code != AS_NONE) {
+                        if (modifier & BIT(bit)) {
+                            if (code & 0x80) {
+                                /* Button press or macro expansion */
+                                mouse_buttons_add |= BIT(code & 31);
+                            } else {
+                                keyboard_put_amiga(code);         // pressed
+                            }
                         } else {
-                            keyboard_put_amiga(code);         // pressed
-                        }
-                    } else {
-                        if (code & 0x80) {
-                            /* Button press or macro expansion */
-                            mouse_buttons_add &= ~BIT(code & 31);
-                        } else {
-                            keyboard_put_amiga(code | 0x80);  // released
+                            if (code & 0x80) {
+                                /* Button press or macro expansion */
+                                mouse_buttons_add &= ~BIT(code & 31);
+                            } else {
+                                keyboard_put_amiga(code | 0x80);  // released
+                            }
                         }
                     }
-                    code >>= 8;
                 }
             }
         }
@@ -1342,9 +1346,9 @@ keyboard_usb_input(usb_keyboard_report_t *report)
                     dprintf(DF_USB_KEYBOARD, ">%02x<", keycode);
                     tcode = convert_scancode_to_amiga(keycode, modifier,
                                                       &amiga_modifier);
-                    while (tcode != 0) {
+                    for (; tcode != 0; tcode >>= 8) {
                         uint8_t code = tcode & 0xff;
-                        if (tcode == AS_CAPSLOCK) {
+                        if (code == AS_CAPSLOCK) {
                             /* Capslock is pressed a second time to release */
                             if (capslock)
                                 code = AS_NONE;
@@ -1356,7 +1360,6 @@ keyboard_usb_input(usb_keyboard_report_t *report)
                             else
                                 keyboard_put_amiga(code);
                         }
-                        tcode >>= 8;
                     }
                 }
             }
@@ -1399,8 +1402,8 @@ keyboard_usb_input(usb_keyboard_report_t *report)
                 uint32_t tcode;
                 tcode = convert_scancode_to_amiga(keycode, modifier,
                                                   &amiga_modifier);
-                while (tcode != 0) {
-                    uint8_t code = tcode & 0xff;
+                for (; tcode != 0; tcode >>= 8) {
+                    uint8_t code = (uint8_t) tcode;
                     if (code == AS_CAPSLOCK) {
                         if (capslock) {
                             capslock = 0;
@@ -1415,7 +1418,6 @@ keyboard_usb_input(usb_keyboard_report_t *report)
                         else
                             keyboard_put_amiga(code | 0x80);
                     }
-                    tcode >>= 8;
                 }
             }
         }
@@ -1450,15 +1452,14 @@ keyboard_usb_input_mm(uint16_t *ch, uint count)
             /* Key down */
             tcode = convert_mm_scancode_to_amiga(ch[cur]);
             dprintf(DF_USB_KEYBOARD, " MKEYDOWN %lx ", tcode);
-            while (tcode != 0) {
-                uint8_t code = tcode & 0xff;
+            for (; tcode != 0; tcode >>= 8) {
+                uint8_t code = (uint8_t) tcode;
                 if (code != AS_NONE) {
                     if (code & 0x80)  // Button press or macro expansion
                         mouse_buttons_add |= BIT(code & 31);
                     else
                         keyboard_put_amiga(code);
                 }
-                tcode >>= 8;
             }
         }
     }
@@ -1474,15 +1475,14 @@ keyboard_usb_input_mm(uint16_t *ch, uint count)
             /* Key up */
             tcode = convert_mm_scancode_to_amiga(last[cur]);
             dprintf(DF_USB_KEYBOARD, " MKEYUP %lx ", tcode);
-            while (tcode != 0) {
-                uint8_t code = tcode & 0xff;
+            for (; tcode != 0; tcode >>= 8) {
+                uint8_t code = (uint8_t) tcode;
                 if (code != AS_NONE) {
-                    if (code & 0x80)  // Button press or macro expansion
+                    if (code & 0x80)  // Button release or macro expansion
                         mouse_buttons_add &= ~BIT(code & 31);
                     else
                         keyboard_put_amiga(code | 0x80);
                 }
-                tcode >>= 8;
             }
         }
     }
@@ -1500,12 +1500,15 @@ keyboard_usb_input_mm(uint16_t *ch, uint count)
 void
 keyboard_put_macro(uint32_t macro, uint is_pressed)
 {
-    uint32_t val;
-    for (val = macro; val != 0; val >>= 8) {
-        if (is_pressed)
-            keyboard_put_amiga(val);
-        else
-            keyboard_put_amiga(val | 0x80);
+    uint32_t tcode;
+    for (tcode = macro; tcode != 0; tcode >>= 8) {
+        uint8_t code = (uint8_t) macro;
+        if (code != AS_NONE) {
+            if (is_pressed)
+                keyboard_put_amiga(code);
+            else
+                keyboard_put_amiga(code | 0x80);
+        }
     }
 }
 

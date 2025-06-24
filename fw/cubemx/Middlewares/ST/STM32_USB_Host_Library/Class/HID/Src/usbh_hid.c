@@ -129,6 +129,7 @@ USBH_ClassTypeDef  HID_Class =
 {
   "HID",
   USB_HID_CLASS,
+  NULL,
   USBH_HID_InterfaceInit,
   USBH_HID_InterfaceDeInit,
   USBH_HID_ClassRequest,

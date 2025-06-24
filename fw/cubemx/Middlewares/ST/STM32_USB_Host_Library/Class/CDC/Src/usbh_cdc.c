@@ -126,6 +126,7 @@ USBH_ClassTypeDef  CDC_Class =
 {
   "CDC",
   USB_CDC_CLASS,
+  NULL,
   USBH_CDC_InterfaceInit,
   USBH_CDC_InterfaceDeInit,
   USBH_CDC_ClassRequest,
