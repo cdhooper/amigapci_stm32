@@ -30,6 +30,7 @@
                                    low_bit(FORWARD_PIN)))
 #define LEFT_GPIO ADDR32(BND_IO(LEFT_PORT + GPIO_ODR_OFFSET, low_bit(LEFT_PIN)))
 
+uint8_t joystick_asserted;
 
 void
 joystick_action(uint up, uint down, uint left, uint right, uint32_t buttons)
@@ -40,6 +41,8 @@ joystick_action(uint up, uint down, uint left, uint right, uint32_t buttons)
     static uint8_t  last_right;
     static uint32_t last_buttons;
     uint32_t        macro;
+
+    joystick_asserted = up | down | left | right || !!buttons;
 
     if (last_up != up) {
         macro = config.jdirectmap[0] ? config.jdirectmap[0] : 6;

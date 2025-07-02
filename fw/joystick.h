@@ -14,4 +14,6 @@
 void joystick_action(uint up, uint down, uint left, uint right,
                      uint32_t buttons);
 
+extern uint8_t joystick_asserted;
+
 #endif /* _JOYSTICK_H */

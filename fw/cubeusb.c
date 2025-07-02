@@ -56,9 +56,9 @@ typedef enum {
 } appstate_type;
 
 static struct {
-    HID_TypeTypeDef    hid_devtype;
     uint8_t            keyboard_count;
     uint8_t            mouse_count;
+    uint8_t            joystick_count;
     uint64_t           hid_ready_timer;
     appstate_type      appstate;
 } usbdev[2][MAX_HUB_PORTS + 1];
@@ -174,8 +174,9 @@ static const char * const hid_state_types[] = {
 };
 
 static const char * const hid_ctl_state_types[] = {
-    "INIT", "IDLE", "GET_REPORT_DESC", "GET_HID_DESC",
-    "SET_IDLE", "SET_PROTOCOL", "SET_REPORT"
+    "HID_REQ_INIT", "HID_REQ_IDLE",
+    "HID_REQ_GET_REPORT_DESC", "HID_REQ_GET_HID_DESC",
+    "HID_REQ_SET_IDLE", "HID_REQ_SET_PROTOCOL", "HID_REQ_SET_REPORT"
 };
 
 static const char * const hub_state_types[] = {
@@ -261,12 +262,10 @@ USBH_UserProcess(USBH_HandleTypeDef *phost, uint8_t id)
         case HOST_USER_DISCONNECTION:
             usb_keyboard_count -= usbdev[port][devnum].keyboard_count;
             usb_mouse_count    -= usbdev[port][devnum].mouse_count;
+            usb_joystick_count -= usbdev[port][devnum].joystick_count;
 
             memset(&usbdev[port][devnum], 0, sizeof (usbdev[port][devnum]));
             usbdev[port][devnum].appstate = APPLICATION_DISCONNECT;
-//          usbdev[port][devnum].keyboard_count = 0;
-//          usbdev[port][devnum].mouse_count = 0;
-//          usbdev[port][devnum].hid_devtype = 0;
             break;
         case HOST_USER_UNRECOVERED_ERROR:
             break;
@@ -375,6 +374,32 @@ get_devclass_str(uint8_t devclass)
         return ("Unknown");
 }
 
+static const char *const usb_hid_usage_codes[] =
+{
+    "Undefined",      // 0x00
+    "Pointer",        // 0x01
+    "Mouse",          // 0x02
+    "Reserved",       // 0x03
+    "Joystick",       // 0x04
+    "Gamepad",        // 0x05
+    "Keybaord",       // 0x06
+    "Keypad",         // 0x07
+    "M-X Controller", // 0x08
+};
+
+static const char *
+get_hid_usage_str(uint8_t usage)
+{
+    if (usage < ARRAY_SIZE(usb_hid_usage_codes))
+        return (usb_hid_usage_codes[usage]);
+    switch (usage) {
+        case HID_USAGE_SYSCTL:
+            return ("Sysctl");
+        default:
+            return ("Unknown");
+    }
+}
+
 static void
 usb_ls_classes(USBH_HandleTypeDef *phost, uint verbose)
 {
@@ -447,6 +472,7 @@ usb_ls_classes(USBH_HandleTypeDef *phost, uint verbose)
                             printf("          NULL HID Handle\n");
                             continue;
                         }
+
                         printf("          OutEp=%x InEp=%x state=%x %s "
                                "ctl_state=%x %s\n",
                                HID_Handle->OutEp, HID_Handle->InEp,
@@ -465,6 +491,9 @@ usb_ls_classes(USBH_HandleTypeDef *phost, uint verbose)
                                HID_Handle->HID_RDesc.id_mouse,
                                HID_Handle->HID_RDesc.id_consumer,
                                HID_Handle->HID_RDesc.id_sysctl);
+                        printf("          usage=%x %s\n",
+                               HID_Handle->HID_RDesc.usage,
+                               get_hid_usage_str(HID_Handle->HID_RDesc.usage));
                     }
                     break;
                 }
@@ -543,7 +572,7 @@ usb_ls(uint verbose)
             uint    classnum;
             if (phost->valid == 0)
                 continue;
-            printf("%u.%u %04x.%04x ",
+            printf("%u.%u %04x:%04x ",
                    port, hubport,
                    phost->device.DevDesc.idVendor,
                    phost->device.DevDesc.idProduct);
@@ -571,7 +600,7 @@ usb_ls(uint verbose)
                        phost->gState,
                        (phost->gState < ARRAY_SIZE(host_gstate_types)) ?
                        host_gstate_types[phost->gState] : "Unknown");
-                printf(" rstate=%x %s ",
+                printf(" rstate=%x %s",
                        phost->RequestState,
                        (phost->RequestState <
                         ARRAY_SIZE(host_requeststate_types)) ?
@@ -751,19 +780,54 @@ USBH_HID_EventCallback(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle)
     }
 }
 
+static int
+is_usb_joystick(USBH_HandleTypeDef *phost, uint ifnum)
+{
+    uint8_t ifclass = phost->device.CfgDesc.Itf_Desc[ifnum].bInterfaceClass;
+    uint classnum;
+    void *data = NULL;
+    for (classnum = 0; classnum < phost->ClassNumber; classnum++) {
+        if (ifclass == phost->pClass[classnum]->ClassCode) {
+            data = phost->pClass[classnum]->pData;
+            break;
+        }
+    }
+
+    if (ifclass == USB_HID_CLASS) {
+        if (data != NULL) {
+            HID_HandleTypeDef *HID_Handle = data;
+            switch (HID_Handle->HID_RDesc.usage) {
+                case HID_USAGE_GAMEPAD:
+                case HID_USAGE_JOYSTICK:
+                    return (1);
+            }
+        }
+    } else if (ifclass == USB_XUSB_CLASS) {
+        /* Check for XBox-360 controller */
+        if ((USBH_XUSB_CLASS)->Probe(phost) == USBH_OK)
+            return (1);
+    }
+    return (0);
+}
+
 static void
 handle_recovery(USBH_HandleTypeDef *phost, uint port, uint devnum)
 {
     uint iface;
     uint numif = phost->device.CfgDesc.bNumInterfaces;
     uint devtype;
+    uint8_t ifclass;
 
     if (usbdev[port][devnum].appstate == APPLICATION_READY) {
         if (!timer_tick_has_elapsed(usbdev[port][devnum].hid_ready_timer))
             return;
 
         for (iface = 0; iface < numif; iface++) {
-            devtype = USBH_HID_GetDeviceType(phost, iface);
+            ifclass = phost->device.CfgDesc.Itf_Desc[iface].bInterfaceClass;
+            if (ifclass == USB_HID_CLASS)
+                devtype = USBH_HID_GetDeviceType(phost, iface);
+            else
+                devtype = 0;
             dprintf(DF_USB_CONN, "USB%u.%u.%u type %x %s\n",
                     port, devnum, iface, devtype,
                     (devtype == HID_KEYBOARD) ? "Keyboard" :
@@ -774,9 +838,13 @@ handle_recovery(USBH_HandleTypeDef *phost, uint port, uint devnum)
             } else if (devtype == HID_MOUSE) {
                 usbdev[port][devnum].mouse_count++;
                 usb_mouse_count++;
+            } else if (is_usb_joystick(phost, iface)) {
+                usbdev[port][devnum].joystick_count++;
+                usb_joystick_count++;
+                break;
             }
         }
-        if (usb_mouse_count > 0)
+        if ((usb_mouse_count > 0) || (usb_joystick_count > 0))
             hiden_set(1);
         usbdev[port][devnum].appstate = APPLICATION_RUNNING;
     }

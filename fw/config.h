@@ -53,13 +53,15 @@ typedef struct {
     uint32_t    debug_flag;     // Debug flags (see DF_* above)
     int8_t      cpu_temp_bias;  // CPU temperature bias
     uint8_t     board_rev;      // Board revision, for board-specific changes
-    uint8_t     unused1[2];     // Unused
-    uint32_t    buttonmap[16];  // Mouse button mappings
-    uint32_t    jbuttonmap[16]; // Joystick button mappings
+    uint8_t     board_type;     // Board type
+    uint8_t     unused1;        // Unused
+    uint32_t    flags;          // Runtime flags
+    uint32_t    buttonmap[32];  // Mouse button mappings
+    uint32_t    jbuttonmap[32]; // Joystick button mappings
     uint32_t    jdirectmap[4];  // Joystick direction mappings (U, D, L, R)
     uint32_t    scrollmap[4];   // Mouse scroll wheel mappings (U, D, L, R)
-    uint32_t    flags;          // Runtime flags
-    uint8_t     unused[768];    // Unused
+    uint32_t    sysctlmap[4];   // System control button mappings
+    uint8_t     unused[624];    // Unused
 } config_t;
 
 extern config_t config;

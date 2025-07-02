@@ -39,6 +39,7 @@
 
 #include <libopencm3/cm3/scb.h>
 #include <libopencm3/stm32/gpio.h>
+#include <libopencm3/stm32/rtc.h>
 #include <libopencm3/stm32/memorymap.h>
 #define GPIOA_BASE GPIO_PORT_A_BASE
 #define GPIOB_BASE GPIO_PORT_B_BASE
@@ -135,7 +136,7 @@ static const memmap_t memmap[] = {
     { "AFIO",   AFIO_BASE },
     { "BKP",    BACKUP_REGS_BASE },
 #endif
-#if defined(STM32F103xE)
+#if defined(STM32F103xE) || defined(STM32F2)
     { "BKP",    RTC_BKP_BASE },
 #endif
     { "DAC",    DAC_BASE },
@@ -298,7 +299,10 @@ cmd_time(int argc, char * const *argv)
     if (argc <= 1)
         return (RC_USER_HELP);
 
-    if (strcmp(argv[1], "cmd") == 0) {
+    if (strncmp(argv[1], "calibrate", 3) == 0) {
+        rtc_calibrate();
+        rc = RC_SUCCESS;
+    } else if (strcmp(argv[1], "cmd") == 0) {
         uint64_t time_start;
         uint64_t time_diff;
 
@@ -312,9 +316,6 @@ cmd_time(int argc, char * const *argv)
         printf("%llu us\n", timer_tick_to_usec(time_diff));
         if (rc == RC_USER_HELP)
             rc = RC_FAILURE;
-    } else if (strncmp(argv[1], "compare", 4) == 0) {
-        rtc_compare();
-        rc = RC_SUCCESS;
     } else if (strncmp(argv[1], "now", 1) == 0) {
         uint64_t now = timer_tick_get();
         printf("tick=0x%llx uptime=%llu usec\ntime=",
@@ -436,6 +437,7 @@ cmd_amiga(int argc, char * const *argv)
         printf("USB Powered     %s\n", usb_is_powered ? "Yes" : "No");
         printf("USB Keyboards   %u\n", usb_keyboard_count);
         printf("USB Mice        %u\n", usb_mouse_count);
+        printf("USB Joysticks   %u\n", usb_joystick_count);
         printf("HID Enabled     %s\n", hiden_is_set ? "Yes" : "No");
         printf("Amiga Keyboard  %s sync, %s wake\n",
                amiga_keyboard_lost_sync ? "Lost" :
@@ -756,8 +758,10 @@ typedef struct {
     uint8_t     cs_mode;    // Mode bits for display (1=hex)
 } config_set_t;
 static const config_set_t config_set[] = {
-    { "board_rev",      "Board revision (1=STM32dev, 5=current)",
+    { "board_rev",      "Board revision (5=current)",
       CFOFF(board_rev), MODE_DEC },
+    { "board_type",     "Board type (1=AmigaPCI, 2=STM32Dev)",
+      CFOFF(board_type), MODE_DEC },
     { "cpu_temp_bias",  "Bias (+/-) for CPU temperature",
       CFOFF(cpu_temp_bias), MODE_SIGNED },
     { "debug",         "",
@@ -928,8 +932,10 @@ cmd_set(int argc, char * const *argv)
             }
         } else {
             /* Reset all defaults */
+            uint board_type = config.board_type;
             uint board_rev = config.board_rev;
             config_set_defaults();
+            config.board_type = board_type;
             config.board_rev = board_rev;
         }
     } else if (strcmp(argv[1], "fan_rpm_max") == 0) {

@@ -48,6 +48,7 @@ static uint8_t      yquad;
 static volatile int mouse_x;
 static volatile int mouse_y;
 uint32_t mouse_buttons_add;
+uint8_t mouse_asserted;
 
 /*
  * mouse_put_macro() sets a mouse button or joystick direction or sends
@@ -223,6 +224,7 @@ mouse_action(int off_x, int off_y, int off_wheel, int off_pan, uint32_t buttons)
                 mouse_put_macro(macro, is_pressed, was_pressed);
         }
         last_buttons = buttons;
+        mouse_asserted = !!buttons;
     }
     hiden_set(1);
 }

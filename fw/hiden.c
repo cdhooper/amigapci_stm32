@@ -18,6 +18,8 @@
 #include "timer.h"
 #include "usb.h"
 #include "gpio.h"
+#include "joystick.h"
+#include "mouse.h"
 
 uint8_t hiden_is_set;
 static uint64_t hiden_timeout;
@@ -39,10 +41,17 @@ hiden_poll(void)
     /* Automatic HID disable when no mouse is present */
     if (hiden_is_set) {
         if (hiden_timeout == 0) {
-            if (usb_mouse_count == 0)
+            if (usb_mouse_count != 0) {
+                if (mouse_asserted) {
+                    hiden_timeout = timer_tick_plus_msec(10000);
+                } else {
+                    hiden_timeout = timer_tick_plus_msec(2500);
+                }
+            } else if ((usb_joystick_count != 0) && (joystick_asserted)) {
+                hiden_timeout = timer_tick_plus_msec(10000);
+            } else {
                 hiden_timeout = timer_tick_plus_msec(500);
-            else
-                hiden_timeout = timer_tick_plus_msec(5000);
+            }
             return;
         }
         if (timer_tick_has_elapsed(hiden_timeout)) {

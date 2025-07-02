@@ -26,7 +26,7 @@ void utc_to_rtc(uint32_t secs, uint *year, uint *mon, uint *day, uint *hour,
 void rtc_print(uint newline);
 uint32_t rtc_read_nvram(uint reg);
 void rtc_write_nvram(uint reg, uint32_t value);
-void rtc_compare(void);
+void rtc_calibrate(void);
 uint8_t rtc_binary_to_bcd(uint value);
 uint8_t rtc_bcd_to_binary(uint8_t value);
 

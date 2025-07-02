@@ -26,7 +26,7 @@ USB Mouse
 
 USB Hub Keyboard
     ***
-    *** BEC firmware needs improvements for USB hotplug)
+    *** BEC firmware needs improvements for USB hotplug
     ***
     Dell UD0003-DEL5
         ID 413c:2011 Dell Computer Corp. Multimedia Pro Keyboard
@@ -112,6 +112,9 @@ USB Gamepad / Joystick
         ID 2e24:386a Trooper V2
         As HID Joystick. Top left button is B0 and right is B1,
             back has B2 and B3, and front has B4 and B5.
+    8Bitdo SN30 Pro USB Wired Gamepad (Grey edition) for Switch / Win / Pi
+        ID 045e:028e Microsoft Corp. Xbox360 Controller
+        Requires custom XUSB protocol support, and no way to switch it.
 
 =========================================================================
 
@@ -135,8 +138,7 @@ USB Gamepad / Joystick
         ID 057e:2009 PC USB CONTROLLER 1.07
         ID 045e:028e Microsoft Corp. Xbox360 Controller
         ID 057e:2009 Nintendo Co., Ltd Switch Pro Controller
+        ID 2f24:0048 PS3 Controler
+        ID 11c1:9101 ESM-9013
         Wireless USB device responds, but no events come in.
         USB port stuck in CTRL_SETUP_WAIT
-    8Bitdo SN30 Pro USB Wired Gamepad (Grey edition) for Switch / Win / Pi
-        ID 045e:028e Microsoft Corp. Xbox360 Controller
-        Requires custom XUSB protocol support, and no way to switch it.

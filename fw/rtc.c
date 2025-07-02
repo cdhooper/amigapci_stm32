@@ -16,7 +16,9 @@
 #include "irq.h"
 #include "rtc.h"
 #include "timer.h"
+#include "gpio.h"
 #include "uart.h"
+#include "utils.h"
 
 #define LSE_HZ               32768  // STM32F2 user manual says 32.768 kHz
 #define LSI_HZ               32000  // STM32F2 reference says 32 kHz
@@ -164,6 +166,26 @@ rtc_allow_writes(int allow)
     } else {
         RTC_WPR = 0xFF;
     }
+}
+
+/*
+ * rtc_set_calibrate() will enable or disable STM32 RTC calibration output,
+ *                     which is a 512 Hz signal emitted on PC13.
+ */
+static void
+rtc_set_calibrate(uint enable)
+{
+    rtc_allow_writes(1);
+    if (enable)
+        RTC_CR |= BIT(23);
+    else
+        RTC_CR &= ~BIT(23);
+    rtc_allow_writes(0);
+
+    if (enable)
+        gpio_setmode(STMRSTA_PORT, STMRSTA_PIN, GPIO_SETMODE_AF_AF1);
+    else
+        gpio_setmode(STMRSTA_PORT, STMRSTA_PIN, GPIO_SETMODE_INPUT_PU);
 }
 
 static rc_t
@@ -909,16 +931,17 @@ time_calc_summary(uint secs, int64_t drift, char *buf)
 }
 
 /**
- * rtc_compare() compares the running real-time clock (RTC) against the
- *               high speed tick, reporting a running difference and
- *               per-second difference in microseconds.
+ * rtc_calibrate() enables 512 Hz PC13 for RTC calibration and starts a
+ *                 running comparison the real-time clock (RTC) against the
+ *                 high speed tick, reporting a running difference and
+ *                 per-second difference in microseconds.
  *
  * @param       None.
  *
  * @return      None.
  */
 void
-rtc_compare(void)
+rtc_calibrate(void)
 {
     int64_t  running_diff = 0;
     int64_t  instant_diff = 0;
@@ -931,7 +954,14 @@ rtc_compare(void)
     uint     sec_last = RTC_TR & 0x7f;
     uint     secs = 0;
     char     summary[64];
+    uint     enable_calibrate = gpio_get(GPIOC, GPIO13);
 
+    if (enable_calibrate) {
+        printf("500 Hz calibration output is present on PC13 _STMRSTA\n");
+        rtc_set_calibrate(1);
+    } else {
+        printf("_STMRSTA is low: can not enable calibration output\n");
+    }
     printf("Comparing RTC with tick (cumulative and instantaneous). "
            "Press ^C to end.\n");
     tick_last = timer_tick_get();
@@ -966,6 +996,8 @@ check_abort:
             count = 0;
         }
     }
+    if (enable_calibrate)
+        rtc_set_calibrate(0);
 }
 
 /*

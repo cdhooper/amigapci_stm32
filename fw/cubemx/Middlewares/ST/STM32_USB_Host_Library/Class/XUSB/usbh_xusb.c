@@ -115,7 +115,7 @@ static void USBH_XUSB_PrepareBuf(USBH_HandleTypeDef *phost,
  *  80-95   10-11   Right joystick L-R, Can just use byte 11: 0=Center
  *                  80=FullLeft, C0=HalfLeft, 40=HalfRight, ff7f=FullRight
  *  96-111  12-13   Right joystick U-D, Can just use byte 13: 0=Center
- *                  80=FullDown, C0=HalfDown, 40=HalfUp, ff7f=FullUp
+ *                  79=FullDown, C0=HalfDown, 40=HalfUp, ff7f=FullUp
  */
 
 USBH_ClassTypeDef XUSB_Class =
@@ -371,6 +371,7 @@ static USBH_StatusTypeDef
 USBH_XUSB_ClassRequest(USBH_HandleTypeDef *phost)
 {
     (void) phost;
+    phost->pUser(phost, HOST_USER_CLASS_ACTIVE);
     return (USBH_OK);
 }
 
@@ -576,32 +577,6 @@ USBH_XUSB_GetReport(USBH_HandleTypeDef *phost, uint8_t pipe_num)
                                           0x00, 0x00, 0x14, 0x00 };
 
     return (USBH_CtlSendSetup(phost, (uint8_t *)vendor_req, pipe_num));
-}
-
-/**
- * @brief  USBH_Set_Protocol
- *         Set protocol State.
- * @param  phost: Host handle
- * @param  protocol : Set Protocol for XUSB : boot/report protocol
- * @retval USBH Status
- */
-USBH_StatusTypeDef
-USBH_XUSB_SetProtocol(USBH_HandleTypeDef *phost, uint8_t protocol)
-{
-    printf("USBH_XUSB_SetProtocol %u\n", protocol);
-
-    phost->Control.setup.b.bmRequestType = USB_H2D |
-                                           USB_REQ_RECIPIENT_INTERFACE |
-                                           USB_REQ_TYPE_CLASS;
-
-    phost->Control.setup.b.bRequest = USB_XUSB_SET_PROTOCOL;
-    phost->Control.setup.b.wValue.w = protocol;
-
-    phost->Control.setup.b.wIndex.w = 0U;
-    phost->Control.setup.b.wLength.w = 0U;
-
-    PPRINTF("SetProtocol\n");
-    return (USBH_CtlReq(phost, 0U, 0U));
 }
 
 /**

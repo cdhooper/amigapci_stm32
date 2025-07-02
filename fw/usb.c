@@ -34,6 +34,7 @@ uint usb_debug_mask;
 uint usb_keyboard_terminal;
 volatile uint8_t usb_keyboard_count;
 volatile uint8_t usb_mouse_count;
+volatile uint8_t usb_joystick_count;
 uint8_t usb_is_powered;
 static uint64_t usb_power_timer;
 
@@ -191,7 +192,7 @@ usb_set_power(int state)
 {
     uint enable = (state == USB_SET_POWER_ON) ? 1 : 0;
 
-    if (config.board_rev == 1)  // AmigaPCI STM32 dev board has this backwards
+    if (config.board_type == 2)  // AmigaPCI STM32 dev board has this backwards
         enable = !enable;
 
     gpio_setv(USB_ENABLE_PORT, USB_ENABLE_PIN, enable);
