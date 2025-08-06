@@ -290,12 +290,13 @@ USBH_XUSB_InterfaceInit(USBH_HandleTypeDef *phost)
         return (USBH_FAIL);
     }
     switch (product) {
-        case 0x028e:  // XBos 360 controller
+        case 0x028e:  // XBox 360 controller
             break;
         default:
             printf("USB%u.%u Unrecognized USB product %04x.%04x\n",
                    get_port(phost), phost->address, vendor, product);
-            return (USBH_FAIL);
+            printf("Hopefully it acts like the XBox 360 controller\n");
+            break;
     }
 
     if (numif > USBH_MAX_NUM_INTERFACES)

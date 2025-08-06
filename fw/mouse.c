@@ -130,6 +130,7 @@ mouse_action(int off_x, int off_y, int off_wheel, int off_pan, uint32_t buttons)
     static int last_wheel;
     static int last_pan;
     uint32_t macro;
+    uint     change = 0;
 
     if (config.debug_flag & DF_USB_MOUSE) {
         if (off_x != 0)
@@ -187,6 +188,7 @@ mouse_action(int off_x, int off_y, int off_wheel, int off_pan, uint32_t buttons)
          */
         if (config.flags & CF_MOUSE_KEYUP_WP)
             last_wheel = off_wheel;
+        change = 1;
     }
 
     /* Left/right pan */
@@ -206,6 +208,7 @@ mouse_action(int off_x, int off_y, int off_wheel, int off_pan, uint32_t buttons)
         /* Update last_pan if we want keystroke-like behavior */
         if (config.flags & CF_MOUSE_KEYUP_WP)
             last_pan = off_pan;
+        change = 1;
     }
 
     buttons |= mouse_buttons_add;
@@ -225,8 +228,10 @@ mouse_action(int off_x, int off_y, int off_wheel, int off_pan, uint32_t buttons)
         }
         last_buttons = buttons;
         mouse_asserted = !!buttons;
+        change = 1;
     }
-    hiden_set(1);
+    if (change)
+        hiden_set(1);
 }
 
 static void

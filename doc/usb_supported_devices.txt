@@ -12,6 +12,8 @@ USB Mouse
         ID 046d:c077 Logitech, Inc. Mouse
     Logitech M187 wireless mouse
         ID 046d:c534 Logitech, Inc. Nano Receiver
+    Logitech M317 wireless mouse through unifying receiver
+        ID 046d:c52b Logitech, Inc. Unifying Receiver
     Logitech M325 wireless mouse 3-button version through unifying receiver
         ID 046d:c52b Logitech, Inc. Unifying Receiver
         Wheel left and right are B3 and B4
@@ -78,6 +80,10 @@ USB Keyboard
         ID 046d:c52b Logitech, Inc. Unifying Receiver
         Has PC power button and other multimedia buttons.
         Touchpad acts as mouse.
+    Logitech K400+ wireless keyboard with multi-touch touchpad
+        ID 046d:c52b Logitech, Inc. Unifying Receiver
+        Touchpad acts as mouse.
+        Fn-ins is PC power button
     Das Keyboard 5Q Soft Tactile RGB Smart Mechanical Keyboard (Kickstarter)
         ID 24f0.2020 Das Keyboard 5Q RGB Mechanical Keyboard
             v7.3.253 (latest is 7.4.51)
@@ -115,6 +121,17 @@ USB Gamepad / Joystick
     8Bitdo SN30 Pro USB Wired Gamepad (Grey edition) for Switch / Win / Pi
         ID 045e:028e Microsoft Corp. Xbox360 Controller
         Requires custom XUSB protocol support, and no way to switch it.
+    EasySMX 2.4G Wireless Controller ESM-9013
+        This wireless controller supports five different modes, which allows
+        it to emulate several types of devices:
+            ID 057e:2009 PC USB CONTROLLER 1.07
+            ID 045e:028e Microsoft Corp. Xbox360 Controller
+            ID 057e:2009 Nintendo Co., Ltd Switch Pro Controller
+            ID 2f24:0048 PS3 Controler
+            ID 11c1:9101 ESM-9013
+        Some modes of this controller are now supported:
+            ID 057e:2009 PC USB CONTROLLER 1.07
+            ID 045e:028e Microsoft Corp. Xbox360 Controller
 
 =========================================================================
 
@@ -134,11 +151,3 @@ USB Gamepad / Joystick
         ID 0955:7214 NVIDIA Controller v01.04
         When plugged in, gets identified as a game controller, but
         no events come in.
-    EasySMX 2.4G Wireless Controller ESM-9013
-        ID 057e:2009 PC USB CONTROLLER 1.07
-        ID 045e:028e Microsoft Corp. Xbox360 Controller
-        ID 057e:2009 Nintendo Co., Ltd Switch Pro Controller
-        ID 2f24:0048 PS3 Controler
-        ID 11c1:9101 ESM-9013
-        Wireless USB device responds, but no events come in.
-        USB port stuck in CTRL_SETUP_WAIT

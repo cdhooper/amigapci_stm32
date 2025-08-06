@@ -1112,6 +1112,18 @@ keyboard_put_amiga(uint8_t code)
             case AS_RIGHTAMIGA | 0x80:
                 ak_ctrl_amiga_amiga &= ~BIT(2);
                 break;
+            case AS_LEFTALT:
+                ak_ctrl_amiga_amiga |= BIT(3);
+                break;
+            case AS_LEFTALT | 0x80:
+                ak_ctrl_amiga_amiga &= ~BIT(3);
+                break;
+            case AS_RIGHTALT:
+                ak_ctrl_amiga_amiga |= BIT(4);
+                break;
+            case AS_RIGHTALT | 0x80:
+                ak_ctrl_amiga_amiga &= ~BIT(4);
+                break;
         }
     }
 
@@ -1139,7 +1151,7 @@ static void
 amiga_keyboard_sync(void)
 {
     static uint8_t  sync_state;
-    static uint64_t timer_kbdata_0;
+    static uint64_t timer_kbsync;
 
 #if 0
     if ((get_kbclk() == 0) && (get_kbclk_output_value() != 0)) {
@@ -1150,32 +1162,39 @@ amiga_keyboard_sync(void)
 
     switch (sync_state) {
         case 0:  // Drive KBDATA low
-            if ((get_kbdat() == 0) || (get_kbclk() == 0)) {
-                set_kbclk_1();
-                return;  // Wait for Amiga to stop driving
-            }
+            if (!timer_tick_has_elapsed(timer_kbsync))
+                return;
+            timer_kbsync = timer_tick_plus_usec(20);
             set_kbdat_0();
             sync_state++;
             break;
         case 1:  // Drive KBCLK low
+            if (!timer_tick_has_elapsed(timer_kbsync))
+                return;
+            timer_kbsync = timer_tick_plus_usec(20);
             set_kbclk_0();
             sync_state++;
             break;
-        case 2:  // Release KBCLK
+        case 2:  // Release KBCLK (high)
+            if (!timer_tick_has_elapsed(timer_kbsync))
+                return;
+            timer_kbsync = timer_tick_plus_usec(20);
             set_kbclk_1();
             sync_state++;
             break;
-        case 3:  // Release KBDATA
+        case 3:  // Release KBDATA (high)
+            if (!timer_tick_has_elapsed(timer_kbsync))
+                return;
+            timer_kbsync = timer_tick_plus_msec(143);
             set_kbdat_1();
-            timer_kbdata_0 = timer_tick_plus_msec(143);
             sync_state++;
             break;
         case 4:  // Wait for Amiga to respond by driving KBDATA low
             if (get_kbdat() == 0) {
-                timer_kbdata_0 = timer_tick_plus_msec(143);
+                timer_kbsync = timer_tick_plus_msec(143);
                 sync_state++;    // Advance to next state
             } else {
-                if (timer_tick_has_elapsed(timer_kbdata_0)) {
+                if (timer_tick_has_elapsed(timer_kbsync)) {
                     sync_state = 0;  // Got no response -- start over
                 }
             }
@@ -1183,11 +1202,12 @@ amiga_keyboard_sync(void)
         case 5:  // Wait for Amiga to release KBDATA
             if (get_kbdat() == 0) {
                 /* Still low */
-                if (timer_tick_has_elapsed(timer_kbdata_0)) {
+                if (timer_tick_has_elapsed(timer_kbsync)) {
                     /* KBDATA Stuck low */
                     printf("Stuck");
                     set_kbclk_1();
                     sync_state = 0;  // Start all over again
+                    timer_kbsync = timer_tick_plus_msec(143);
                     return;
                 }
                 return;  // Wait in the current statre
@@ -1782,6 +1802,16 @@ handle_code:
         keyboard_put_amiga(AS_LEFTSHIFT | 0x80);
 }
 
+static uint
+is_ctrl_amiga_amiga(uint value)
+{
+    if ((value & (BIT(0) | BIT(1) | BIT(2))) == (BIT(0) | BIT(1) | BIT(2)))
+        return (1);  // Ctrl-Amiga-Amiga
+    if ((value & (BIT(0) | BIT(3) | BIT(4))) == (BIT(0) | BIT(3) | BIT(4)))
+        return (1);  // Ctrl-Alt-Alt
+    return (0);
+}
+
 void
 keyboard_poll(void)
 {
@@ -1799,17 +1829,22 @@ keyboard_poll(void)
         if (last_ctrl_amiga_amiga != cur_ctrl_amiga_amiga) {
             uint8_t last = last_ctrl_amiga_amiga;
             last_ctrl_amiga_amiga = cur_ctrl_amiga_amiga;
-            if (cur_ctrl_amiga_amiga == (BIT(0) | BIT(1) | BIT(2))) {
+            if (is_ctrl_amiga_amiga(cur_ctrl_amiga_amiga)) {
                 /* Ctrl-Amiga-Amiga is being pressed */
                 keyboard_reset_warning();
                 kbrst_amiga(1, 0);  // Assert and hold KBRST
-            } else if (last == (BIT(0) | BIT(1) | BIT(2))) {
+                printf("Reset Amiga\n");
+            } else if (is_ctrl_amiga_amiga(last)) {
                 /* Ctrl-Amiga-Amiga has been released */
                 kbrst_amiga(0, 0);  // Release KBRST
+                printf("Reset Amiga begin release\n");
             }
         }
         recursive = 0;
     }
+
+    if ((config.board_type != 2) && amiga_in_reset)
+        return;
 
     if (amiga_keyboard_has_sync == 0) {
         amiga_keyboard_sync();

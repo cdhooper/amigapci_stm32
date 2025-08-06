@@ -210,6 +210,26 @@ USBH_StatusTypeDef USBH_GetDescriptor(USBH_HandleTypeDef *phost,
 {
   if (phost->RequestState == CMD_SEND)
   {
+    /*
+     * Reopen Control pipes -- required for some controllers such as
+     * Nintendo Switch Pro.
+     */
+    USBH_OpenPipe(phost,
+                  phost->Control.pipe_in,
+                  0x80U,
+                  phost->device.address,
+                  phost->device.speed,
+                  USBH_EP_CONTROL,
+                  (uint16_t)phost->Control.pipe_size);
+
+    USBH_OpenPipe(phost,
+                  phost->Control.pipe_out,
+                  0x00U,
+                  phost->device.address,
+                  phost->device.speed,
+                  USBH_EP_CONTROL,
+                  (uint16_t)phost->Control.pipe_size);
+
     phost->Control.setup.b.bmRequestType = USB_D2H | req_type;
     phost->Control.setup.b.bRequest = USB_REQ_GET_DESCRIPTOR;
     phost->Control.setup.b.wValue.w = value_idx;

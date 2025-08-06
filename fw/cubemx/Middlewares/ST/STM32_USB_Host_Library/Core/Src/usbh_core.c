@@ -651,6 +651,7 @@ USBH_StatusTypeDef  USBH_Process(USBH_HandleTypeDef *phost)
       if (phost->ClassNumber == 0U)
       {
         USBH_UsrLog("USB%u.%u No Class has been registered.", get_port(phost), phost->address);
+        phost->gState = HOST_ABORT_STATE;
       }
       else
       {

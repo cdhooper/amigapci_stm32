@@ -55,6 +55,11 @@ typedef enum {
     APPLICATION_DISCONNECT
 } appstate_type;
 
+static const char * const host_appstate[] = {
+    "IDLE", "START", "READY", "RUNNING",
+    "DISCONNECT",
+};
+
 static struct {
     uint8_t            keyboard_count;
     uint8_t            mouse_count;
@@ -168,9 +173,9 @@ static const char * const host_controlstate_types[] = {
 };
 
 static const char * const hid_state_types[] = {
-    "HID_INIT", "HID_IDLE", "HID_SEND_DATA", "HID_BUSY",
-    "HID_GET_DATA", "HID_SYNC", "HID_POLL", "HID_ERROR",
-    "HID_NO_SUPPORT"
+    "HID_INIT", "HID_VENDOR", "HID_IDLE", "HID_SEND_DATA",
+    "HID_BUSY", "HID_GET_DATA", "HID_SYNC", "HID_POLL",
+    "HID_ERROR", "HID_NO_SUPPORT"
 };
 
 static const char * const hid_ctl_state_types[] = {
@@ -382,7 +387,7 @@ static const char *const usb_hid_usage_codes[] =
     "Reserved",       // 0x03
     "Joystick",       // 0x04
     "Gamepad",        // 0x05
-    "Keybaord",       // 0x06
+    "Keyboard",       // 0x06
     "Keypad",         // 0x07
     "M-X Controller", // 0x08
 };
@@ -473,10 +478,9 @@ usb_ls_classes(USBH_HandleTypeDef *phost, uint verbose)
                             continue;
                         }
 
-                        printf("          OutEp=%x InEp=%x state=%x %s "
+                        printf("          OutEp=%x InEp=%x state=%s "
                                "ctl_state=%x %s\n",
                                HID_Handle->OutEp, HID_Handle->InEp,
-                               HID_Handle->state,
                                (HID_Handle->state <
                                 ARRAY_SIZE(hid_state_types)) ?
                                hid_state_types[HID_Handle->state] : "Unknown",
@@ -491,8 +495,7 @@ usb_ls_classes(USBH_HandleTypeDef *phost, uint verbose)
                                HID_Handle->HID_RDesc.id_mouse,
                                HID_Handle->HID_RDesc.id_consumer,
                                HID_Handle->HID_RDesc.id_sysctl);
-                        printf("          usage=%x %s\n",
-                               HID_Handle->HID_RDesc.usage,
+                        printf("          usage=%s\n",
                                get_hid_usage_str(HID_Handle->HID_RDesc.usage));
                     }
                     break;
@@ -508,9 +511,8 @@ usb_ls_classes(USBH_HandleTypeDef *phost, uint verbose)
                             printf("          NULL XUSB Handle\n");
                             continue;
                         }
-                        printf("          OutEp=%x InEp=%x state=%x %s \n",
+                        printf("          OutEp=%x InEp=%x state=%s \n",
                                XUSB_Handle->OutEp, XUSB_Handle->InEp,
-                               XUSB_Handle->state,
                                (XUSB_Handle->state <
                                 ARRAY_SIZE(xusb_state_types)) ?
                                xusb_state_types[XUSB_Handle->state] :
@@ -537,14 +539,12 @@ usb_ls_classes(USBH_HandleTypeDef *phost, uint verbose)
                         printf("          NULL HUB Handle\n");
                         break;
                     }
-                    printf("          InEp=%x state=%x %s "
-                           "ctl_state=%x %s\n",
+                    printf("          InEp=%x state=%s "
+                           "ctl_state=%s\n",
                            HUB_Handle->InEp,
-                           HUB_Handle->state,
                            (HUB_Handle->state <
                             ARRAY_SIZE(hub_state_types)) ?
                            hub_state_types[HUB_Handle->state] : "Unknown",
-                           HUB_Handle->ctl_state,
                            (HUB_Handle->ctl_state <
                             ARRAY_SIZE(hub_ctl_state_types)) ?
                            hub_ctl_state_types[HUB_Handle->ctl_state] :
@@ -593,28 +593,24 @@ usb_ls(uint verbose)
                 if (devclass == phost->pClass[classnum]->ClassCode)
                     break;
             }
-            printf("\n          class=%x %s ",
-                   devclass, get_devclass_str(devclass));
             if (verbose) {
-                printf(" gstate=%x %s ",
-                       phost->gState,
+                printf("\n          class=%x %s ",
+                       devclass, get_devclass_str(devclass));
+                printf(" gstate=%s ",
                        (phost->gState < ARRAY_SIZE(host_gstate_types)) ?
                        host_gstate_types[phost->gState] : "Unknown");
-                printf(" rstate=%x %s",
-                       phost->RequestState,
+                printf(" rstate=%s",
                        (phost->RequestState <
                         ARRAY_SIZE(host_requeststate_types)) ?
                        host_requeststate_types[phost->RequestState] :
                        "Unknown");
-                printf("\n          estate=%x %s ",
-                       phost->EnumState,
+                printf("\n          estate=%s ",
                        (phost->EnumState < ARRAY_SIZE(host_enumstate_types)) ?
                        host_enumstate_types[phost->EnumState] : "Unknown");
                 printf(" polls=%lu  usec %llu max %llu",
                        phost->poll_count, timer_tick_to_usec(phost->tick_total),
                        timer_tick_to_usec(phost->tick_max));
-                printf("\n          ctlstate=%x %s ",
-                       phost->Control.state,
+                printf("\n          ctlstate=%s ",
                        (phost->Control.state <
                         ARRAY_SIZE(host_controlstate_types)) ?
                        host_controlstate_types[phost->Control.state] :
@@ -629,6 +625,8 @@ usb_ls(uint verbose)
                        phost->Control.setup.b.wValue.w,
                        phost->Control.setup.b.wIndex.w,
                        phost->Control.setup.b.wLength.w);
+                printf(" app=%s",
+                       host_appstate[usbdev[port][hubport].appstate]);
                 if (phost->busy) {
                     printf("  BUSY");
                     if (phost->busy > 1)
@@ -747,8 +745,20 @@ USBH_HID_EventCallback(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle)
             return;
         if ((info.usage == HID_USAGE_GAMEPAD) ||
             (info.usage == HID_USAGE_JOYSTICK)) {
-            joystick_action(info.y < 0, info.y > 0, info.x < 0, info.x > 0,
-                            info.buttons);
+            uint8_t up    = info.jpad & BIT(0);
+            uint8_t down  = info.jpad & BIT(1);
+            uint8_t left  = info.jpad & BIT(2);
+            uint8_t right = info.jpad & BIT(3);
+            if (config.flags & CF_GAMEPAD_MOUSE) {
+                mouse_action(info.x, info.y, -info.wheel, info.ac_pan,
+                             info.buttons);
+            } else {
+                up |= (info.y < 0);
+                down |= info.y > 0;
+                left |= info.x < 0;
+                right |= info.x > 0;
+            }
+            joystick_action(up, down, left, right, info.buttons);
         } else {
             mouse_action(info.x, info.y, -info.wheel, info.ac_pan,
                          info.buttons);
@@ -811,7 +821,7 @@ is_usb_joystick(USBH_HandleTypeDef *phost, uint ifnum)
 }
 
 static void
-handle_recovery(USBH_HandleTypeDef *phost, uint port, uint devnum)
+handle_discovery(USBH_HandleTypeDef *phost, uint port, uint devnum)
 {
     uint iface;
     uint numif = phost->device.CfgDesc.bNumInterfaces;
@@ -848,6 +858,21 @@ handle_recovery(USBH_HandleTypeDef *phost, uint port, uint devnum)
             hiden_set(1);
         usbdev[port][devnum].appstate = APPLICATION_RUNNING;
     }
+}
+
+static void
+USBH_reset_state_machine(int port)
+{
+    usb_handle[port][0].gState = HOST_IDLE;
+    usb_handle[port][0].EnumState = ENUM_IDLE;
+    usb_handle[port][0].RequestState = CMD_SEND;
+    usb_handle[port][0].Timer = 0U;
+    usb_handle[port][0].Control.state = CTRL_SETUP;
+    usb_handle[port][0].Control.pipe_size = USBH_MPS_DEFAULT;
+    usb_handle[port][0].Control.errorcount = 0U;
+
+    /* XXX: Need to test the below line with Hub keyboard */
+    usb_handle[port][0].device.is_connected = 0U;
 }
 
 static void
@@ -1019,6 +1044,9 @@ process_usb_ports(uint port)
 
     phost = &usb_handle[port][hp_cur[port]];
 
+    /* Handle device class initialization done discovery */
+    handle_discovery(phost, port, hp_cur[port]);
+
     if (phost != NULL) {
         switch (phost->valid) {
             case 0:  // Not valid
@@ -1085,6 +1113,7 @@ cubeusb_poll(void)
                 /* Port is no longer connected (device pull?) */
                 printf("USB is not connected\n");
                 USBH_LL_Disconnect(_hHCD[port].pData);
+                USBH_reset_state_machine(port);
                 usbport[port].recovery_state = 0;
                 break;
             }
@@ -1133,9 +1162,6 @@ cubeusb_poll(void)
             }
         }
 #endif
-        /* Handle host port recovery in case of spontaneous USB link down */
-        handle_recovery(&usb_handle[port][0], port, 0);
-
         /* Handle host and hub port processing */
         process_usb_ports(port);
     }
@@ -1231,6 +1257,10 @@ HAL_HCD_Disconnect_Callback(HCD_HandleTypeDef *hhcd)
     dprintf(DF_USB_CONN, "USB%d HAL_HCD_Disconnect\n", port);
     usbport[port].connected = 0;
     USBH_LL_Disconnect(hhcd->pData);
+#if 1
+//  XXX: CDH - disable below line to debug EasySMX game controller
+    USBH_reset_state_machine(port);
+#endif
 }
 
 void

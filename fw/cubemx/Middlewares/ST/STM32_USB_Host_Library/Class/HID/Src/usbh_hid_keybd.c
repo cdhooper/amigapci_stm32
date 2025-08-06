@@ -332,7 +332,7 @@ USBH_StatusTypeDef USBH_HID_KeybdInit(USBH_HandleTypeDef *phost, HID_HandleTypeD
   uint32_t x;
   dprintf(DF_USB_KEYBOARD, "USB%u.%u kbdinit\n", phost->id, phost->address);
 
-  USBH_HID_Process_HIDReportDescriptor(phost, HID_Handle);
+//USBH_HID_Process_HIDReportDescriptor(phost, HID_Handle);
 
   keybd_info.lctrl = keybd_info.lshift = 0U;
   keybd_info.lalt = keybd_info.lgui = 0U;

@@ -190,19 +190,20 @@ USBH_StatusTypeDef USBH_HID_MouseInit(USBH_HandleTypeDef *phost, HID_HandleTypeD
   HID_RDescTypeDef *rd = &HID_Handle->HID_RDesc;
 
   /* Defaults (hopefully these are BOOT MODE mouse settings) */
-  memset(rd, 0, sizeof (*rd));
-  rd->pos_button[0] = 8 + 0;
-  rd->pos_button[1] = 8 + 1;
-  rd->pos_button[2] = 8 + 2;
-  rd->pos_x         = 8 + 8;
-  rd->pos_y         = 8 + 16;
-  rd->pos_wheel     = 8 + 24;
-  rd->num_buttons   = 3;
-  rd->bits_x = 8;
-  rd->bits_y = 8;
-  rd->bits_wheel = 8;
-
-  USBH_HID_Process_HIDReportDescriptor(phost, HID_Handle);
+  if (rd->pos_button[0] == 0) {
+    rd->pos_button[0] = 8 + 0;
+    rd->pos_button[1] = 8 + 1;
+    rd->pos_button[2] = 8 + 2;
+    rd->num_buttons   = 3;
+  }
+  if (rd->pos_x == 0) {
+    rd->pos_x         = 8 + 8;
+    rd->pos_y         = 8 + 16;
+    rd->pos_wheel     = 8 + 24;
+    rd->bits_x     = 8;
+    rd->bits_y     = 8;
+    rd->bits_wheel = 8;
+  }
 
 #if 0
   memset(&mouse_info, 0, sizeof (mouse_info));

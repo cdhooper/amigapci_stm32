@@ -431,7 +431,7 @@ cmd_amiga(int argc, char * const *argv)
     } else if (strncmp(argv[1], "status", 1) == 0) {
         power_show();
         if (power_state != POWER_STATE_OFF) {
-            if (!amiga_not_in_reset)
+            if (amiga_in_reset)
                 printf("Amiga is in reset\n");
         }
         printf("USB Powered     %s\n", usb_is_powered ? "Yes" : "No");
@@ -703,7 +703,7 @@ static const char *const debug_flag_bits[] = {
 
 static const char *const config_flag_bits[] = {
     "InvertX", "InvertY", "InvertW", "InvertP",
-        "SwapXY", "SwapWP", "KeyupWP", "",
+        "SwapXY", "SwapWP", "KeyupWP", "GamepadMouse",
     "", "", "", "",
         "", "", "", "",
     "", "", "", "",

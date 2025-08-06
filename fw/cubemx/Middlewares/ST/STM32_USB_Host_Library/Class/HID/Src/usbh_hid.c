@@ -46,6 +46,7 @@ EndBSPDependencies */
 #include "config.h"
 #include "timer.h"
 #include "utils.h"
+#include "usb.h"
 #define DEBUG_HIDREPORT_DESCRIPTOR
 #ifdef DEBUG_HIDREPORT_DESCRIPTOR
 #define DPRINTF(...) dprintf(DF_USB_REPORT, __VA_ARGS__)
@@ -159,6 +160,8 @@ void USBH_HID_Process_HIDReportDescriptor(USBH_HandleTypeDef *phost, HID_HandleT
     uint8_t report_count = 0;
     uint8_t usage_page = 0;
     uint16_t usage = 0;
+    uint    log_min = 0;
+    uint    log_max = 0;
     uint    bitpos = 0;  // First byte is usually record #
     uint    button = 0;
     uint    temp;
@@ -177,6 +180,7 @@ void USBH_HID_Process_HIDReportDescriptor(USBH_HandleTypeDef *phost, HID_HandleT
     if (desc_len > 512)
         desc_len = 512;  // Let's not go crazy here
 
+#if 0
     /* Request HID Report Descriptor (some mice require 20ms) */
     uint timeout = 100;
     while (USBH_HID_GetHIDReportDescriptor(phost, HID_Handle->interface,
@@ -188,6 +192,7 @@ void USBH_HID_Process_HIDReportDescriptor(USBH_HandleTypeDef *phost, HID_HandleT
         }
         timer_delay_msec(1);
     }
+#endif
 
 #if 0
     for (pos = 0; pos < desc_len; pos++)
@@ -198,6 +203,7 @@ void USBH_HID_Process_HIDReportDescriptor(USBH_HandleTypeDef *phost, HID_HandleT
         const uint8_t tag = desc[pos] >> 4;
         const uint8_t type = (desc[pos] >> 2) & 3;
         const uint8_t size = desc[pos] & 3;
+        uint cur;
 
         if ((type == 0) && (tag == 0)) {
             pos++;
@@ -212,12 +218,14 @@ void USBH_HID_Process_HIDReportDescriptor(USBH_HandleTypeDef *phost, HID_HandleT
             }
         }
         pos++;
+        value = 0;
+        for (cur = 0; cur < size; cur++)
+            value |= (desc[pos + cur] << (8 * cur));
         DPRINTF(" type %x tag %x size %x  ", type, tag, size);
         switch (type) {
             case HID_ITEM_TYPE_MAIN:  // type 0
                 switch (tag) {
                     case HID_MAIN_ITEM_TAG_INPUT:
-                        value = desc[pos];
                         DPRINTF("%.*s%s", coll_depth, spaces, "INPUT");
                         DPRINTF(" size=%u count=%u", report_size, report_count);
                         while ((usage_count < report_count) &&
@@ -273,6 +281,9 @@ void USBH_HID_Process_HIDReportDescriptor(USBH_HandleTypeDef *phost, HID_HandleT
                                         DPRINTF(" X=%u", bitpos);
                                         rd->pos_x = bitpos;
                                         rd->bits_x = report_size;
+                                        rd->offset_xy = -(log_min +
+                                                          log_max) / 2;
+//                                      printf("offset_xy=%d\n", rd->offset_xy);
                                         break;
                                     case HID_USAGE_Y:
                                         DPRINTF(" Y=%u", bitpos);
@@ -355,9 +366,11 @@ void USBH_HID_Process_HIDReportDescriptor(USBH_HandleTypeDef *phost, HID_HandleT
                         break;
                     case HID_GLOBAL_ITEM_TAG_LOG_MIN:
                         DPRINTF("%.*s%s", coll_depth, spaces, "LOG MIN");
+                        log_min = value;
                         break;
                     case HID_GLOBAL_ITEM_TAG_LOG_MAX:
                         DPRINTF("%.*s%s", coll_depth, spaces, "LOG MAX");
+                        log_max = value;
                         break;
                     case HID_GLOBAL_ITEM_TAG_PHY_MIN:
                         DPRINTF("%.*s%s", coll_depth, spaces, "PHY MIN");
@@ -416,10 +429,7 @@ void USBH_HID_Process_HIDReportDescriptor(USBH_HandleTypeDef *phost, HID_HandleT
                 switch (tag) {
                     case HID_LOCAL_ITEM_TAG_USAGE:
                         DPRINTF("%.*s%s", coll_depth, spaces, "USAGE");
-                        if (size == 1)
-                            usage = desc[pos];
-                        else
-                            usage = desc[pos] | (desc[pos + 1] << 8);
+                        usage = value;
                         switch (usage_page) {
                             case HID_USAGE_PAGE_GEN_DES:
                                 switch (usage) {
@@ -606,6 +616,11 @@ static USBH_StatusTypeDef USBH_HID_InterfaceInit_ll(USBH_HandleTypeDef *phost, u
   max_ep = ((phost->device.CfgDesc.Itf_Desc[interface].bNumEndpoints <= USBH_MAX_NUM_ENDPOINTS) ?
              phost->device.CfgDesc.Itf_Desc[interface].bNumEndpoints : USBH_MAX_NUM_ENDPOINTS);
 
+#if 0
+  printf("HID IF %x InEp=%x InPipe=%x OutEp=%x OutPipe=%x\n",
+          HID_Handle->interface, HID_Handle->InEp, HID_Handle->InPipe,
+          HID_Handle->OutEp, HID_Handle->OutPipe);
+#endif
 
   /* Decode endpoint IN and OUT address from interface descriptor */
   for (num = 0U; num < max_ep; num++)
@@ -721,15 +736,16 @@ static USBH_StatusTypeDef USBH_HID_InterfaceDeInit(USBH_HandleTypeDef *phost)
 static USBH_StatusTypeDef USBH_HID_ClassRequest_ll(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle)
 {
 
-  USBH_StatusTypeDef status         = USBH_BUSY;
-  USBH_StatusTypeDef classReqStatus = USBH_BUSY;
+  USBH_StatusTypeDef status = USBH_BUSY;
+  USBH_StatusTypeDef classReqStatus;
 
   /* Switch HID state machine */
   switch (HID_Handle->ctl_state)
   {
     case HID_REQ_INIT:
+        HID_Handle->ctl_state = HID_REQ_GET_HID_DESC;
+        break;
     case HID_REQ_GET_HID_DESC:
-
       /* Get HID Desc */
       if (USBH_HID_GetHIDDescriptor(phost, HID_Handle->interface, USB_HID_DESC_SIZE) == USBH_OK)
       {
@@ -743,7 +759,7 @@ static USBH_StatusTypeDef USBH_HID_ClassRequest_ll(USBH_HandleTypeDef *phost, HI
       if (USBH_HID_GetHIDReportDescriptor(phost, HID_Handle->interface, HID_Handle->HID_Desc.wItemLength) == USBH_OK)
       {
         /* The descriptor is available in phost->device.Data */
-//      USBH_HID_Process_HIDReportDescriptor(phost, HID_Handle);
+        USBH_HID_Process_HIDReportDescriptor(phost, HID_Handle);
         HID_Handle->ctl_state = HID_REQ_SET_IDLE;
       }
 
@@ -833,8 +849,26 @@ static USBH_StatusTypeDef USBH_HID_Process_ll(USBH_HandleTypeDef *phost, HID_Han
   switch (HID_Handle->state)
   {
     case HID_INIT:
-      HID_Handle->Init(phost, HID_Handle);
-      HID_Handle->state = HID_IDLE;
+      status = HID_Handle->Init(phost, HID_Handle);
+      HID_Handle->state = HID_VENDOR;
+
+      uint8_t interface = HID_Handle->interface;
+      uint max_ep = ((phost->device.CfgDesc.Itf_Desc[interface].bNumEndpoints <= USBH_MAX_NUM_ENDPOINTS) ?
+             phost->device.CfgDesc.Itf_Desc[interface].bNumEndpoints : USBH_MAX_NUM_ENDPOINTS);
+
+      for (uint num = 0U; num < max_ep; num++) {
+        if (phost->device.CfgDesc.Itf_Desc[interface].Ep_Desc[num].bEndpointAddress & 0x80U) {
+        /* Open pipe for IN endpoint */
+          USBH_OpenPipe(phost, HID_Handle->InPipe, HID_Handle->InEp, phost->device.address,
+                        phost->device.speed, USB_EP_TYPE_INTR, HID_Handle->length_max);
+        } else {
+        /* Open pipe for OUT endpoint */
+          USBH_OpenPipe(phost, HID_Handle->OutPipe, HID_Handle->OutEp, phost->device.address,
+                        phost->device.speed, USB_EP_TYPE_INTR, HID_Handle->length);
+        }
+      }
+
+      USBH_LL_SetToggle(phost, HID_Handle->InPipe, 0U);
 
 #if (USBH_USE_OS == 1U)
       phost->os_msg = (uint32_t)USBH_URB_EVENT;
@@ -844,6 +878,27 @@ static USBH_StatusTypeDef USBH_HID_Process_ll(USBH_HandleTypeDef *phost, HID_Han
       (void)osMessageQueuePut(phost->os_event, &phost->os_msg, 0U, NULL);
 #endif
 #endif
+      break;
+
+    case HID_VENDOR:
+      /* Execute vendor-specific code */
+      if (HID_Handle->Vendor != NULL) {
+        status = HID_Handle->Vendor(phost, HID_Handle);
+        switch (status) {
+          default:
+            printf("USB%u.%u.%u Unknown status %d from vendor init\n",
+                   get_port(phost), phost->address, HID_Handle->interface,
+                   status);
+            /* Fall through */
+          case USBH_OK:
+            HID_Handle->state = HID_IDLE;
+            break;
+          case USBH_BUSY:  // Stay in current state
+            break;
+        }
+      } else {
+        HID_Handle->state = HID_IDLE;
+      }
       break;
 
     case HID_IDLE:
@@ -1291,6 +1346,13 @@ void USBH_HID_FifoInit(FIFO_TypeDef *f, uint8_t *buf, uint16_t size)
   f->buf = buf;
 }
 
+static void USBH_HID_FifoFlush(FIFO_TypeDef *f)
+{
+  f->head = 0U;
+  f->tail = 0U;
+  f->lock = 0U;
+}
+
 /**
   * @brief  USBH_HID_FifoRead
   *         Read from FIFO.
@@ -1419,15 +1481,17 @@ __weak void USBH_HID_EventCallback(USBH_HandleTypeDef *phost, HID_HandleTypeDef 
 #include "usbh_hid_mouse.h"
 
 static int
-readbits(void *ptr, uint startbit, uint bits)
+readbits(void *ptr, uint startbit, uint bits, uint is_signed)
 {
     uint byte = startbit / 8;
     uint bitoff = startbit % 8;
     uint mask = BIT(bits) - 1;
     uint val = ((*(uint *) ((uintptr_t) ptr + byte)) >> bitoff) & mask;
 
-    if (val & BIT(bits - 1))
+    if (is_signed &&
+        (val & BIT(bits - 1))) {
         val |= (0 - BIT(bits));  // Sign-extend negative
+    }
 
     return (val);
 }
@@ -1437,9 +1501,17 @@ readbits(void *ptr, uint startbit, uint bits)
  *                Atari C64 Amiga Joystick v3.2       ID e501.0810
  */
 static int
-readbits_joy(void *ptr, uint startbit, uint bits)
+readbits_joy(void *ptr, uint startbit, uint bits, int offset)
 {
-    int val = readbits(ptr, startbit, bits);
+    int val = readbits(ptr, startbit, bits, 0) + offset;
+    int range = abs(offset) / 4;
+    if (val < 0 - range)
+        val = -1;
+    else if (val > 0 + range)
+        val = 1;
+    else
+        val = 0;
+#if 0
     switch (val) {
         case 0:             // 0x00
             val = -1;
@@ -1453,8 +1525,20 @@ readbits_joy(void *ptr, uint startbit, uint bits)
             val = 1;
             break;
     }
+#endif
     return (val);
 }
+
+static uint8_t
+readbits_jpad(void *ptr, uint16_t *startbits)
+{
+    uint pos;
+    uint jpad = 0;
+    for (pos = 0; pos < 4; pos++)
+        jpad |= ((!!readbits(ptr, startbits[pos], 1, 0)) << pos);
+    return (jpad);
+}
+
 
 static uint32_t
 readbits_buttons(void *ptr, HID_RDescTypeDef *rd)
@@ -1468,8 +1552,9 @@ readbits_buttons(void *ptr, HID_RDescTypeDef *rd)
 
     for (button = 0; button < num_buttons; button++) {
         if ((button < ARRAY_SIZE(rd->pos_button)) &&
-            readbits(ptr, rd->pos_button[button], 1))
+            readbits(ptr, rd->pos_button[button], 1, 0)) {
             buttons |= BIT(button);
+        }
     }
     return (buttons);
 }
@@ -1500,6 +1585,7 @@ USBH_HID_DecodeReport(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle, 
         len = HID_Handle->length;
     memset(&report_data, 0, sizeof (report_data));
     rlen = USBH_HID_FifoRead(&HID_Handle->fifo, &report_data, len);
+    USBH_HID_FifoFlush(&HID_Handle->fifo);  // Discard excess data
 
     /* Fill report */
     if (rlen > 0) {
@@ -1515,15 +1601,15 @@ is_mouse:
                     report_data[0], report_data[1]);
 
             report_info->buttons = readbits_buttons(report_data, rd);
-            report_info->x = readbits(report_data, rd->pos_x, rd->bits_x);
-            report_info->y = readbits(report_data, rd->pos_y, rd->bits_y);
+            report_info->x = readbits(report_data, rd->pos_x, rd->bits_x, 1);
+            report_info->y = readbits(report_data, rd->pos_y, rd->bits_y, 1);
             if (rd->bits_wheel != 0) {
                 report_info->wheel = readbits(report_data, rd->pos_wheel,
-                                              rd->bits_wheel);
+                                              rd->bits_wheel, 1);
             }
             if (rd->bits_ac_pan != 0) {
                 report_info->ac_pan = readbits(report_data, rd->pos_ac_pan,
-                                               rd->bits_ac_pan);
+                                               rd->bits_ac_pan, 1);
             }
         } else if ((rd->id_consumer != 0) && (rd->id_consumer == id)) {
             dprintf(DF_USB_DECODE_MISC, "mmkey");
@@ -1531,35 +1617,70 @@ is_mouse:
                 if (rd->pos_key[cur] == 0)
                     continue;
                 report_info->mm_key[cur] =
-                        readbits(report_data, rd->pos_key[cur], rd->bits_key);
+                        readbits(report_data, rd->pos_key[cur], rd->bits_key, 1);
                 dprintf(DF_USB_DECODE_MISC, " %x", report_info->mm_key[cur]);
             }
         } else if ((rd->id_sysctl != 0) && (rd->id_sysctl == id)) {
             report_info->sysctl = readbits(report_data,
-                                           rd->pos_sysctl, rd->bits_sysctl);
+                                           rd->pos_sysctl, rd->bits_sysctl, 1);
             dprintf(DF_USB_DECODE_MISC, "Sysctl %x", report_info->sysctl);
         } else if ((rd->id_mouse == 0) && (rd->usage == HID_USAGE_MOUSE)) {
             goto is_mouse;
         } else if ((rd->usage == HID_USAGE_JOYSTICK) ||
                    (rd->usage == HID_USAGE_GAMEPAD)) {
+            report_info->buttons = readbits_buttons(report_data, rd);
+            report_info->x = readbits_joy(report_data, rd->pos_x,
+                                          rd->bits_x, rd->offset_xy);
+            report_info->y = readbits_joy(report_data, rd->pos_y,
+                                          rd->bits_y, rd->offset_xy);
+            if (rd->pos_jpad[0] != 0) {
+                report_info->flags |= MI_FLAG_HAS_JPAD;  // Has joypad
+                report_info->jpad = readbits_jpad(report_data,
+                                                  rd->pos_jpad);
+            }
+            if (rd->bits_ac_pan != 0) {
+                report_info->ac_pan = readbits_joy(report_data,
+                                                   rd->pos_ac_pan,
+                                                   rd->bits_ac_pan,
+                                                   rd->offset_xy);
+            }
+            if (rd->bits_wheel != 0) {
+                report_info->wheel = readbits_joy(report_data,
+                                                  rd->pos_wheel,
+                                                  rd->bits_wheel,
+                                                  rd->offset_xy);
+            }
+            if (config.debug_flag & DF_USB_DECODE_JOY) {
+                if (rd->pos_jpad[0] &&
+                    (phost->device.DevDesc.idVendor == 0x057e) &&
+                    (phost->device.DevDesc.idProduct == 0x2009)) {
+                    /* EasySMX PC USB controller adds timestamp to report */
+                    report_data[0] &= ~0x00ff00;  // Clobber timestamp
+                }
+                if (memcmp(report_data, report_last, 12) != 0) {
+                    memcpy(report_last, report_data, sizeof (report_last));
+                    printf("\n%08lx %08lx %08lx",
+                           report_data[0], report_data[1], report_data[2]);
+                    printf(" [%d %d %d %d] ", report_info->x, report_info->y,
+                           report_info->ac_pan, report_info->wheel);
+                }
+            }
+        } else {
             if ((config.debug_flag & DF_USB_DECODE_JOY) &&
                 (memcmp(report_data, report_last, sizeof (report_data)) != 0)) {
-                printf("\n%08lx %08lx %08lx",
-                       report_data[0], report_data[1], report_data[2]);
+                printf("\n%08lx %08lx %08lx %08lx",
+                       report_data[0], report_data[1], report_data[2],
+                       report_data[3]);
                 memcpy(report_last, report_data, sizeof (report_last));
             }
-            report_info->buttons = readbits_buttons(report_data, rd);
-            report_info->x = readbits_joy(report_data, rd->pos_x, rd->bits_x);
-            report_info->y = readbits_joy(report_data, rd->pos_y, rd->bits_y);
-        } else {
-            dprintf(DF_USB_DECODE_MISC, "Misc ID %x", id);
+//          dprintf(DF_USB_DECODE_MISC, "Misc ID %x", id);
         }
         cur = 0;
         for (button = 0; button < rd->num_mmbuttons; button++) {
             uint val;
             if (id != rd->id_mmbutton[button])
                 continue;
-            val = readbits(report_data, rd->pos_mmbutton[button], 1);
+            val = readbits(report_data, rd->pos_mmbutton[button], 1, 0);
             if (val != 0) {
                 if (cur == 0)
                     dprintf(DF_USB_DECODE_MISC, "MMKEY");

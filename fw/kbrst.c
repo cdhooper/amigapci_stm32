@@ -9,19 +9,22 @@
  * Amiga KBRST handling
  */
 
+#include <stdint.h>
 #include "board.h"
 #include "main.h"
+#include "config.h"
 #include "gpio.h"
 #include "printf.h"
 #include "timer.h"
 #include "kbrst.h"
 #include "power.h"
 
-uint8_t         amiga_not_in_reset     = 0xff;
+uint8_t         amiga_in_reset         = 0xff;  // Not initialized
 static uint8_t  amiga_powered_off      = 0;
 static uint64_t amiga_reset_timer      = 0;  // Timer to take Amiga out of reset
 static uint64_t amiga_long_reset_timer = 0;  // Timer to detect long reset
 static uint64_t amiga_reboot_detect_timeout = 0;
+static uint64_t amiga_kclk_reset_timer = 0;
 
 /*
  * amiga_is_powered_on
@@ -66,12 +69,21 @@ kbrst_poll(void)
 {
     uint8_t kbrst;
 
-    if (power_state != POWER_STATE_ON) {
-        if (amiga_not_in_reset) {
-            amiga_not_in_reset = 0;
-            gpio_setv(KBRST_PORT, KBRST_PIN, 0);
+    if ((amiga_kclk_reset_timer != 0) &&
+        timer_tick_has_elapsed(amiga_kclk_reset_timer)) {
+        amiga_kclk_reset_timer = 0;
+        gpio_setv(KBRST_PORT, KBCLK_PIN | KBDATA_PIN, 1);
+        printf(" release KBCLK ");
+    }
+
+    if (config.board_type != 2) {
+        if (power_state != POWER_STATE_ON) {
+            if (!amiga_in_reset) {
+                amiga_in_reset = 1;
+                gpio_setv(KBRST_PORT, KBRST_PIN, 0);
+            }
+            return;
         }
-        return;
     }
 
     if ((amiga_reset_timer != 0) && timer_tick_has_elapsed(amiga_reset_timer)) {
@@ -79,17 +91,17 @@ kbrst_poll(void)
         gpio_setv(KBRST_PORT, KBRST_PIN, 1);
     }
 
-    kbrst = !!gpio_get(KBRST_PORT, KBRST_PIN);
-    if (amiga_not_in_reset != kbrst) {
-        if (amiga_not_in_reset == 0xff) {
-            amiga_not_in_reset = kbrst;
+    kbrst = !gpio_get(KBRST_PORT, KBRST_PIN);
+    if (amiga_in_reset != kbrst) {
+        if (amiga_in_reset == 0xff) {
+            amiga_in_reset = kbrst;  // Got initial state
             return;
         }
-        amiga_not_in_reset = kbrst;
+        amiga_in_reset = kbrst;
         /* Amiga reset state change has occurred */
 
         if (kbrst == 0) {
-            /* In reset: update ROM bank if requested by user (at reset) */
+            /* In reset */
             printf("Amiga in reset\n");
             if (amiga_long_reset_timer == 0)
                 amiga_long_reset_timer = timer_tick_plus_msec(2000);
@@ -108,7 +120,7 @@ kbrst_poll(void)
         if ((amiga_long_reset_timer != 0) &&
             timer_tick_has_elapsed(amiga_long_reset_timer)) {
             amiga_long_reset_timer = 0;
-            if (amiga_not_in_reset == 0) {
+            if (amiga_in_reset == 1) {
                 if (amiga_is_powered_on()) {
                     /* Still in reset at timer expiration */
                 } else {
@@ -123,15 +135,20 @@ kbrst_poll(void)
 void
 kbrst_amiga(uint hold, uint longreset)
 {
-    gpio_setv(KBRST_PORT, KBRST_PIN, 0);
+    gpio_setv(KBRST_PORT, KBRST_PIN | KBCLK_PIN | KBDATA_PIN, 0);
+
     if (hold) {
         amiga_reset_timer = 0;
+        amiga_kclk_reset_timer = 0;
         amiga_long_reset_timer = 0xffffffffffffffff;
     } else {
-        if (longreset)
+        if (longreset) {
             amiga_reset_timer = timer_tick_plus_msec(2500);
-        else
+            amiga_kclk_reset_timer = timer_tick_plus_msec(2500);
+        } else {
             amiga_reset_timer = timer_tick_plus_msec(400);
+            amiga_kclk_reset_timer = timer_tick_plus_msec(500);
+        }
         amiga_long_reset_timer = 0;
     }
 }
