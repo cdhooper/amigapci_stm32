@@ -271,8 +271,9 @@ $(OBJDIR) $(USB_OBJDIRS) $(EXTRA_OBJDIRS):
 $(OPENCM3_DIR)/Makefile:
 	@echo Cloning LibOpenCM3 for $@
 	git clone https://github.com/libopencm3/libopencm3
+	@(cd libopencm3; git checkout 3a85f91ed8bfe3322cda4ccec63eae2717f67f00)
 
-$(OPENCM3_DIR)/include/%: $(OPENCM3_DIR)/Makefile
+$(OPENCM3_DIR)/include/%: | $(OPENCM3_DIR)/Makefile
 	@echo Building $@
 	$(QUIET)make -C $(OPENCM3_DIR) -j8
 

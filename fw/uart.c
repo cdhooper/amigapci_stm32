@@ -37,11 +37,16 @@ static uint          cons_in_rb_consumer; // Console input current reader pos
 static uint8_t       cons_in_rb[4096];    // Console input ring buffer (FIFO)
 #if 0
 static uint8_t       usb_out_buf[4096];   // USB output buffer
+#endif
+static uint8_t       uart_out_buf[2048];  // UART output
+static uint8_t       ami_out_buf[1024];   // Amiga output buffer
+static uint16_t      uart_out_prod;       // UART output producer
+#if 0
 static uint16_t      usb_out_bufpos = 0;  // USB output buffer position
 #endif
-static uint8_t       ami_out_buf[1024];   // Amiga output buffer
 static uint16_t      ami_out_prod = 0;    // Amiga output buffer producer
 static uint16_t      ami_out_cons = 0;    // Amiga output buffer consumer
+static uint8_t       uart_out_wrapped;    // UART output wrapped buffer
 static bool          uart_console_active = false;
 static bool          ami_console_active = false;
 
@@ -402,6 +407,10 @@ int
 putchar(int ch)
 {
     static int last_putc = 0;
+
+    uart_out_buf[uart_out_prod] = ch;
+    uart_out_prod = (uart_out_prod + 1) % sizeof (uart_out_buf);
+
     if ((ch == '\n') && (last_putc != '\r') && (last_putc != '\n')) {
         uart_putchar('\r');  // Always do CRLF
 //      usb_putchar_wait('\r');
@@ -447,6 +456,24 @@ getchar(void)
         }
     }
     return (ch);
+}
+
+/*
+ * uart_replay_output() will re-display recent serial UART output
+ */
+void
+uart_replay_output(void)
+{
+    uint prod = uart_out_prod;
+    uint cons = 0;
+    if (uart_out_wrapped) {
+        cons = (prod + 1) % sizeof (uart_out_buf);
+    }
+    while (cons != prod) {
+        putchar(uart_out_buf[cons]);
+        cons = (cons + 1) % sizeof (uart_out_buf);
+    }
+    uart_out_prod = prod;  // Reset producer
 }
 
 void
