@@ -35,6 +35,16 @@
 #include <libopencm3/stm32/rcc.h>
 #include <libopencm3/stm32/gpio.h>
 
+static void
+reset_periphs(void)
+{
+    RCC_APB1ENR  = 0;  // Disable all peripheral clocks
+    RCC_APB1RSTR = 0xffffffff;  // Reset APB1
+    RCC_APB2RSTR = 0xffffffff;  // Reset APB2
+    RCC_APB1RSTR = 0x00000000;  // Release APB1 reset
+    RCC_APB2RSTR = 0x00000000;  // Release APB2 reset
+}
+
 void
 main_poll(void)
 {
@@ -54,7 +64,7 @@ main_poll(void)
 int
 main(void)
 {
-//  reset_periphs();
+    reset_periphs();
     reset_check();
     get_reset_reason();     // Must be done very early
     gpio_init_early();

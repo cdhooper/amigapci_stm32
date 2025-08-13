@@ -1,15 +1,17 @@
 Tested working
 ==============
 USB Mouse
+    Kensington Technology Group K64325 Expert Mouse (trackball)
+        ID 047d:1020 Kensington Expert Mouse
+        Four buttons
     LimeIDE wired Gaming Mouse RGB "3DOptical"
         ID 1c4f:0034 SiGma Micro XM102K Optical Wheel Mouse
         https://www.ebay.com/itm/116613382672
-    Lukas Remis wireless Tank Mouse (Kickstarter)
-        https://www.kickstarter.com/projects/lukas-remis/tank-mouse-your-new-amiga-mouse
-        ID 248a:8566 Maxxter Wireless Receiver
-        Reports at Telink Wireless Receiver
     Logitech B100 wired mouse
         ID 046d:c077 Logitech, Inc. Mouse
+    Logitech G502 HERO Wired Gaming Mouse
+        ID 046d:c08b G502 HERO Gaming Mouse
+        Multimedia (2x) buttons don't work (control key sticks)
     Logitech M187 wireless mouse
         ID 046d:c534 Logitech, Inc. Nano Receiver
     Logitech M317 wireless mouse through unifying receiver
@@ -22,9 +24,52 @@ USB Mouse
     Logitech M510 wireless mouse 5-button version through unifying receiver
         ID 046d:c52b Logitech, Inc. Unifying Receiver
         Side buttons are B3 and B4
-    Kensington Technology Group K64325 Expert Mouse (trackball)
-        ID 047d:1020 Kensington Expert Mouse
-        Four buttons
+    Logitech M705 wireless mouse through unifying receiver
+        ID 046d:c52b Logitech, Inc. Unifying Receiver
+    Lukas Remis wireless Tank Mouse (Kickstarter)
+        https://www.kickstarter.com/projects/lukas-remis/tank-mouse-your-new-amiga-mouse
+        ID 248a:8566 Maxxter Wireless Receiver
+        Reports at Telink Wireless Receiver
+    RetroGames THE MOUSE MOD.RG011 USB Mouse
+        ID 1c59:0027 Retro Games LTD: THEMouse
+
+USB Keyboard
+    Acer Scorpius-M11SFL (wired)
+        Predator RGB Color Gaming Keyboard
+        ID 195d:2047 iOne Internation Co.Ltd. Full Color Gaming Keyboard
+        FN+F7 to FN+F12 drive various mouse button combinations
+    Das Keyboard 5Q Soft Tactile RGB Smart Mechanical Keyboard (Kickstarter)
+        ID 24f0.2020 Das Keyboard 5Q RGB Mechanical Keyboard
+            v7.3.253 (latest is 7.4.51)
+    Dell KB2521 keyboard
+        ID 413c:2107 Dell USB Entry Keyboard
+        Up to 4-key rollover
+    SIIG USB Low Profile Multimedia Keyboard (wired)
+        ID 046e.6000 BTC USB Keyboard
+        Multimedia keys cause keyboard to timeout and reset at 1 second.
+            Probably needs the host to poll the second interface:
+            USB1 IF=0 protocol=1 numcfg=2
+            USB1 kbdinit class=5
+            USB1.0.0 type 2 Keyboard
+            USB1.0.1 type ff Unknown
+    WASD Model V3 custom keyboard (wired)
+        ID 0c45:7692 Microdia USB Keyboard
+    Logitech K340 wireless keyboard
+        ID 046d:c52b Logitech, Inc. Unifying Receiver
+        Function key provides power button and other multimedia keys.
+    Logitech K360 wireless keyboard
+        ID 046d:c52b Logitech, Inc. Unifying Receiver
+        Multimedia keys present as USAGE Consumer Control, two 16-bit entries
+            which correspond to one or two Consumer Page codes as the keys
+            are pressed.
+    Logitech K400r wireless keyboard with multi-touch touchpad
+        ID 046d:c52b Logitech, Inc. Unifying Receiver
+        Has PC power button and other multimedia buttons.
+        Touchpad acts as mouse.
+    Logitech K400+ wireless keyboard with multi-touch touchpad
+        ID 046d:c52b Logitech, Inc. Unifying Receiver
+        Touchpad acts as mouse.
+        Fn-ins is PC power button
 
 USB Hub Keyboard
     ***
@@ -53,41 +98,6 @@ USB Hub Keyboard
         ID 05ac:024f Apple, Inc. Aluminium Keyboard (ANSI)
         HUB shows up, but Apple keyboard appears as 0000.0000, class 0
 
-USB Keyboard
-    Acer Scorpius-M11SFL (wired)
-        Predator RGB Color Gaming Keyboard
-        ID 195d:2047 iOne Internation Co.Ltd. Full Color Gaming Keyboard
-        FN+F7 to FN+F12 drive various mouse button combinations
-    SIIG USB Low Profile Multimedia Keyboard (wired)
-        ID 046e.6000 BTC USB Keyboard
-        Multimedia keys cause keyboard to timeout and reset at 1 second.
-            Probably needs the host to poll the second interface:
-            USB1 IF=0 protocol=1 numcfg=2
-            USB1 kbdinit class=5
-            USB1.0.0 type 2 Keyboard
-            USB1.0.1 type ff Unknown
-    WASD Model V3 custom keyboard (wired)
-        ID 0c45:7692 Microdia USB Keyboard
-    Logitech K340 wireless keyboard
-        ID 046d:c52b Logitech, Inc. Unifying Receiver
-        Function key provides power button and other multimedia keys.
-    Logitech K360 wireless keyboard
-        ID 046d:c52b Logitech, Inc. Unifying Receiver
-        Multimedia keys present as USAGE Consumer Control, two 16-bit entries
-            which correspond to one or two Consumer Page codes as the keys
-            are pressed.
-    Logitech K400r wireless keyboard with multi-touch touchpad
-        ID 046d:c52b Logitech, Inc. Unifying Receiver
-        Has PC power button and other multimedia buttons.
-        Touchpad acts as mouse.
-    Logitech K400+ wireless keyboard with multi-touch touchpad
-        ID 046d:c52b Logitech, Inc. Unifying Receiver
-        Touchpad acts as mouse.
-        Fn-ins is PC power button
-    Das Keyboard 5Q Soft Tactile RGB Smart Mechanical Keyboard (Kickstarter)
-        ID 24f0.2020 Das Keyboard 5Q RGB Mechanical Keyboard
-            v7.3.253 (latest is 7.4.51)
-
 Active PS/2 -> USB Keyboard + Mouse adapter
     Dual PS/2 to USB adapter PCP-BCG4209
         ID 13ba:0018 PCPlay Barcode PCP-BCG4209
@@ -106,8 +116,6 @@ PS/2 Mouse/Keyboard combination (through active PS/2 -> USB adapter)
         PS/2 keybonad and mouse ports through PCP-BCG4209
 
 USB Gamepad / Joystick
-    Retronic Design Universal Retro Joystick Adapter
-        ID e501:0810 retronicdesign.com Atari C64 Amiga Joystick v3.2
     Mayflash Arcade Stick F500 Elite
         ID 054c:0cda Sony Interactive Entertainment Controller
         ID 20d6:a713 UNIVERSAL ARCADE FIGHTSTICK F500 ELITE
@@ -132,6 +140,11 @@ USB Gamepad / Joystick
         Some modes of this controller are now supported:
             ID 057e:2009 PC USB CONTROLLER 1.07
             ID 045e:028e Microsoft Corp. Xbox360 Controller
+    RetroGames THE GAMEPAD MOD.RGL010 gamepad controller
+        ID 1c59:0026 Retro Games LTD: THEGamepad
+        Lett button pad acts as mouse
+    Retronic Design Universal Retro Joystick Adapter
+        ID e501:0810 retronicdesign.com Atari C64 Amiga Joystick v3.2
 
 =========================================================================
 
@@ -146,8 +159,17 @@ USB Keyboard
         Jason's keyboard -- shows up and identifies, but no input
         ** Might work now.
 
+USB Mouse
+
 USB Gamepad / Joystick
     NVIDIA Shield P2920 game controller
         ID 0955:7214 NVIDIA Controller v01.04
         When plugged in, gets identified as a game controller, but
         no events come in.
+    Speedlink SL-650212-BKRD Competition Pro Extra USB Joystick
+        ID 0079:181c SPEEDLINK COMPETITION PRO Game Controller for Android
+
+        USB1.5.0 genericinit
+        USB1.0 6 ERROR
+        ERROR: USB1.5 Control error: Device not responding
+        USB1.5 USBH_CtlReq FAIL

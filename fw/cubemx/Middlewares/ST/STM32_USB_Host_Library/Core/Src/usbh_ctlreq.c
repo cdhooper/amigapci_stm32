@@ -210,6 +210,7 @@ USBH_StatusTypeDef USBH_GetDescriptor(USBH_HandleTypeDef *phost,
 {
   if (phost->RequestState == CMD_SEND)
   {
+#if 0
     /*
      * Reopen Control pipes -- required for some controllers such as
      * Nintendo Switch Pro.
@@ -229,6 +230,7 @@ USBH_StatusTypeDef USBH_GetDescriptor(USBH_HandleTypeDef *phost,
                   phost->device.speed,
                   USBH_EP_CONTROL,
                   (uint16_t)phost->Control.pipe_size);
+#endif
 
     phost->Control.setup.b.bmRequestType = USB_D2H | req_type;
     phost->Control.setup.b.bRequest = USB_REQ_GET_DESCRIPTOR;

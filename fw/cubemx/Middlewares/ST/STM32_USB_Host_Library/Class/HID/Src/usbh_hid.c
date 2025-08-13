@@ -305,6 +305,17 @@ void USBH_HID_Process_HIDReportDescriptor(USBH_HandleTypeDef *phost, HID_HandleT
                                         if (rd->bits_sysctl > 16)
                                             rd->bits_sysctl = 16;
                                         break;
+                                    case HID_USAGE_KBD:
+                                        if (x != 0)  // Not first cell
+                                            break;
+                                        if (report_size == 1) {
+                                            rd->pos_keymod = bitpos;
+                                            DPRINTF(" KEYMOD=%u", bitpos);
+                                        } else if (report_size == 8) {
+                                            rd->pos_key6kro = bitpos;
+                                            DPRINTF(" KEY6KRO=%u", bitpos);
+                                        }
+                                        break;
                                 }
                             }
                             bitpos += report_size;
@@ -453,6 +464,18 @@ void USBH_HID_Process_HIDReportDescriptor(USBH_HandleTypeDef *phost, HID_HandleT
                                         break;
                                     case HID_USAGE_Y:
                                         DPRINTF(" Y");
+                                        break;
+                                    case HID_USAGE_Z:
+                                        DPRINTF(" Z");
+                                        break;
+                                    case HID_USAGE_RX:
+                                        DPRINTF(" RX");
+                                        break;
+                                    case HID_USAGE_RY:
+                                        DPRINTF(" RY");
+                                        break;
+                                    case HID_USAGE_RZ:
+                                        DPRINTF(" RZ");
                                         break;
                                     case HID_USAGE_WHEEL:
                                         DPRINTF(" WHEEL");
@@ -850,6 +873,12 @@ static USBH_StatusTypeDef USBH_HID_Process_ll(USBH_HandleTypeDef *phost, HID_Han
   {
     case HID_INIT:
       status = HID_Handle->Init(phost, HID_Handle);
+      if (status != USBH_OK) {
+        printf("USB%u.%u.%u HID init failure\n",
+               get_port(phost), phost->address, HID_Handle->interface);
+        HID_Handle->state = HID_ERROR;
+        break;
+      }
       HID_Handle->state = HID_VENDOR;
 
       uint8_t interface = HID_Handle->interface;
@@ -911,6 +940,15 @@ static USBH_StatusTypeDef USBH_HID_Process_ll(USBH_HandleTypeDef *phost, HID_Han
       else if (status == USBH_BUSY)
       {
         HID_Handle->state = HID_IDLE;
+
+        static uint16_t busy_too_long = 0;
+        if (busy_too_long++ > 1024) {
+            busy_too_long = 0;
+            HID_Handle->state = HID_SYNC;
+            status = USBH_OK;
+            printf("USB%u.%u.%u busy too long for HID GetReport\n",
+                   get_port(phost), phost->address, HID_Handle->interface);
+        }
       }
       else if (status == USBH_NOT_SUPPORTED)
       {
@@ -1346,7 +1384,7 @@ void USBH_HID_FifoInit(FIFO_TypeDef *f, uint8_t *buf, uint16_t size)
   f->buf = buf;
 }
 
-static void USBH_HID_FifoFlush(FIFO_TypeDef *f)
+void USBH_HID_FifoFlush(FIFO_TypeDef *f)
 {
   f->head = 0U;
   f->tail = 0U;

@@ -580,8 +580,12 @@ cmd_usb(int argc, char * const *argv)
         }
     } else if (strncmp(argv[0], "ls", 2) == 0) {
         uint verbose = 0;
-        if ((argc >= 2) && (strncmp(argv[1], "verbose", 1) == 0))
-            verbose++;
+        while (argc >= 2) {
+            if (strncmp(argv[1], "verbose", 1) == 0)
+                verbose++;
+            argc--;
+            argv++;
+        }
         usb_ls(verbose);
     } else if (strcmp(argv[0], "off") == 0) {
         usb_set_power(0);
@@ -694,7 +698,7 @@ static const char *const debug_flag_bits[] = {
     "RTC", "AmigaKeyboard", "AmigaMouse", "AmigaJoystick",
         "USB", "USBConn", "USBKeyboard", "USBMouse",
     "USBReport", "DecodeMisc", "DecodeMouse", "DecodeJoystick",
-        "HIDEN", "", "", "",
+        "DecodeKeyboard", "HIDEN", "", "",
     "", "", "", "",
         "", "", "", "",
     "", "", "", "",

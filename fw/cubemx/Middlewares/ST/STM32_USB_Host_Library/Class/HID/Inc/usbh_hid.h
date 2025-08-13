@@ -211,6 +211,8 @@ typedef struct _HIDRDescriptor
   uint16_t   pos_key[2];       // Position of Multimedia key
   uint16_t   pos_jpad[4];      // Joystick/pad button positions U D L R
   uint16_t   pos_sysctl;       // Position of System control key
+  uint16_t   pos_keymod;       // Position of keyboard modifiers
+  uint16_t   pos_key6kro;      // Position of keyboard 6-key rollover
   uint16_t   pos_mmbutton[20]; // Position of Multimedia button
   uint16_t   val_mmbutton[20]; // MM Key value of Multimedia button
   int16_t    offset_xy;        // Offset to add to mouse x / y / wheel / pan
@@ -350,6 +352,7 @@ HID_TypeTypeDef USBH_HID_GetDeviceType(USBH_HandleTypeDef *phost, uint16_t iface
 uint8_t USBH_HID_GetPollInterval(USBH_HandleTypeDef *phost);
 
 void USBH_HID_FifoInit(FIFO_TypeDef *f, uint8_t *buf, uint16_t size);
+void USBH_HID_FifoFlush(FIFO_TypeDef *f);
 
 uint16_t  USBH_HID_FifoRead(FIFO_TypeDef *f, void *buf, uint16_t  nbytes);
 
@@ -375,7 +378,15 @@ typedef struct
 }
 HID_MISC_Info_TypeDef;
 
+typedef struct {
+  uint8_t              modifier;    // Keyboard modifier keys
+  uint8_t              reserved;    // Reserved for OEM use, always set to 0
+  uint8_t              keycode[6];  // Key codes of the currently pressed keys
+}
+HID_Keyboard_Info_TypeDef;
+
 USBH_StatusTypeDef USBH_HID_DecodeReport(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle, HID_TypeTypeDef devtype, HID_MISC_Info_TypeDef *report_info);
+USBH_StatusTypeDef USBH_HID_DecodeKeyboard(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle, HID_Keyboard_Info_TypeDef *report_info);
 void USBH_HID_PrepareFifo(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle);
 
 

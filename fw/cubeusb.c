@@ -413,6 +413,7 @@ usb_ls_classes(USBH_HandleTypeDef *phost, uint verbose)
     uint ifclass;
     uint ifsclass;
     uint ifproto;
+    uint i;
     char *protostr;
     char *ifsclass_str;
 
@@ -497,6 +498,56 @@ usb_ls_classes(USBH_HandleTypeDef *phost, uint verbose)
                                HID_Handle->HID_RDesc.id_sysctl);
                         printf("          usage=%s\n",
                                get_hid_usage_str(HID_Handle->HID_RDesc.usage));
+                        if (HID_Handle->HID_RDesc.bits_x ||
+                            HID_Handle->HID_RDesc.bits_y ||
+                            HID_Handle->HID_RDesc.bits_wheel ||
+                            HID_Handle->HID_RDesc.bits_ac_pan) {
+                            printf("          x=%u [%u]  y=%u [%u]  "
+                                   "wheel=%u [%u]  pan=%u [%u]  offset=%d\n",
+                                   HID_Handle->HID_RDesc.pos_x,
+                                   HID_Handle->HID_RDesc.bits_x,
+                                   HID_Handle->HID_RDesc.pos_y,
+                                   HID_Handle->HID_RDesc.bits_y,
+                                   HID_Handle->HID_RDesc.pos_wheel,
+                                   HID_Handle->HID_RDesc.bits_wheel,
+                                   HID_Handle->HID_RDesc.pos_ac_pan,
+                                   HID_Handle->HID_RDesc.bits_ac_pan,
+                                   HID_Handle->HID_RDesc.offset_xy);
+                        }
+                        if (HID_Handle->HID_RDesc.pos_keymod ||
+                            HID_Handle->HID_RDesc.pos_key6kro) {
+                            printf("          keymod=%u 6kro=%u",
+                                   HID_Handle->HID_RDesc.pos_keymod,
+                                   HID_Handle->HID_RDesc.pos_key6kro);
+                        }
+                        if (HID_Handle->HID_RDesc.num_buttons > 0) {
+                            printf("          buttons=");
+                            for (i = 0; i < HID_Handle->HID_RDesc.num_buttons; i++)
+                                printf("%u ", HID_Handle->HID_RDesc.pos_button[i]);
+                            printf("\n");
+                        }
+                        if ((HID_Handle->HID_RDesc.num_keys > 0) ||
+                            (HID_Handle->HID_RDesc.bits_sysctl > 0)) {
+                            printf("          mmkeys=");
+                            for (i = 0; i < HID_Handle->HID_RDesc.num_keys; i++)
+                                printf("%u [%u]  ", HID_Handle->HID_RDesc.pos_key[i], HID_Handle->HID_RDesc.bits_key);
+                            printf(" sysctl=%u [%u]\n", HID_Handle->HID_RDesc.pos_sysctl, HID_Handle->HID_RDesc.bits_sysctl);
+                        }
+                        for (i = 0; i < 4; i++) {
+                            if (HID_Handle->HID_RDesc.pos_jpad[i]) {
+                                printf("          jpad=");
+                                for (i = 0; i < 4; i++)
+                                    printf("%u ", HID_Handle->HID_RDesc.pos_jpad[i]);
+                                printf("\n");
+                                break;
+                            }
+                        }
+                        if (HID_Handle->HID_RDesc.num_mmbuttons > 0) {
+                            printf("          mmbutton=");
+                            for (i = 0; i < HID_Handle->HID_RDesc.num_mmbuttons; i++)
+                                printf("%u [%u] = %x  ", HID_Handle->HID_RDesc.pos_mmbutton[i], HID_Handle->HID_RDesc.id_mmbutton[i], HID_Handle->HID_RDesc.val_mmbutton[i]);
+                            printf("\n");
+                        }
                     }
                     break;
                 }
@@ -736,8 +787,18 @@ void
 USBH_HID_EventCallback(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle)
 {
     uint devnum;
-    uint port = get_portdev(phost, &devnum);
-    HID_TypeTypeDef devtype = USBH_HID_GetDeviceType(phost, HID_Handle->interface);
+    uint    port  = get_portdev(phost, &devnum);
+    uint8_t usage = HID_Handle->HID_RDesc.usage;
+    HID_TypeTypeDef devtype;
+
+    devtype = USBH_HID_GetDeviceType(phost, HID_Handle->interface);
+    if ((usage == HID_USAGE_KBD) || (usage == HID_USAGE_SYSCTL))
+        devtype = HID_KEYBOARD;
+    else if ((usage == HID_USAGE_MOUSE) || (usage == HID_USAGE_POINTER))
+        devtype = HID_MOUSE;
+    else if ((usage == HID_USAGE_JOYSTICK) || (usage == HID_USAGE_GAMEPAD))
+        devtype = HID_UNKNOWN;
+
     if ((devtype == HID_MOUSE) || (devtype == HID_UNKNOWN)) {
         /* Mouse or Generic HID (refer to the HID report descriptor) */
         HID_MISC_Info_TypeDef info;
@@ -766,25 +827,11 @@ USBH_HID_EventCallback(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle)
             power_sysctl(info.sysctl);
         }
     } else if (devtype == HID_KEYBOARD) {  // Keyboard
-        HID_KEYBD_Info_TypeDef *kinfo;
-        kinfo = USBH_HID_GetKeybdInfo(phost, HID_Handle);  // get the info
-        usb_keyboard_report_t kinput;
-        kinput.modifier = (kinfo->lctrl  ? KEYBOARD_MODIFIER_LEFTCTRL   : 0) |
-                          (kinfo->lshift ? KEYBOARD_MODIFIER_LEFTSHIFT  : 0) |
-                          (kinfo->lalt   ? KEYBOARD_MODIFIER_LEFTALT    : 0) |
-                          (kinfo->lgui   ? KEYBOARD_MODIFIER_LEFTMETA   : 0) |
-                          (kinfo->rctrl  ? KEYBOARD_MODIFIER_RIGHTCTRL  : 0) |
-                          (kinfo->rshift ? KEYBOARD_MODIFIER_RIGHTSHIFT : 0) |
-                          (kinfo->ralt   ? KEYBOARD_MODIFIER_RIGHTALT   : 0) |
-                          (kinfo->rgui   ? KEYBOARD_MODIFIER_RIGHTMETA  : 0);
-        kinput.reserved = 0;
-        kinput.keycode[0] = kinfo->keys[0];
-        kinput.keycode[1] = kinfo->keys[1];
-        kinput.keycode[2] = kinfo->keys[2];
-        kinput.keycode[3] = kinfo->keys[3];
-        kinput.keycode[4] = kinfo->keys[4];
-        kinput.keycode[5] = kinfo->keys[5];
-        keyboard_usb_input(&kinput);
+        HID_Keyboard_Info_TypeDef info;
+
+        if (USBH_HID_DecodeKeyboard(phost, HID_Handle, &info) != USBH_OK)
+            return;
+        keyboard_usb_input((usb_keyboard_report_t *) &info);
     } else {
         printf("USB%u Event\n", port);
     }
@@ -994,31 +1041,6 @@ USBH_remove_subdevices(USBH_HandleTypeDef *phost)
 
 #define LOG(...) printf(__VA_ARGS__)
 
-
-#if 0
-    HID_HandleTypeDef *HID_Handle;
-    HID_Handle = (HID_HandleTypeDef *) phost->pActiveClass->pData;
-    if (usbdev[port][devnum].appstate == APPLICATION_RUNNING) {
-        for (iface = 0; iface < numif; iface++) {
-            devtype = USBH_HID_GetDeviceType(phost, iface);
-            if (devtype == HID_KEYBOARD) {
-                HID_KEYBD_Info_TypeDef *info;
-                info = USBH_HID_GetKeybdInfo(phost, HID_Handle);
-                if (info != NULL) {
-                    printf("lctrl = %d lshift = %d lalt   = %d\r\n"
-                           "lgui  = %d rctrl  = %d rshift = %d\r\n"
-                           "ralt  = %d rgui   = %d\r\n",
-                           info->lctrl, info->lshift, info->lalt,
-                           info->lgui, info->rctrl, info->rshift,
-                           info->ralt, info->rgui);
-                    // info->keys[]
-                }
-// XXX: No need to process here, as it can be handled by event callback
-            }
-        }
-    }
-
-#endif
 static void
 process_usb_ports(uint port)
 {
@@ -1599,8 +1621,13 @@ cubeusb_init(void)
 
     memset(usb_handle, 0, sizeof (usb_handle));
 
+#undef SINGLE_PORT
+#ifdef SINGLE_PORT
+    cubeusb_init_port(1);
+#else
     for (port = 0; port < 2; port++)
         cubeusb_init_port(port);
+#endif
 }
 
 static void

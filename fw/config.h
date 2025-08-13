@@ -24,7 +24,8 @@
 #define DF_USB_DECODE_MISC  0x00000200  // USB HID decode miscellaneous
 #define DF_USB_DECODE_MOUSE 0x00000400  // USB HID decode mouse
 #define DF_USB_DECODE_JOY   0x00000800  // USB HID decode joystick
-#define DF_HIDEN            0x00001000  // HIDEN enable/disable
+#define DF_USB_DECODE_KBD   0x00001000  // USB HID decode keyboard
+#define DF_HIDEN            0x00002000  // HIDEN enable/disable
 
 #define CF_MOUSE_INVERT_X   0x00000001  // Invert mouse X axis
 #define CF_MOUSE_INVERT_Y   0x00000002  // Invert mouse Y axis

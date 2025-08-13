@@ -379,6 +379,55 @@ HID_KEYBD_Info_TypeDef *USBH_HID_GetKeybdInfo(USBH_HandleTypeDef *phost, HID_Han
 }
 
 /**
+  * @brief  USBH_HID_DecodeKeyboard
+  *         Retrieve and decode keyboard input
+  * @param  phost: Host handle
+  * @retval keyboard information
+  */
+USBH_StatusTypeDef USBH_HID_DecodeKeyboard(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle, HID_Keyboard_Info_TypeDef *report_info)
+{
+    uint recvlen;
+    uint len;
+    uint32_t report_data[4];
+    HID_RDescTypeDef *rd = &HID_Handle->HID_RDesc;
+
+    if (HID_Handle == NULL)
+        return (USBH_FAIL);
+
+    if (HID_Handle->length == 0U)
+        return (USBH_FAIL);
+
+    /* Fill report */
+    len = HID_Handle->length;
+    if (len > sizeof (report_data))
+        len = sizeof (report_data);
+
+    memset(report_data, 0, sizeof (*report_data));
+    recvlen = USBH_HID_FifoRead(&HID_Handle->fifo, &report_data, len);
+    USBH_HID_FifoFlush(&HID_Handle->fifo);  // Discard excess data
+    dprintf(DF_USB_DECODE_KBD, "\n%08lx %08lx %08lx  ",
+            report_data[0], report_data[1], report_data[2]);
+
+    if (recvlen > 0) {
+        if ((rd->pos_keymod != 0) || (rd->pos_key6kro != 0)) {
+            uint byte_keymod  = rd->pos_keymod / 8;
+            uint byte_key6kro = rd->pos_key6kro / 8;
+            memset(report_info, 0, sizeof (*report_info));
+            report_info->reserved = 0;
+            memcpy(&report_info->modifier,
+                   ((uint8_t *) report_data) + byte_keymod, 1);
+            memcpy(&report_info->keycode,
+                   ((uint8_t *) report_data) + byte_key6kro, 6);
+        } else {
+            memcpy(report_info, report_data, sizeof (*report_info));
+        }
+        return (USBH_OK);
+    }
+
+    return (USBH_FAIL);
+}
+
+/**
   * @brief  USBH_HID_KeybdDecode
   *         The function decode keyboard data.
   * @param  phost: Host handle
@@ -406,6 +455,10 @@ static USBH_StatusTypeDef USBH_HID_KeybdDecode(USBH_HandleTypeDef *phost, HID_Ha
 
   memset(keybd_report_data, 0, sizeof (keybd_report_data));
   recvlen = USBH_HID_FifoRead(&HID_Handle->fifo, &keybd_report_data, len);
+  USBH_HID_FifoFlush(&HID_Handle->fifo);  // Discard excess data
+  dprintf(DF_USB_DECODE_KBD, "\n%08lx %08lx\n",
+          keybd_report_data[0], keybd_report_data[1]);
+
   if (recvlen >= sizeof (keybd_report_data))
   {
     keybd_info.lctrl = (uint8_t)HID_ReadItem((HID_Report_ItemTypedef *) &imp_0_lctrl, 0U);

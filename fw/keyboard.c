@@ -920,7 +920,7 @@ convert_mm_scancode_to_amiga(uint keycode)
     for (pos = 0; pos < ARRAY_SIZE(scancode_mm_to_usb); pos++) {
         if (scancode_mm_to_usb[pos].sc_mmusb == keycode) {
             code_usb = scancode_mm_to_usb[pos].sc_usb;
-            dprintf(DF_USB_KEYBOARD, "=>%02x", code_usb);
+            dprintf(DF_USB_KEYBOARD, "<=%02x>", code_usb);
             return (convert_scancode_to_amiga(code_usb,
                                     last_key_report_modifier, &amiga_modifier));
         }
@@ -1292,6 +1292,7 @@ keyboard_usb_input(usb_keyboard_report_t *report)
 
     if ((mod_diff != 0) & !usb_keyboard_terminal && !keyboard_raw_mode) {
         uint bit;
+        dprintf(DF_USB_KEYBOARD, ">M %02X<", modifier);
         for (bit = 0; bit < 8; bit++) {
             if (mod_diff & BIT(bit)) {
                 uint32_t tcode = config.modkeymap[bit];
