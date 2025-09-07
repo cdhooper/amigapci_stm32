@@ -758,9 +758,8 @@ static USBH_StatusTypeDef USBH_HID_InterfaceDeInit(USBH_HandleTypeDef *phost)
   */
 static USBH_StatusTypeDef USBH_HID_ClassRequest_ll(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle)
 {
-
   USBH_StatusTypeDef status = USBH_BUSY;
-  USBH_StatusTypeDef classReqStatus;
+  USBH_StatusTypeDef tstatus;
 
   /* Switch HID state machine */
   switch (HID_Handle->ctl_state)
@@ -770,50 +769,62 @@ static USBH_StatusTypeDef USBH_HID_ClassRequest_ll(USBH_HandleTypeDef *phost, HI
         break;
     case HID_REQ_GET_HID_DESC:
       /* Get HID Desc */
-      if (USBH_HID_GetHIDDescriptor(phost, HID_Handle->interface, USB_HID_DESC_SIZE) == USBH_OK)
-      {
+      tstatus = USBH_HID_GetHIDDescriptor(phost, HID_Handle->interface, USB_HID_DESC_SIZE);
+      if (tstatus == USBH_OK) {
         USBH_HID_ParseHIDDesc(&HID_Handle->HID_Desc, phost->device.Data);
+        HID_Handle->ctl_state = HID_REQ_GET_REPORT_DESC;
+
+      } else if (tstatus != USBH_BUSY) {
+        printf("USB%u.%u.%u failed get HID descriptor\n",
+               get_port(phost), phost->address, HID_Handle->interface);
         HID_Handle->ctl_state = HID_REQ_GET_REPORT_DESC;
       }
 
       break;
     case HID_REQ_GET_REPORT_DESC:
       /* Get Report Desc */
-      if (USBH_HID_GetHIDReportDescriptor(phost, HID_Handle->interface, HID_Handle->HID_Desc.wItemLength) == USBH_OK)
-      {
+      tstatus = USBH_HID_GetHIDReportDescriptor(phost, HID_Handle->interface, HID_Handle->HID_Desc.wItemLength);
+      if (tstatus == USBH_OK) {
         /* The descriptor is available in phost->device.Data */
         USBH_HID_Process_HIDReportDescriptor(phost, HID_Handle);
         HID_Handle->ctl_state = HID_REQ_SET_IDLE;
-      }
 
+      } else if (tstatus != USBH_BUSY) {
+        printf("USB%u.%u.%u failed get HID report descriptor\n",
+               get_port(phost), phost->address, HID_Handle->interface);
+        HID_Handle->ctl_state = HID_REQ_SET_IDLE;
+      }
       break;
 
     case HID_REQ_SET_IDLE:
-
-      classReqStatus = USBH_HID_SetIdle(phost, 0U, 0U);
-
       /* set Idle */
-      if (classReqStatus == USBH_OK)
-      {
+      tstatus = USBH_HID_SetIdle(phost, 0U, 0U);
+      if ((tstatus == USBH_OK) || (tstatus == USBH_NOT_SUPPORTED)) {
         HID_Handle->ctl_state = HID_REQ_SET_PROTOCOL;
-      }
-      else
-      {
-        if (classReqStatus == USBH_NOT_SUPPORTED)
-        {
-          HID_Handle->ctl_state = HID_REQ_SET_PROTOCOL;
-        }
+
+      } else if (tstatus != USBH_BUSY) {
+        printf("USB%u.%u.%u failed setidle\n",
+               get_port(phost), phost->address, HID_Handle->interface);
+        HID_Handle->ctl_state = HID_REQ_SET_PROTOCOL;
       }
       break;
 
     case HID_REQ_SET_PROTOCOL:
       /* set report protocol */
       status = USBH_HID_SetProtocol(phost, 1U);
-      if ((status == USBH_OK) || (status == USBH_NOT_SUPPORTED))
-      {
+      if ((status == USBH_OK) || (status == USBH_NOT_SUPPORTED)) {
         HID_Handle->ctl_state = HID_REQ_IDLE;
 
-        /* all requests performed*/
+        /* all requests performed */
+        phost->pUser(phost, HOST_USER_CLASS_ACTIVE);
+        status = USBH_OK;
+
+      } else if ((status != USBH_BUSY)) {
+        printf("USB%u.%u.%u failed setprotocol\n",
+               get_port(phost), phost->address, HID_Handle->interface);
+        HID_Handle->ctl_state = HID_REQ_IDLE;
+
+        /* all requests performed */
         phost->pUser(phost, HOST_USER_CLASS_ACTIVE);
         status = USBH_OK;
       }
@@ -848,7 +859,7 @@ static USBH_StatusTypeDef USBH_HID_ClassRequest(USBH_HandleTypeDef *phost)
         if (phost->iface_waiting) {
             if (phost->iface_waiting & BIT(bit)) {
                 status = USBH_HID_ClassRequest_ll(phost, HID_Handle);
-                if (status == USBH_OK)
+                if (status != USBH_BUSY)
                     phost->iface_waiting &= ~BIT(bit);
             }
         } else {
@@ -861,7 +872,7 @@ static USBH_StatusTypeDef USBH_HID_ClassRequest(USBH_HandleTypeDef *phost)
         bit++;
         HID_Handle = HID_Handle->next;
     }
-    return (phost->iface_waiting ? USBH_FAIL: USBH_OK);
+    return (phost->iface_waiting ? USBH_BUSY: USBH_OK);
 }
 
 static USBH_StatusTypeDef USBH_HID_Process_ll(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle)
@@ -1067,10 +1078,9 @@ static USBH_StatusTypeDef USBH_HID_Process(USBH_HandleTypeDef *phost)
 
     while (HID_Handle != NULL) {
         if (phost->iface_waiting) {
-            printf(" Waiting %lx", phost->iface_waiting);
             if (phost->iface_waiting & BIT(bit)) {
                 status = USBH_HID_Process_ll(phost, HID_Handle);
-                if (status == USBH_OK)
+                if (status != USBH_BUSY)
                     phost->iface_waiting &= ~BIT(bit);
             }
         } else {
@@ -1082,7 +1092,7 @@ static USBH_StatusTypeDef USBH_HID_Process(USBH_HandleTypeDef *phost)
         bit++;
         HID_Handle = HID_Handle->next;
     }
-    return (phost->iface_waiting ? USBH_FAIL: USBH_OK);
+    return (phost->iface_waiting ? USBH_BUSY: USBH_OK);
 }
 
 static USBH_StatusTypeDef USBH_HID_SOFProcess_ll(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle)

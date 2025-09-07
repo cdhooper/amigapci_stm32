@@ -98,10 +98,12 @@ USB Hub Keyboard
         ID 05ac:024f Apple, Inc. Aluminium Keyboard (ANSI)
         HUB shows up, but Apple keyboard appears as 0000.0000, class 0
 
-Active PS/2 -> USB Keyboard + Mouse adapter
-    Dual PS/2 to USB adapter PCP-BCG4209
+USB Keyboard / Mouse combination
+    Dual PS/2 to USB adapter PCP-BCG4209 (active)
         ID 13ba:0018 PCPlay Barcode PCP-BCG4209
         https://www.amazon.com/dp/B075T1LS3V
+    PiKVM v3
+        ID 1d6b:0104 PiKVM: PiKVM Composite Device
 
 PS/2 Mouse (through active PS/2 -> USB adapter)
     Sony VAIO PCVA-MSPB wired PS/2 mouse

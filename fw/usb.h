@@ -24,7 +24,7 @@ void usb_ls(uint verbose);
 void usb_show_regs(void);
 void usb_show_stats(void);
 void usb_set_power(int state);
-void usb_shutdown(void);
+void usb_shutdown(uint mode);
 
 extern uint usb_debug_mask;
 extern uint usb_keyboard_terminal;

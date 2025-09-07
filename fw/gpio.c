@@ -287,7 +287,7 @@ static const gpio_names_t gpio_names[] = {
     { "KBData",     GPIO_C, 8 },
     { "KBCLK",      GPIO_C, 9 },
     { "POWER_LED",  GPIO_A, 8 },
-    { "USB_ENABLE", GPIO_A, 9 },
+    { "USBENABLE",  GPIO_A, 9 },
     { "USB1_DM",    GPIO_A, 11 },
     { "USB1_DP",    GPIO_A, 12 },
     { "STM_DIO",    GPIO_A, 13 },

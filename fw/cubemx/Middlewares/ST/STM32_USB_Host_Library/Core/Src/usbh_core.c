@@ -291,12 +291,12 @@ USBH_StatusTypeDef USBH_SelectInterface(USBH_HandleTypeDef *phost, uint8_t inter
       return (status);
 
   USBH_UsrLog ("USB%u.%u Switching to Interface (#%d)", get_port(phost), phost->address, interface);
+  USBH_UsrLog ("  Class     0x%02x", phost->device.CfgDesc.Itf_Desc[interface].bInterfaceClass );
+  USBH_UsrLog ("  SubClass  0x%02x", phost->device.CfgDesc.Itf_Desc[interface].bInterfaceSubClass );
+  USBH_UsrLog ("  Protocol  0x%02x", phost->device.CfgDesc.Itf_Desc[interface].bInterfaceProtocol );
   int val = getInterfaceIdxFromNum(phost, interface);
   if (val >= 0 && val < phost->device.CfgDesc.bNumInterfaces) {
-      phost->device.current_interface = val; //interface;
-      USBH_UsrLog ("  Class     0x%02x", phost->device.CfgDesc.Itf_Desc[interface].bInterfaceClass );
-      USBH_UsrLog ("  SubClass  0x%02x", phost->device.CfgDesc.Itf_Desc[interface].bInterfaceSubClass );
-      USBH_UsrLog ("  Protocol  0x%02x", phost->device.CfgDesc.Itf_Desc[interface].bInterfaceProtocol );
+    phost->device.current_interface = val; //interface;
   } else {
     USBH_ErrLog ("  Cannot Select Interface (#%d).", interface);
     status = USBH_FAIL;
@@ -727,7 +727,7 @@ USBH_StatusTypeDef  USBH_Process(USBH_HandleTypeDef *phost)
       {
         status = phost->pActiveClass->Requests(phost);
 
-        if (status == USBH_OK)
+        if (status != USBH_BUSY)
         {
           phost->gState = HOST_CLASS;
           phost->busy--;  // Paired with = 1 in HOST_DEV_ATTACHED
@@ -737,7 +737,7 @@ USBH_StatusTypeDef  USBH_Process(USBH_HandleTypeDef *phost)
       {
         phost->gState = HOST_ABORT_STATE;
         USBH_ErrLog("Invalid Class Driver.");
-        phost->busy--;
+        phost->busy--;  // Paired with = 1 in HOST_DEV_ATTACHED
 
 #if (USBH_USE_OS == 1U)
         phost->os_msg = (uint32_t)USBH_STATE_CHANGED_EVENT;

@@ -627,7 +627,7 @@ USBH_StatusTypeDef USBH_CtlReq(USBH_HandleTypeDef *phost, uint8_t *buff,
       phost->Control.state = CTRL_SETUP;
       phost->RequestState = CMD_WAIT;
       status = USBH_BUSY;
-      phost->busy++;
+      phost->busy++;  // Paired with -- in CMD_WAIT
 
 #if (USBH_USE_OS == 1U)
       phost->os_msg = (uint32_t)USBH_CONTROL_EVENT;
@@ -641,6 +641,12 @@ USBH_StatusTypeDef USBH_CtlReq(USBH_HandleTypeDef *phost, uint8_t *buff,
 
     case CMD_WAIT:
       status = USBH_HandleControl(phost);
+      if (status != USBH_BUSY)
+      {
+        /* Got data or failure */
+        phost->busy--;  // Paired with ++ in CMD_SEND
+      }
+
       if (status == USBH_OK)
       {
         /* Commands successfully sent and Response Received  */
@@ -655,15 +661,12 @@ USBH_StatusTypeDef USBH_CtlReq(USBH_HandleTypeDef *phost, uint8_t *buff,
         phost->Control.state = CTRL_IDLE;
         status = USBH_NOT_SUPPORTED;
       }
-      else
+      else if (status == USBH_FAIL)
       {
-        if (status == USBH_FAIL)
-        {
           /* Failure Mode */
           phost->RequestState = CMD_SEND;  // Return to "ready to send" state
           USBH_UsrLog("USB%u.%u USBH_CtlReq FAIL\n", get_port(phost), phost->address);
           status = USBH_FAIL;
-        }
       }
       break;
 
@@ -672,8 +675,6 @@ USBH_StatusTypeDef USBH_CtlReq(USBH_HandleTypeDef *phost, uint8_t *buff,
     default:
       break;
   }
-  if (status != USBH_BUSY)
-      phost->busy--;
   return status;
 }
 
@@ -1064,6 +1065,8 @@ static USBH_StatusTypeDef USBH_HandleControl(USBH_HandleTypeDef *phost)
       {
         /* Do the transmission again, starting from SETUP Packet */
         phost->Control.state = CTRL_SETUP;
+        if (phost->RequestState == CMD_WAIT)
+          phost->busy--;
         phost->RequestState = CMD_SEND;
       }
       else
@@ -1072,7 +1075,7 @@ static USBH_StatusTypeDef USBH_HandleControl(USBH_HandleTypeDef *phost)
             phost->pUser(phost, HOST_USER_UNRECOVERED_ERROR);
         phost->Control.errorcount = 0U;
         USBH_ErrLog("USB%u.%u Control error: Device not responding", get_port(phost), phost->address);
-        phost->gState = HOST_IDLE;
+//      phost->gState = HOST_IDLE;
         status = USBH_FAIL;
       }
       break;

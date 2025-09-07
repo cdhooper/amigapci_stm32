@@ -367,7 +367,7 @@ static void
 shutdown_all(void)
 {
     uart_flush();
-    usb_shutdown();
+    usb_shutdown(1);
     timer_delay_msec(30);
 //  adc_shutdown();
     timer_shutdown();
@@ -411,7 +411,7 @@ cmd_reset(int argc, char * const *argv)
         show_reset_reason();
     } else if (strcmp(argv[1], "usb") == 0) {
         timer_delay_msec(1);
-        usb_shutdown();
+        usb_shutdown(0);
 //      usb_signal_reset_to_host(1);
         usb_init();
     } else {
@@ -562,7 +562,7 @@ cmd_usb(int argc, char * const *argv)
         usb_debug_mask = debug_mask;
     } else if (strncmp(argv[0], "disable", 3) == 0) {
         timer_delay_msec(1);
-        usb_shutdown();
+        usb_shutdown(0);
 //      usb_signal_reset_to_host(0);
         return (RC_SUCCESS);
     } else if ((strcmp(argv[0], "kbd") == 0) ||
@@ -595,7 +595,7 @@ cmd_usb(int argc, char * const *argv)
         usb_show_regs();
     } else if (strcmp(argv[0], "reset") == 0) {
         timer_delay_msec(1);
-        usb_shutdown();
+        usb_shutdown(0);
 //      usb_signal_reset_to_host(1);
         usb_init();
         return (RC_SUCCESS);

@@ -577,6 +577,12 @@ void HAL_HCD_IRQHandler(HCD_HandleTypeDef *hhcd)
       /* Incorrect mode, acknowledge the interrupt */
       __HAL_HCD_CLEAR_FLAG(hhcd, USB_OTG_GINTSTS_PTXFE);
     }
+    if (__HAL_HCD_GET_FLAG(hhcd, USB_OTG_GINTSTS_NPTXFE))
+    {
+      /* Incorrect mode, acknowledge the interrupt */
+      printf(" NPTXFE ");
+      __HAL_HCD_CLEAR_FLAG(hhcd, USB_OTG_GINTSTS_NPTXFE);
+    }
 
     if (__HAL_HCD_GET_FLAG(hhcd, USB_OTG_GINTSTS_MMIS))
     {

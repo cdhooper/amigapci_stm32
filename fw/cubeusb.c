@@ -425,8 +425,6 @@ usb_ls_classes(USBH_HandleTypeDef *phost, uint verbose)
         uint classnum;
 
         ifclass = phost->device.CfgDesc.Itf_Desc[ifnum].bInterfaceClass;
-        if (ifclass == 0)
-            continue;
         ifsclass = phost->device.CfgDesc.Itf_Desc[ifnum].bInterfaceSubClass;
         ifproto  = phost->device.CfgDesc.Itf_Desc[ifnum].bInterfaceProtocol;
         protostr = "";
@@ -461,11 +459,13 @@ usb_ls_classes(USBH_HandleTypeDef *phost, uint verbose)
                 }
                 break;
         }
-        printf("  %c IF %u: class=%x %s subclass=%02x %s protocol=%02x %s\n",
-               (phost->iface_waiting & BIT(ifnum)) ? '>' : ' ',
+        printf(" %2s IF %u: class=%x %s subclass=%02x %s protocol=%02x %s\n",
+               (phost->iface_waiting & BIT(ifnum)) ? "W>" : "",
                ifnum, ifclass, get_devclass_str(ifclass),
                ifsclass, ifsclass_str,
                ifproto, protostr);
+        if (ifclass == 0)
+            continue;
         if (verbose) {
             switch (ifclass) {
                 case USB_HID_CLASS: {
@@ -496,8 +496,15 @@ usb_ls_classes(USBH_HandleTypeDef *phost, uint verbose)
                                HID_Handle->HID_RDesc.id_mouse,
                                HID_Handle->HID_RDesc.id_consumer,
                                HID_Handle->HID_RDesc.id_sysctl);
-                        printf("          usage=%s\n",
+                        printf("          usage=%s",
                                get_hid_usage_str(HID_Handle->HID_RDesc.usage));
+                        if (HID_Handle->HID_RDesc.pos_keymod ||
+                            HID_Handle->HID_RDesc.pos_key6kro) {
+                            printf("  keymod=%u 6kro=%u",
+                                   HID_Handle->HID_RDesc.pos_keymod,
+                                   HID_Handle->HID_RDesc.pos_key6kro);
+                        }
+                        printf("\n");
                         if (HID_Handle->HID_RDesc.bits_x ||
                             HID_Handle->HID_RDesc.bits_y ||
                             HID_Handle->HID_RDesc.bits_wheel ||
@@ -513,12 +520,6 @@ usb_ls_classes(USBH_HandleTypeDef *phost, uint verbose)
                                    HID_Handle->HID_RDesc.pos_ac_pan,
                                    HID_Handle->HID_RDesc.bits_ac_pan,
                                    HID_Handle->HID_RDesc.offset_xy);
-                        }
-                        if (HID_Handle->HID_RDesc.pos_keymod ||
-                            HID_Handle->HID_RDesc.pos_key6kro) {
-                            printf("          keymod=%u 6kro=%u",
-                                   HID_Handle->HID_RDesc.pos_keymod,
-                                   HID_Handle->HID_RDesc.pos_key6kro);
                         }
                         if (HID_Handle->HID_RDesc.num_buttons > 0) {
                             printf("          buttons=");
@@ -912,6 +913,8 @@ USBH_reset_state_machine(int port)
 {
     usb_handle[port][0].gState = HOST_IDLE;
     usb_handle[port][0].EnumState = ENUM_IDLE;
+    if (usb_handle[port][0].RequestState == CMD_WAIT)
+        usb_handle[port][0].busy--;
     usb_handle[port][0].RequestState = CMD_SEND;
     usb_handle[port][0].Timer = 0U;
     usb_handle[port][0].Control.state = CTRL_SETUP;
@@ -1596,7 +1599,7 @@ cubeusb_init_port(uint port)
         return;
     }
     if (USBH_register_class(handle, USBH_CDC_CLASS, sizeof (*USBH_CDC_CLASS)) ||
-        USBH_register_class(handle, USBH_MSC_CLASS, sizeof (*USBH_MSC_CLASS)) ||
+//      USBH_register_class(handle, USBH_MSC_CLASS, sizeof (*USBH_MSC_CLASS)) ||
         USBH_register_class(handle, USBH_HID_CLASS, sizeof (*USBH_HID_CLASS)) ||
         USBH_register_class(handle, USBH_HUB_CLASS, sizeof (*USBH_HUB_CLASS)) ||
 //      USBH_register_class(handle, USBH_MTP_CLASS, sizeof (*USBH_MTP_CLASS)) ||

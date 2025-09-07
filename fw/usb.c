@@ -235,14 +235,25 @@ usb_init(void)
 }
 
 void
-usb_shutdown(void)
+usb_shutdown(uint mode)
 {
+    if (mode == 1) {
+        nvic_disable_irq(NVIC_OTG_FS_IRQ);  // USB0 ISR
+        nvic_disable_irq(NVIC_OTG_HS_IRQ);  // USB1 ISR
+        nvic_disable_irq(NVIC_OTG_HS_WKUP_IRQ);
+        nvic_disable_irq(NVIC_OTG_HS_EP1_IN_IRQ);
+        nvic_disable_irq(NVIC_OTG_HS_EP1_OUT_IRQ);
+
+        rcc_periph_clock_disable(RCC_OTGFS);
+        rcc_periph_clock_disable(RCC_OTGHS);
+    } else {
 #ifdef USE_TINYUSB
-    tinyusb_shutdown();
+        tinyusb_shutdown();
 #endif
 #ifdef USE_STMCUBEUSB
-    cubeusb_shutdown();
+        cubeusb_shutdown();
 #endif
+    }
     usb_set_power(0);
 }
 
