@@ -20,113 +20,82 @@
 #include "power.h"
 
 uint8_t         amiga_in_reset         = 0xff;  // Not initialized
-static uint8_t  amiga_powered_off      = 0;
 static uint64_t amiga_reset_timer      = 0;  // Timer to take Amiga out of reset
-static uint64_t amiga_long_reset_timer = 0;  // Timer to detect long reset
-static uint64_t amiga_reboot_detect_timeout = 0;
 static uint64_t amiga_kclk_reset_timer = 0;
 
 /*
- * amiga_is_powered_on
- * -------------------
- * This function determines if the Amiga is powered on or off based on
- * whether the D31 pin is high or low. The STM32 will be configured with
- * a weak pull-up on this pin, but Amiga pull-ups are significantly stronger
- * and will always override the STM32. If the Amiga is off, D31 should always
- * have a 0 value. If the Amiga is on, D31 should always be high so long
- * as the Amiga is in reset.
- *
- * It is expected this function will be called while the Amiga is in reset.
+ * set_amiga_reset() drives the KBRST pin to set the Amiga in reset or take
+ *                   it out of reset.  If the state is to release reset (0),
+ *                   then the pin will be briefly driven high, then released
+ *                   to open drain. This is to allow other AmigaPCI hardware
+ *                   to drive the pin low.
  */
-static uint
-amiga_is_powered_on(void)
+static void
+set_amiga_reset(uint put_in_reset)
 {
-    uint count;
-    uint got;
-    uint saw_0 = 0;
-    uint saw_1 = 0;
-
-    for (count = 0; count < 100; count++) {
-#if 0
-        got = gpio_get(SOCKET_D31_PORT, SOCKET_D31_PIN);
-#else
-        got = 1;
-#endif
-        if (got)
-            saw_1++;
-        else
-            saw_0++;
-        if (saw_0 && saw_1) {
-            printf("Unexpected: D31 is changing state\n");
-            return (1);  // Amiga is running (not expected)
-        }
+    gpio_setv(KBRST_PORT, KBRST_PIN, !put_in_reset);
+    if (put_in_reset == 0) {
+        gpio_setmode(KBRST_PORT, KBRST_PIN, GPIO_SETMODE_OUTPUT_2);
+        timer_delay_usec(2);
+        gpio_setmode(KBRST_PORT, KBRST_PIN,
+                     GPIO_SETMODE_OUTPUT_ODRAIN_25 | GPIO_SETMODE_PU);
     }
-    return (saw_1 ? 1 : 0);
+    amiga_in_reset = put_in_reset;
 }
 
 void
 kbrst_poll(void)
 {
-    uint8_t kbrst;
+    uint8_t in_reset;
+    static uint8_t in_reset_last;
+
+    if (power_state == POWER_STATE_INITIAL)
+        return;  // Wait for power state to be determined
+
+    if (amiga_in_reset == 0xff) {
+        /* Get initial state */
+        amiga_in_reset = !gpio_get(KBRST_PORT, KBRST_PIN);
+    }
 
     if ((amiga_kclk_reset_timer != 0) &&
         timer_tick_has_elapsed(amiga_kclk_reset_timer)) {
         amiga_kclk_reset_timer = 0;
         gpio_setv(KBRST_PORT, KBCLK_PIN | KBDATA_PIN, 1);
-        printf(" release KBCLK ");
     }
 
-    if (config.board_type != 2) {
-        if (power_state != POWER_STATE_ON) {
-            if (!amiga_in_reset) {
-                amiga_in_reset = 1;
-                gpio_setv(KBRST_PORT, KBRST_PIN, 0);
-            }
-            return;
+    /* Handle power state changes affecting KBRST */
+    static uint8_t power_state_last = POWER_STATE_INITIAL;
+    if ((config.board_type != 2) && (power_state != power_state_last)) {
+        if (power_state == POWER_STATE_ON) {
+            if (amiga_in_reset)
+                amiga_reset_timer = timer_tick_plus_msec(400);
+        } else {
+            if (!amiga_in_reset)
+                set_amiga_reset(1);  // Assert KBRST now (put Amiga in reset)
         }
+        power_state_last = power_state;
     }
 
+    /* Handle reset timer */
     if ((amiga_reset_timer != 0) && timer_tick_has_elapsed(amiga_reset_timer)) {
         amiga_reset_timer = 0;
-        gpio_setv(KBRST_PORT, KBRST_PIN, 1);
+        set_amiga_reset(0);  // Deassert KBRST (take Amiga out of reset)
     }
 
-    kbrst = !gpio_get(KBRST_PORT, KBRST_PIN);
-    if (amiga_in_reset != kbrst) {
-        if (amiga_in_reset == 0xff) {
-            amiga_in_reset = kbrst;  // Got initial state
-            return;
-        }
-        amiga_in_reset = kbrst;
+    /* Report reset state change */
+    in_reset = !gpio_get(KBRST_PORT, KBRST_PIN);
+    if (in_reset_last != in_reset) {
+        in_reset_last = in_reset;
         /* Amiga reset state change has occurred */
 
-        if (kbrst == 0) {
-            /* In reset */
-            printf("Amiga in reset\n");
-            if (amiga_long_reset_timer == 0)
-                amiga_long_reset_timer = timer_tick_plus_msec(2000);
-        } else {
-            /* Out of reset */
-            if (amiga_powered_off) {
-                amiga_powered_off = 0;
-                printf("Amiga powered on\n");
-            } else {
+        if (power_state == POWER_STATE_ON) {
+            /* Only report reset state when power is on */
+            if (in_reset == 0) {
+                /* Out of reset */
                 printf("Amiga out of reset\n");
-            }
-            amiga_long_reset_timer = 0;
-        }
-        amiga_reboot_detect_timeout = timer_tick_plus_msec(5000);
-    } else {
-        if ((amiga_long_reset_timer != 0) &&
-            timer_tick_has_elapsed(amiga_long_reset_timer)) {
-            amiga_long_reset_timer = 0;
-            if (amiga_in_reset == 1) {
-                if (amiga_is_powered_on()) {
-                    /* Still in reset at timer expiration */
-                } else {
-                    printf("Amiga powered off\n");
-                    amiga_powered_off++;
-                }
+            } else {
+                /* In reset */
+                printf("Amiga in reset\n");
             }
         }
     }
@@ -135,12 +104,12 @@ kbrst_poll(void)
 void
 kbrst_amiga(uint hold, uint longreset)
 {
-    gpio_setv(KBRST_PORT, KBRST_PIN | KBCLK_PIN | KBDATA_PIN, 0);
+    gpio_setv(KBRST_PORT, KBCLK_PIN | KBDATA_PIN, 0);
+    gpio_setv(KBRST_PORT, KBRST_PIN, 0);
 
     if (hold) {
         amiga_reset_timer = 0;
         amiga_kclk_reset_timer = 0;
-        amiga_long_reset_timer = 0xffffffffffffffff;
     } else {
         if (longreset) {
             amiga_reset_timer = timer_tick_plus_msec(2500);
@@ -149,6 +118,5 @@ kbrst_amiga(uint hold, uint longreset)
             amiga_reset_timer = timer_tick_plus_msec(400);
             amiga_kclk_reset_timer = timer_tick_plus_msec(500);
         }
-        amiga_long_reset_timer = 0;
     }
 }

@@ -320,10 +320,10 @@ fan_poll(void)
                 int diff = fan_percent - fan_percent_min;
                 if (diff > 20)  // Maximum 20% change per second
                     diff = 20;
+                dprintf(DF_FAN, "Fan [%u->%u]", fan_percent_min, fan_percent);
                 fan_percent_min += diff;
                 if (fan_percent_min != fan_percent)
                     timer_fan_limit_change = timer_tick_plus_msec(1000);
-                printf("Fan [%u->%u]", fan_percent_min, fan_percent);
             }
         }
     } else {

@@ -17,6 +17,7 @@
 #include <libopencm3/stm32/f2/rcc.h>
 #include <stdlib.h>
 #include <string.h>
+#include "config.h"
 
 /*
  * STM32F2 Alternate Functions
@@ -792,8 +793,7 @@ gpio_init_early(void)
     gpio_setmode(PSON_PORT, PSON_PIN, GPIO_SETMODE_INPUT);
     psoff = gpio_get(PSON_PORT, PSON_PIN); // Attempt to capture previous state
     gpio_setv(PSON_PORT, PSON_PIN, psoff ? 1 : 0);
-    gpio_setmode(PSON_PORT, PSON_PIN,
-                 GPIO_SETMODE_OUTPUT_ODRAIN | GPIO_SETMODE_PU);
+    gpio_setmode(PSON_PORT, PSON_PIN, GPIO_SETMODE_OUTPUT_2);
 }
 
 /*
@@ -843,8 +843,14 @@ gpio_init(void)
     gpio_setmode(A2_PORT, A2_PIN | A3_PIN | A4_PIN | A5_PIN,
                  GPIO_SETMODE_INPUT_PU);
 
-    /* USB_ENABLE needs to be open drain on dev board to fully turn off */
-    gpio_setv(USB_ENABLE_PORT, USB_ENABLE_PIN, 1);  // active low
-    gpio_setmode(USB_ENABLE_PORT, USB_ENABLE_PIN,
-                 GPIO_SETMODE_OUTPUT_ODRAIN);
+    if (config.board_type == 2) { // AmigaPCI STM32 dev board has this backwards
+        /* USB_ENABLE needs to be open drain on dev board to fully turn off */
+        gpio_setv(USB_ENABLE_PORT, USB_ENABLE_PIN, 1);  // active low
+        gpio_setmode(USB_ENABLE_PORT, USB_ENABLE_PIN,
+                     GPIO_SETMODE_OUTPUT_ODRAIN);
+    } else {
+        /* USB_ENABLE needs to be push-pull on AmigaPCI board to turn on */
+        gpio_setv(USB_ENABLE_PORT, USB_ENABLE_PIN, 0);  // active high
+        gpio_setmode(USB_ENABLE_PORT, USB_ENABLE_PIN, GPIO_SETMODE_OUTPUT_2);
+    }
 }

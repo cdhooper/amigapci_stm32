@@ -396,8 +396,7 @@ cmd_reset(int argc, char * const *argv)
             argc--;
             argv++;
         }
-        (void) longreset;
-//      kbrst_amiga(hold, longreset);
+        kbrst_amiga(hold, longreset);
         if (hold)
             printf("Holding Amiga in reset\n");
         else
@@ -698,7 +697,7 @@ static const char *const debug_flag_bits[] = {
     "RTC", "AmigaKeyboard", "AmigaMouse", "AmigaJoystick",
         "USB", "USBConn", "USBKeyboard", "USBMouse",
     "USBReport", "DecodeMisc", "DecodeMouse", "DecodeJoystick",
-        "DecodeKeyboard", "HIDEN", "", "",
+        "DecodeKeyboard", "HIDEN", "Fan", "",
     "", "", "", "",
         "", "", "", "",
     "", "", "", "",
