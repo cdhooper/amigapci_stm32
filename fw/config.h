@@ -36,6 +36,7 @@
 #define CF_MOUSE_SWAP_WP    0x00000020  // Swap mouse Wheel and Pan axis
 #define CF_MOUSE_KEYUP_WP   0x00000040  // Send key released for wheel / pan
 #define CF_GAMEPAD_MOUSE    0x00000080  // Use joystick on gamepad as mouse
+#define CF_HAVE_FAN         0x00000100  // Board has fan attached
 
 typedef struct {
     uint32_t    magic;          // Structure magic

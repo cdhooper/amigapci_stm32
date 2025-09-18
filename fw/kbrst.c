@@ -47,14 +47,25 @@ void
 kbrst_poll(void)
 {
     uint8_t in_reset;
+    uint8_t reset_button;
     static uint8_t in_reset_last;
+    static uint8_t reset_button_last;
 
     if (power_state == POWER_STATE_INITIAL)
         return;  // Wait for power state to be determined
 
+    reset_button = !gpio_get(STMRSTA_PORT, STMRSTA_PIN);
     if (amiga_in_reset == 0xff) {
         /* Get initial state */
         amiga_in_reset = !gpio_get(KBRST_PORT, KBRST_PIN);
+        reset_button_last = reset_button;
+    }
+
+    if ((power_state == POWER_STATE_ON) && !amiga_in_reset) {
+        if (reset_button_last != reset_button) {
+            printf("Reset button %s\n", reset_button ? "pressed" : "released");
+            reset_button_last = reset_button;
+        }
     }
 
     if ((amiga_kclk_reset_timer != 0) &&

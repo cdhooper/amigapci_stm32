@@ -129,14 +129,22 @@ fan_get_percent(void)
 void
 fan_get_limits(int *limit_min, int *limit_max)
 {
-    if (power_state == POWER_STATE_ON) {
+#define FAN_MARGIN_MIN  10  // Allowed percent below minimum speed
+#define FAN_MARGIN_MAX  10  // Allowed percent above maximum speed
+    if ((config.flags & CF_HAVE_FAN) &&
+        (power_state == POWER_STATE_ON) && (config.flags & CF_HAVE_FAN)) {
         *limit_min = fan_percent_min * config.fan_rpm_max * 10;
+        if (*limit_min >= config.fan_rpm_max * FAN_MARGIN_MIN * 10) {
+            *limit_min -= config.fan_rpm_max * FAN_MARGIN_MIN * 10;
+        } else {
+            *limit_min = 0;
+        }
     } else {
         *limit_min = 0;
     }
-    *limit_max = (config.fan_rpm_max ? config.fan_rpm_max : 4000) * 1000;
+    *limit_max = (config.fan_rpm_max ? config.fan_rpm_max : 4000) *
+                 (1000 + FAN_MARGIN_MAX * 10);
 }
-
 
 /*
  * tim4_isr() is the interrupt service routing for the TIM4 timer.
@@ -272,7 +280,7 @@ fan_init(void)
 void
 fan_poll(void)
 {
-            uint percent;
+    uint percent;
     if (fan_auto) {
         /* Adjust fan_percent based on temperature input */
         uint value;

@@ -330,8 +330,10 @@ cmd_time(int argc, char * const *argv)
         rc = RC_SUCCESS;
     } else if (strncmp(argv[1], "snoop", 2) == 0) {
         int debug = 0;
-        if ((argc > 2) && (*argv[2] == 'd'))
-            debug = 1;
+        int arg;
+        for (arg = 2; arg < argc; arg++)
+            if (*argv[2] == 'd')
+                debug++;
         amigartc_snoop(debug);
         rc = RC_USR_ABORT;
     } else if (strncmp(argv[1], "test", 1) == 0) {
@@ -707,7 +709,7 @@ static const char *const debug_flag_bits[] = {
 static const char *const config_flag_bits[] = {
     "InvertX", "InvertY", "InvertW", "InvertP",
         "SwapXY", "SwapWP", "KeyupWP", "GamepadMouse",
-    "", "", "", "",
+    "HaveFan", "", "", "",
         "", "", "", "",
     "", "", "", "",
         "", "", "", "",
