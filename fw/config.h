@@ -37,6 +37,7 @@
 #define CF_MOUSE_KEYUP_WP   0x00000040  // Send key released for wheel / pan
 #define CF_GAMEPAD_MOUSE    0x00000080  // Use joystick on gamepad as mouse
 #define CF_HAVE_FAN         0x00000100  // Board has fan attached
+#define CF_KEYBOARD_NOSYNC  0x00000200  // Skip sync for Amiga keyboard
 
 typedef struct {
     uint32_t    magic;          // Structure magic

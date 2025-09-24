@@ -177,15 +177,72 @@ rtc_set_calibrate(uint enable)
 {
     rtc_allow_writes(1);
     if (enable)
-        RTC_CR |= BIT(23);
+        RTC_CR |= RTC_CR_COE;
     else
-        RTC_CR &= ~BIT(23);
+        RTC_CR &= ~RTC_CR_COE;
     rtc_allow_writes(0);
 
     if (enable)
         gpio_setmode(STMRSTA_PORT, STMRSTA_PIN, GPIO_SETMODE_AF_AF1);
     else
         gpio_setmode(STMRSTA_PORT, STMRSTA_PIN, GPIO_SETMODE_INPUT_PU);
+}
+
+static void
+rtc_set_calibrate_offset(int offset)
+{
+    uint32_t calibr = RTC_CALIBR;
+    uint32_t calibr_new;
+    int      val;
+    int      val_new;
+
+    if (calibr & RTC_CALIBR_DCS) {
+        /* Negative frequency calibration */
+        val = (calibr & RTC_CALIBR_DC_MASK) * -2;
+    } else {
+        /* Positive frequency calibration */
+        val = (calibr & RTC_CALIBR_DC_MASK) * 4;
+    }
+
+    if ((val < 0) || (val + offset < 0))  {
+        /* Adjusting calibration which is currently negative */
+        if (offset == -1)
+            offset = -2;
+        else if (offset == 1)
+            offset = 2;
+    } else {
+        /* Adjusting calibration which is currently positive */
+        if (offset == -1)
+            offset = -4;
+        else if (offset == 1)
+            offset = 4;
+    }
+
+    if (offset == 0) {
+        val_new = 0;
+    } else {
+        val_new = val + offset;
+    }
+
+    if (val_new < 0) {
+        /* Negative frequency calibration */
+        if (val_new < -62)
+            val_new = -62;
+        calibr_new = ((0 - val_new) / 2) | RTC_CALIBR_DCS;
+    } else {
+        /* Positive frequency calibration */
+        if (val_new > 126)
+            val_new = 126;
+        calibr_new = (val_new / 4);
+    }
+
+    rtc_allow_writes(1);
+    rtc_init_mode(TRUE);
+    RTC_CALIBR = calibr_new;
+    rtc_init_mode(FALSE);
+    rtc_allow_writes(0);
+    printf("\nval=%d -> %d  cal=%04lx -> %04lx\n",
+           val, val_new, calibr, calibr_new);
 }
 
 static rc_t
@@ -955,6 +1012,7 @@ rtc_calibrate(void)
     uint     secs = 0;
     char     summary[64];
     uint     enable_calibrate = gpio_get(GPIOC, GPIO13);
+    int      ch;
 
     if (enable_calibrate) {
         printf("500 Hz calibration output is present on PC13 _STMRSTA\n");
@@ -992,6 +1050,30 @@ check_abort:
             if (input_break_pending()) {
                 printf("^C\n");
                 break;
+            }
+            ch = getchar();
+            switch (ch) {
+                case '+':
+                    rtc_set_calibrate_offset(1);
+                    break;
+                case '-':
+                    rtc_set_calibrate_offset(-1);
+                    break;
+                case '=':
+                    rtc_set_calibrate_offset(0);
+                    break;
+                case '[':
+                    rtc_set_calibrate_offset(-10);
+                    break;
+                case ']':
+                    rtc_set_calibrate_offset(10);
+                    break;
+                case '{':
+                    rtc_set_calibrate_offset(-40);
+                    break;
+                case '}':
+                    rtc_set_calibrate_offset(40);
+                    break;
             }
             count = 0;
         }
@@ -1044,7 +1126,6 @@ rtc_init(void)
      */
     PWR_CR |= PWR_CR_DBP;
 
-
     /* Configure and enable RTC clock */
     rc = rtc_clock_config(clk_source, &prediv_async, &rtc_prediv_sync);
     if (rc != RC_SUCCESS)
@@ -1060,9 +1141,12 @@ rtc_init(void)
     /* Set the time format to 24-hour */
     RTC_CR &= ~RTC_CR_FMT;
 
-    RTC_CR &= ~(RTC_CR_WUTIE | RTC_CR_WUTE);
-    RTC_CR &= ~(RTC_CR_ALRAIE | RTC_CR_ALRAE);
-    RTC_CR &= ~(RTC_CR_ALRBIE | RTC_CR_ALRBE);
+    /* Disable PC13 500 Hz clock calibration output */
+    RTC_CR &= ~(RTC_CR_COE);
+
+    RTC_CR &= ~(RTC_CR_WUTIE | RTC_CR_WUTE);    // Disable Wakeup timer
+    RTC_CR &= ~(RTC_CR_ALRAIE | RTC_CR_ALRAE);  // Disable Alarm A
+    RTC_CR &= ~(RTC_CR_ALRBIE | RTC_CR_ALRBE);  // Disable Alarm B
 
     /* Wait for ALRAWF, ALRBWF, and WUTWF to be set */
     uint count = 0;

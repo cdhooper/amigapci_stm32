@@ -891,8 +891,8 @@ static USBH_StatusTypeDef USBH_HandleEnum(USBH_HandleTypeDef *phost)
                     USBH_EP_CONTROL,
                     (uint16_t)phost->Control.pipe_size);
 
-      if (USBH_Get_DevDesc(phost, 8U) == USBH_OK)
-      {
+      tstatus = USBH_Get_DevDesc(phost, 8U);
+      if (tstatus == USBH_OK) {
         printf("USB%u.%u da=%u len=%x type=%x bcdUSB=%x class=%x subclass=%x proto=%x maxpacket=%x\n",
                get_port(phost),
                phost->address,
@@ -925,12 +925,16 @@ static USBH_StatusTypeDef USBH_HandleEnum(USBH_HandleTypeDef *phost)
                       phost->device.speed,
                       USBH_EP_CONTROL,
                       (uint16_t)phost->Control.pipe_size);
+      } else if (tstatus != USBH_BUSY) {
+        Status = USBH_FAIL;
+        phost->EnumState = ENUM_DONE;
       }
       break;
 
     case ENUM_GET_FULL_DEV_DESC:
       /* Get FULL Device Desc  */
-      if (USBH_Get_DevDesc(phost, USB_DEVICE_DESC_SIZE) == USBH_OK)
+      tstatus = USBH_Get_DevDesc(phost, USB_DEVICE_DESC_SIZE);
+      if (tstatus == USBH_OK)
       {
         USBH_UsrLog("USB%u.%u VID:PID %04x:%04x",
                     get_port(phost), phost->address,
@@ -938,6 +942,9 @@ static USBH_StatusTypeDef USBH_HandleEnum(USBH_HandleTypeDef *phost)
                     phost->device.DevDesc.idProduct);
         phost->EnumState = ENUM_SET_ADDR;
 //      phost->Control.pipe_size = phost->device.DevDesc.bMaxPacketSize;
+      } else if (tstatus != USBH_BUSY) {
+        Status = USBH_FAIL;
+        phost->EnumState = ENUM_DONE;
       }
       break;
 

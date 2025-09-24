@@ -35,7 +35,7 @@
 /* Keyboard-to-Amiga ring buffer */
 static uint    ak_rb_producer;
 static uint    ak_rb_consumer;
-static uint8_t ak_rb[16];
+static uint8_t ak_rb[64];
 static volatile uint8_t ak_ctrl_amiga_amiga;
 
 uint8_t amiga_keyboard_sent_wake;
@@ -1159,6 +1159,21 @@ amiga_keyboard_sync(void)
         return;  // Nothing can be done
     }
 #endif
+    if (config.flags & CF_KEYBOARD_NOSYNC) {
+        /* Skip keyboard sync to Amiga and send immediately */
+        amiga_keyboard_has_sync = 1;
+        return;
+    }
+
+    /*
+     * Code running under AmigaPCI might have difficulty achieving
+     * sync with the STM32. It could be that this code could miss
+     * the Amiga's response (75 usec?), in which case this code would
+     * need to implement an interrupt handler to catch that response.
+     *
+     * This is enough to get sync (from Amiga MED):
+     *    cb 0bfee01 40;cb 0bfee01 0
+     */
 
     switch (sync_state) {
         case 0:  // Drive KBDATA low
@@ -1185,8 +1200,8 @@ amiga_keyboard_sync(void)
         case 3:  // Release KBDATA (high)
             if (!timer_tick_has_elapsed(timer_kbsync))
                 return;
-            timer_kbsync = timer_tick_plus_msec(143);
             set_kbdat_1();
+            timer_kbsync = timer_tick_plus_msec(143);
             sync_state++;
             break;
         case 4:  // Wait for Amiga to respond by driving KBDATA low
@@ -1207,7 +1222,7 @@ amiga_keyboard_sync(void)
                     printf("Stuck");
                     set_kbclk_1();
                     sync_state = 0;  // Start all over again
-                    timer_kbsync = timer_tick_plus_msec(143);
+                    timer_kbsync = timer_tick_plus_msec(1);
                     return;
                 }
                 return;  // Wait in the current statre

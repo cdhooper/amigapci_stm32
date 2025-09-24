@@ -546,7 +546,7 @@ usb_ls_classes(USBH_HandleTypeDef *phost, uint verbose)
                         if (HID_Handle->HID_RDesc.num_mmbuttons > 0) {
                             printf("          mmbutton=");
                             for (i = 0; i < HID_Handle->HID_RDesc.num_mmbuttons; i++)
-                                printf("%u [%u] = %x  ", HID_Handle->HID_RDesc.pos_mmbutton[i], HID_Handle->HID_RDesc.id_mmbutton[i], HID_Handle->HID_RDesc.val_mmbutton[i]);
+                                printf("%u[%u]=%x ", HID_Handle->HID_RDesc.pos_mmbutton[i], HID_Handle->HID_RDesc.id_mmbutton[i], HID_Handle->HID_RDesc.val_mmbutton[i]);
                             printf("\n");
                         }
                     }
@@ -1047,7 +1047,6 @@ USBH_remove_subdevices(USBH_HandleTypeDef *phost)
 static void
 process_usb_ports(uint port)
 {
-    uint pos;
     USBH_HandleTypeDef *phost;
     uint64_t tick_enter;
     uint64_t tick_diff;
@@ -1085,13 +1084,15 @@ process_usb_ports(uint port)
                     phost->tick_max = tick_diff;
                 phost->tick_total += tick_diff;
                 phost->poll_count++;
-                if (phost->busy)
-                    return;  // Don't go to next device until this one is done
-                for (pos = 0; pos < ARRAY_SIZE(usb_handle[port]); pos++)
-                    if (usb_handle[port][pos].busy) {
-                        hp_cur[port] = pos;  // Move to next "busy" device
+                if (phost->busy) {
+                    /* Don't go to next device until this one is done */
+                    phost->poll_no_progress++;
+                    if (phost->poll_no_progress < 500)
                         return;
-                    }
+                } else {
+                    /* This one is no longer busy */
+                    phost->poll_no_progress = 0;
+                }
                 break;
             case 3:
                 LOG("USB%u.%u PROCESSING ATTACH\n", get_port(phost), phost->address);

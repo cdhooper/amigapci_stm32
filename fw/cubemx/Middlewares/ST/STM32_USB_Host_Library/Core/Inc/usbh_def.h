@@ -504,6 +504,7 @@ typedef struct _USBH_HandleTypeDef
   uint64_t tick_max;                // Max timer ticks a poll pass took
   uint64_t tick_total;              // Total timer ticks poll passes have taken
   uint32_t poll_count;              // Total polls
+  uint32_t poll_no_progress;        // Polls since the last time it wasn't busy
   uint32_t iface_waiting;           // Bitmask of interfaces waiting
 } USBH_HandleTypeDef;
 

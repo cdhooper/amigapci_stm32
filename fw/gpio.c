@@ -282,7 +282,7 @@ static const gpio_names_t gpio_names[] = {
     { "USB2_DM",    GPIO_B, 14 },
     { "USB2_DP",    GPIO_B, 15 },
     { "Fire",       GPIO_C, 6 },
-    { "MMB",        GPIO_C, 6 },
+    { "LMB",        GPIO_C, 6 },
     { "Button0",    GPIO_C, 6 },
     { "KBRST",      GPIO_C, 7 },
     { "KBData",     GPIO_C, 8 },

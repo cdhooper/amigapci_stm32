@@ -34,7 +34,7 @@
 #define USB_HUB_CLASS     					 0x09
 #define HUB_MIN_POLL	  					 200
 
-#define MAX_HUB_PORTS 						 4
+#define MAX_HUB_PORTS 						 5
 
 #define USB_DESCRIPTOR_HUB                   0x29
 #define USB_REQUEST_GET_DESCRIPTOR           0x06

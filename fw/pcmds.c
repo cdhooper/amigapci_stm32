@@ -433,7 +433,7 @@ cmd_amiga(int argc, char * const *argv)
         power_show();
         if (power_state != POWER_STATE_OFF) {
             if (amiga_in_reset)
-                printf("Amiga is in reset\n");
+                printf("Reset state     Amiga is in reset\n");
         }
         printf("USB Powered     %s\n", usb_is_powered ? "Yes" : "No");
         printf("USB Keyboards   %u\n", usb_keyboard_count);
@@ -709,7 +709,7 @@ static const char *const debug_flag_bits[] = {
 static const char *const config_flag_bits[] = {
     "InvertX", "InvertY", "InvertW", "InvertP",
         "SwapXY", "SwapWP", "KeyupWP", "GamepadMouse",
-    "HaveFan", "", "", "",
+    "HaveFan", "KeyboardNosync", "", "",
         "", "", "", "",
     "", "", "", "",
         "", "", "", "",
@@ -763,7 +763,7 @@ typedef struct {
     uint8_t     cs_mode;    // Mode bits for display (1=hex)
 } config_set_t;
 static const config_set_t config_set[] = {
-    { "board_rev",      "Board revision (5=current)",
+    { "board_rev",      "Board revision",
       CFOFF(board_rev), MODE_DEC },
     { "board_type",     "Board type (1=AmigaPCI, 2=STM32Dev)",
       CFOFF(board_type), MODE_DEC },

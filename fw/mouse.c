@@ -106,7 +106,9 @@ mouse_put_macro(uint32_t macro, uint is_pressed, uint was_pressed)
     }
     if (config.debug_flag & (DF_USB_MOUSE | DF_AMIGA_MOUSE |
                              DF_AMIGA_JOYSTICK)) {
-        if (is_pressed && (macro < 10)) {
+        if (macro < 10) {
+            if (was_pressed)
+                putchar('-');
             if (macro < 6)
                 putchar('B');
             putchar("012345UDLR"[macro]);
@@ -164,6 +166,8 @@ mouse_action(int off_x, int off_y, int off_wheel, int off_pan, uint32_t buttons)
 
     mouse_x += off_x;
     mouse_y += off_y;
+    if ((off_x != 0) || (off_y != 0))
+        change = 1;  // Mouse moved
 
     /* Up/down wheel */
     if (off_wheel != last_wheel) {
