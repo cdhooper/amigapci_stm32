@@ -455,6 +455,27 @@ USBH_StatusTypeDef USBH_ReEnumerate(USBH_HandleTypeDef *phost)
   return USBH_OK;
 }
 
+/* Open Control pipes */
+void
+USBH_OpenControlPipes(USBH_HandleTypeDef *phost)
+{
+    USBH_OpenPipe(phost,
+                  phost->Control.pipe_in,
+                  0x80U,
+                  phost->device.address,
+                  phost->device.speed,
+                  USBH_EP_CONTROL,
+                  (uint16_t)phost->Control.pipe_size);
+
+    USBH_OpenPipe(phost,
+                  phost->Control.pipe_out,
+                  0x00U,
+                  phost->device.address,
+                  phost->device.speed,
+                  USBH_EP_CONTROL,
+                  (uint16_t)phost->Control.pipe_size);
+}
+
 
 /**
   * @brief  USBH_Process
@@ -534,23 +555,7 @@ USBH_StatusTypeDef  USBH_Process(USBH_HandleTypeDef *phost)
       if (phost->device.speed == USBH_SPEED_LOW)
         phost->Control.pipe_size = USBH_MPS_LOWSPEED;
 
-      /* Open Control pipes */
-      USBH_OpenPipe(phost,
-                    phost->Control.pipe_in,
-                    0x80U,
-                    phost->device.address,
-                    phost->device.speed,
-                    USBH_EP_CONTROL,
-                    (uint16_t)phost->Control.pipe_size);
-
-      /* Open Control pipes */
-      USBH_OpenPipe(phost,
-                    phost->Control.pipe_out,
-                    0x00U,
-                    phost->device.address,
-                    phost->device.speed,
-                    USBH_EP_CONTROL,
-                    (uint16_t)phost->Control.pipe_size);
+      USBH_OpenControlPipes(phost);
 
 #if (USBH_USE_OS == 1U)
       phost->os_msg = (uint32_t)USBH_PORT_EVENT;
@@ -874,22 +879,7 @@ static USBH_StatusTypeDef USBH_HandleEnum(USBH_HandleTypeDef *phost)
       /* Get Device Desc for only 1st 8 bytes : To get EP0 MaxPacketSize */
 
       /* Ensure we are talking with the correct device */
-      USBH_OpenPipe(phost,
-                    phost->Control.pipe_in,
-                    0x80U,
-                    phost->device.address,
-                    phost->device.speed,
-                    USBH_EP_CONTROL,
-                    (uint16_t)phost->Control.pipe_size);
-
-      /* Open Control pipes */
-      USBH_OpenPipe(phost,
-                    phost->Control.pipe_out,
-                    0x00U,
-                    phost->device.address,
-                    phost->device.speed,
-                    USBH_EP_CONTROL,
-                    (uint16_t)phost->Control.pipe_size);
+      USBH_OpenControlPipes(phost);
 
       tstatus = USBH_Get_DevDesc(phost, 8U);
       if (tstatus == USBH_OK) {
@@ -909,22 +899,7 @@ static USBH_StatusTypeDef USBH_HandleEnum(USBH_HandleTypeDef *phost)
         phost->EnumState = ENUM_GET_FULL_DEV_DESC;
 
         /* modify control channels configuration for MaxPacket size */
-        USBH_OpenPipe(phost,
-                      phost->Control.pipe_in,
-                      0x80U,
-                      phost->device.address,
-                      phost->device.speed,
-                      USBH_EP_CONTROL,
-                      (uint16_t)phost->Control.pipe_size);
-
-        /* Open Control pipes */
-        USBH_OpenPipe(phost,
-                      phost->Control.pipe_out,
-                      0x00U,
-                      phost->device.address,
-                      phost->device.speed,
-                      USBH_EP_CONTROL,
-                      (uint16_t)phost->Control.pipe_size);
+        USBH_OpenControlPipes(phost);
       } else if (tstatus != USBH_BUSY) {
         Status = USBH_FAIL;
         phost->EnumState = ENUM_DONE;
@@ -961,22 +936,7 @@ static USBH_StatusTypeDef USBH_HandleEnum(USBH_HandleTypeDef *phost)
         phost->EnumState = ENUM_GET_CFG_DESC;
 
         /* modify control channels to update device address */
-        USBH_OpenPipe(phost,
-                      phost->Control.pipe_in,
-                      0x80U,
-                      phost->device.address,
-                      phost->device.speed,
-                      USBH_EP_CONTROL,
-                      (uint16_t)phost->Control.pipe_size);
-
-        /* Open Control pipes */
-        USBH_OpenPipe(phost,
-                      phost->Control.pipe_out,
-                      0x00U,
-                      phost->device.address,
-                      phost->device.speed,
-                      USBH_EP_CONTROL,
-                      (uint16_t)phost->Control.pipe_size);
+        USBH_OpenControlPipes(phost);
       }
       break;
 

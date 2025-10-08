@@ -210,26 +210,12 @@ USBH_StatusTypeDef USBH_GetDescriptor(USBH_HandleTypeDef *phost,
 {
   if (phost->RequestState == CMD_SEND)
   {
-#if 0
+#if 1
     /*
      * Reopen Control pipes -- required for some controllers such as
      * Nintendo Switch Pro.
      */
-    USBH_OpenPipe(phost,
-                  phost->Control.pipe_in,
-                  0x80U,
-                  phost->device.address,
-                  phost->device.speed,
-                  USBH_EP_CONTROL,
-                  (uint16_t)phost->Control.pipe_size);
-
-    USBH_OpenPipe(phost,
-                  phost->Control.pipe_out,
-                  0x00U,
-                  phost->device.address,
-                  phost->device.speed,
-                  USBH_EP_CONTROL,
-                  (uint16_t)phost->Control.pipe_size);
+    USBH_OpenControlPipes(phost);
 #endif
 
     phost->Control.setup.b.bmRequestType = USB_D2H | req_type;
@@ -628,7 +614,9 @@ USBH_StatusTypeDef USBH_CtlReq(USBH_HandleTypeDef *phost, uint8_t *buff,
       phost->RequestState = CMD_WAIT;
       status = USBH_BUSY;
       phost->busy++;  // Paired with -- in CMD_WAIT
+      phost->ctl_timer = phost->Timer;
 
+      status = USBH_HandleControl(phost);
 #if (USBH_USE_OS == 1U)
       phost->os_msg = (uint32_t)USBH_CONTROL_EVENT;
 #if (osCMSIS < 0x20000U)
@@ -667,6 +655,13 @@ USBH_StatusTypeDef USBH_CtlReq(USBH_HandleTypeDef *phost, uint8_t *buff,
           phost->RequestState = CMD_SEND;  // Return to "ready to send" state
           USBH_UsrLog("USB%u.%u USBH_CtlReq FAIL\n", get_port(phost), phost->address);
           status = USBH_FAIL;
+      } else if (status == USBH_BUSY) {
+          if (phost->Timer - phost->ctl_timer > 200) {
+            status = USBH_TIMEOUT;
+            phost->RequestState = CMD_SEND;
+            phost->Control.state = CTRL_IDLE;
+            phost->busy--;  // Paired with ++ in CMD_SEND
+          }
       }
       break;
 

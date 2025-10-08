@@ -84,7 +84,7 @@ EndBSPDependencies */
 /** @defgroup USBH_HID_KEYBD_Private_FunctionPrototypes
 * @{
 */
-static USBH_StatusTypeDef USBH_HID_KeybdDecode(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle);
+// static USBH_StatusTypeDef USBH_HID_KeybdDecode(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle);
 /**
 * @}
 */
@@ -93,10 +93,11 @@ static USBH_StatusTypeDef USBH_HID_KeybdDecode(USBH_HandleTypeDef *phost, HID_Ha
 * @{
 */
 
-HID_KEYBD_Info_TypeDef     keybd_info;
+// HID_KEYBD_Info_TypeDef     keybd_info;
 // uint32_t                   keybd_rx_report_buf[2];
-uint32_t                   keybd_report_data[2];
+// uint32_t                   keybd_report_data[2];
 
+#if 0
 static const HID_Report_ItemTypedef imp_0_lctrl =
 {
   (uint8_t *)(void *)keybd_report_data + 0, /*data*/
@@ -215,7 +216,9 @@ static const HID_Report_ItemTypedef imp_0_key_array =
   101,   /*max value device can report*/
   1      /*resolution*/
 };
+#endif
 
+#if 0
 #ifdef QWERTY_KEYBOARD
 static  const  uint8_t  HID_KEYBRD_Key[] =
 {
@@ -318,6 +321,7 @@ static  const  uint8_t  HID_KEYBRD_Codes[] =
   0,    0,    0,    0,    0,    0,    0,    0,       /* 0xD0 - 0xDF */
   58,   44,   60,  127,   64,   57,   62,  128        /* 0xE0 - 0xE7 */
 };
+#endif
 
 #include "config.h"
 
@@ -329,22 +333,27 @@ static  const  uint8_t  HID_KEYBRD_Codes[] =
   */
 USBH_StatusTypeDef USBH_HID_KeybdInit(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle)
 {
-  uint32_t x;
-  dprintf(DF_USB_KEYBOARD, "USB%u.%u kbdinit\n", phost->id, phost->address);
+//  uint32_t x;
+  dprintf(DF_USB_KEYBOARD, "USB%u.%u.%u kbdinit\n",
+          phost->id, phost->address, HID_Handle->interface);
 
 //USBH_HID_Process_HIDReportDescriptor(phost, HID_Handle);
 
+#if 0
   keybd_info.lctrl = keybd_info.lshift = 0U;
   keybd_info.lalt = keybd_info.lgui = 0U;
   keybd_info.rctrl = keybd_info.rshift = 0U;
   keybd_info.ralt = keybd_info.rgui = 0U;
+#endif
 
 
+#if 0
   for (x = 0U; x < (sizeof(keybd_report_data) / sizeof(uint32_t)); x++)
   {
     keybd_report_data[x] = 0U;
 //  keybd_rx_report_buf[x] = 0U;
   }
+#endif
 
 #if 0
   if (HID_Handle->length > (sizeof(keybd_report_data)))
@@ -360,6 +369,7 @@ USBH_StatusTypeDef USBH_HID_KeybdInit(USBH_HandleTypeDef *phost, HID_HandleTypeD
   return USBH_OK;
 }
 
+#if 0
 /**
   * @brief  USBH_HID_GetKeybdInfo
   *         The function return keyboard information.
@@ -377,6 +387,7 @@ HID_KEYBD_Info_TypeDef *USBH_HID_GetKeybdInfo(USBH_HandleTypeDef *phost, HID_Han
     return NULL;
   }
 }
+#endif
 
 /**
   * @brief  USBH_HID_DecodeKeyboard
@@ -388,7 +399,7 @@ USBH_StatusTypeDef USBH_HID_DecodeKeyboard(USBH_HandleTypeDef *phost, HID_Handle
 {
     uint recvlen;
     uint len;
-    uint32_t report_data[4];
+    uint32_t report_data[6];
     HID_RDescTypeDef *rd = &HID_Handle->HID_RDesc;
 
     if (HID_Handle == NULL)
@@ -409,11 +420,33 @@ USBH_StatusTypeDef USBH_HID_DecodeKeyboard(USBH_HandleTypeDef *phost, HID_Handle
             report_data[0], report_data[1], report_data[2]);
 
     if (recvlen > 0) {
-        if ((rd->pos_keymod != 0) || (rd->pos_key6kro != 0)) {
+        if (rd->pos_keynkro & 0x8000) {
             uint byte_keymod  = rd->pos_keymod / 8;
-            uint byte_key6kro = rd->pos_key6kro / 8;
+            uint pos = 0;
+            uint pressed = 0;
+            uint pos_keynkro = rd->pos_keynkro & 0x7fff;
             memset(report_info, 0, sizeof (*report_info));
-            report_info->reserved = 0;
+            memcpy(&report_info->modifier,
+                   ((uint8_t *) report_data) + byte_keymod, 1);
+            for (pos = pos_keynkro; pos < recvlen * 8; ) {
+                if (((pos & 31) == 0) && (report_data[pos / 32] == 0)) {
+                    /* Nothing set in these bits */
+                    pos += 32;
+                    continue;
+                }
+#define BIT(x) (1U << (x))
+                if (report_data[pos / 32] & BIT(pos & 31)) {
+                    uint scancode = pos - pos_keynkro;
+                    report_info->keycode[pressed] = scancode;
+                    if (++pressed == 6)
+                        break;  // buffer full
+                }
+                pos++;
+            }
+        } else if ((rd->pos_keymod != 0) || (rd->pos_keynkro != 0)) {
+            uint byte_keymod  = rd->pos_keymod / 8;
+            uint byte_key6kro = rd->pos_keynkro / 8;
+            memset(report_info, 0, sizeof (*report_info));
             memcpy(&report_info->modifier,
                    ((uint8_t *) report_data) + byte_keymod, 1);
             memcpy(&report_info->keycode,
@@ -427,6 +460,7 @@ USBH_StatusTypeDef USBH_HID_DecodeKeyboard(USBH_HandleTypeDef *phost, HID_Handle
     return (USBH_FAIL);
 }
 
+#if 0
 /**
   * @brief  USBH_HID_KeybdDecode
   *         The function decode keyboard data.
@@ -500,5 +534,6 @@ uint8_t USBH_HID_GetASCIICode(HID_KEYBD_Info_TypeDef *info)
   }
   return output;
 }
+#endif
 /************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/
 

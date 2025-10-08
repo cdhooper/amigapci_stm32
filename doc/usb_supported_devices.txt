@@ -38,22 +38,19 @@ USB Keyboard
         Predator RGB Color Gaming Keyboard
         ID 195d:2047 iOne Internation Co.Ltd. Full Color Gaming Keyboard
         FN+F7 to FN+F12 drive various mouse button combinations
+    Corsair K55 RGB PRO Wired Gaming Keyboard
+        ID 1b1c:1b3d Corsair Gaming K55 RGB Keyboard
+        Jason's keyboard -- shows up and identifies, but no input
+        ** Might work now.
+        Hold Lock + F1 for 5 seconds to force USB boot protocol
+            For newer models, hold S + B keys while powering on
+        Hold Fn + F4 for 5 seconds to factory reset the keyboard
     Das Keyboard 5Q Soft Tactile RGB Smart Mechanical Keyboard (Kickstarter)
         ID 24f0.2020 Das Keyboard 5Q RGB Mechanical Keyboard
             v7.3.253 (latest is 7.4.51)
     Dell KB2521 keyboard
         ID 413c:2107 Dell USB Entry Keyboard
         Up to 4-key rollover
-    SIIG USB Low Profile Multimedia Keyboard (wired)
-        ID 046e.6000 BTC USB Keyboard
-        Multimedia keys cause keyboard to timeout and reset at 1 second.
-            Probably needs the host to poll the second interface:
-            USB1 IF=0 protocol=1 numcfg=2
-            USB1 kbdinit class=5
-            USB1.0.0 type 2 Keyboard
-            USB1.0.1 type ff Unknown
-    WASD Model V3 custom keyboard (wired)
-        ID 0c45:7692 Microdia USB Keyboard
     Logitech K340 wireless keyboard
         ID 046d:c52b Logitech, Inc. Unifying Receiver
         Function key provides power button and other multimedia keys.
@@ -70,6 +67,16 @@ USB Keyboard
         ID 046d:c52b Logitech, Inc. Unifying Receiver
         Touchpad acts as mouse.
         Fn-ins is PC power button
+    SIIG USB Low Profile Multimedia Keyboard (wired)
+        ID 046e.6000 BTC USB Keyboard
+        Multimedia keys cause keyboard to timeout and reset at 1 second.
+            Probably needs the host to poll the second interface:
+            USB1 IF=0 protocol=1 numcfg=2
+            USB1 kbdinit class=5
+            USB1.0.0 type 2 Keyboard
+            USB1.0.1 type ff Unknown
+    WASD Model V3 custom keyboard (wired)
+        ID 0c45:7692 Microdia USB Keyboard
 
 USB Hub Keyboard
     ***
@@ -129,8 +136,10 @@ USB Gamepad / Joystick
         As HID Joystick. Top left button is B0 and right is B1,
             back has B2 and B3, and front has B4 and B5.
     8Bitdo SN30 Pro USB Wired Gamepad (Grey edition) for Switch / Win / Pi
-        ID 045e:028e Microsoft Corp. Xbox360 Controller
-        Requires custom XUSB protocol support, and no way to switch it.
+        By default, powers up in custom Xbox360 (XUSB) protocol mode.
+        Hold down the Y button when connecting to start in Nintendo mode.
+            ID 045e:028e Microsoft Corp. Xbox360 Controller
+            ID 057e:2009 Nintendo Co., Ltd Switch Pro Controller
     EasySMX 2.4G Wireless Controller ESM-9013
         This wireless controller supports five different modes, which allows
         it to emulate several types of devices:
@@ -156,10 +165,7 @@ USB Hub Keyboard
     <All tested devices are working>
 
 USB Keyboard
-    Corsair K55 RGB PRO Wired Gaming Keyboard
-        ID 1b1c:1b3d Corsair Gaming K55 RGB Keyboard
-        Jason's keyboard -- shows up and identifies, but no input
-        ** Might work now.
+    <All tested devices are working>
 
 USB Mouse
 

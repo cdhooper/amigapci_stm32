@@ -106,8 +106,8 @@ typedef struct _HID_HandleTypeDef HID_HandleTypeDef;
 typedef enum
 {
   HID_INIT = 0,
-  HID_IDLE,
   HID_VENDOR,
+  HID_GET_REPORT,
   HID_SEND_DATA,
   HID_BUSY,
   HID_GET_DATA,
@@ -212,7 +212,7 @@ typedef struct _HIDRDescriptor
   uint16_t   pos_jpad[4];      // Joystick/pad button positions U D L R
   uint16_t   pos_sysctl;       // Position of System control key
   uint16_t   pos_keymod;       // Position of keyboard modifiers
-  uint16_t   pos_key6kro;      // Position of keyboard 6-key rollover
+  uint16_t   pos_keynkro;      // Position of keyboard 6-key or n-key rollover
   uint16_t   pos_mmbutton[20]; // Position of Multimedia button
   uint16_t   val_mmbutton[20]; // MM Key value of Multimedia button
   int16_t    offset_xy;        // Offset to add to mouse x / y / wheel / pan

@@ -85,6 +85,8 @@ USBH_StatusTypeDef USBH_OpenPipe(USBH_HandleTypeDef *phost,
 USBH_StatusTypeDef USBH_ClosePipe(USBH_HandleTypeDef *phost,
                                   uint8_t pipe_num);
 
+void USBH_OpenControlPipes(USBH_HandleTypeDef *phost);
+
 uint8_t USBH_AllocPipe(USBH_HandleTypeDef *phost,
                        uint8_t ep_addr);
 

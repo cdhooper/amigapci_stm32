@@ -305,6 +305,7 @@ typedef enum
   USBH_NOT_SUPPORTED,
   USBH_UNRECOVERED_ERROR,
   USBH_ERROR_SPEED_UNKNOWN,
+  USBH_TIMEOUT,
 } USBH_StatusTypeDef;
 
 
@@ -476,6 +477,7 @@ typedef struct _USBH_HandleTypeDef
 //uint32_t              Pipes[16];
   uint32_t              *Pipes;  // MORI
   __IO uint32_t         Timer;
+  uint32_t              ctl_timer;
   void                 *pData;
   void (* pUser)(struct _USBH_HandleTypeDef *pHandle, uint8_t id);
 

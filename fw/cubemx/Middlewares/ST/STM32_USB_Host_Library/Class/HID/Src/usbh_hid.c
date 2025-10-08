@@ -47,6 +47,7 @@ EndBSPDependencies */
 #include "timer.h"
 #include "utils.h"
 #include "usb.h"
+#include "irq.h"
 #define DEBUG_HIDREPORT_DESCRIPTOR
 #ifdef DEBUG_HIDREPORT_DESCRIPTOR
 #define DPRINTF(...) dprintf(DF_USB_REPORT, __VA_ARGS__)
@@ -308,12 +309,19 @@ void USBH_HID_Process_HIDReportDescriptor(USBH_HandleTypeDef *phost, HID_HandleT
                                     case HID_USAGE_KBD:
                                         if (x != 0)  // Not first cell
                                             break;
-                                        if (report_size == 1) {
+                                        if ((report_size == 1) &&
+                                            (report_count == 8)) {
                                             rd->pos_keymod = bitpos;
                                             DPRINTF(" KEYMOD=%u", bitpos);
-                                        } else if (report_size == 8) {
-                                            rd->pos_key6kro = bitpos;
+                                        } else if ((report_size == 8) &&
+                                                   (report_count == 6)) {
+                                            rd->pos_keynkro = bitpos;
                                             DPRINTF(" KEY6KRO=%u", bitpos);
+                                        } else if ((report_size == 1) &&
+                                            (report_count > 64)) {
+                                            /* Typical count: 152 */
+                                            rd->pos_keynkro = bitpos | BIT(15);
+                                            DPRINTF(" KEYNKRO=%u", bitpos);
                                         }
                                         break;
                                 }
@@ -766,6 +774,7 @@ static USBH_StatusTypeDef USBH_HID_ClassRequest_ll(USBH_HandleTypeDef *phost, HI
   {
     case HID_REQ_INIT:
         HID_Handle->ctl_state = HID_REQ_GET_HID_DESC;
+        HID_Handle->timer = phost->Timer;
         break;
     case HID_REQ_GET_HID_DESC:
       /* Get HID Desc */
@@ -773,10 +782,36 @@ static USBH_StatusTypeDef USBH_HID_ClassRequest_ll(USBH_HandleTypeDef *phost, HI
       if (tstatus == USBH_OK) {
         USBH_HID_ParseHIDDesc(&HID_Handle->HID_Desc, phost->device.Data);
         HID_Handle->ctl_state = HID_REQ_GET_REPORT_DESC;
+        HID_Handle->error_count = 0;
 
-      } else if (tstatus != USBH_BUSY) {
+      } else if (tstatus == USBH_BUSY) {
+        if (phost->Timer - HID_Handle->timer > 3000)
+            goto get_hid_descriptor_failed;
+
+        if ((phost->Timer - HID_Handle->timer > 1000) &&
+            (HID_Handle->error_count == 0)) {
+          HID_Handle->error_count++;
+          printf("USB%u.%u.%u busy too long for get HID descriptor\n",
+                 get_port(phost), phost->address, HID_Handle->interface);
+
+          /* Try again */
+          phost->RequestState = CMD_SEND;
+          HID_Handle->ctl_state = HID_REQ_GET_HID_DESC;
+        }
+      } else {
+get_hid_descriptor_failed:
         printf("USB%u.%u.%u failed get HID descriptor\n",
                get_port(phost), phost->address, HID_Handle->interface);
+
+        /* Assume keyboard */
+        HID_Handle->HID_Desc.bLength                  = 0x0009;
+        HID_Handle->HID_Desc.bDescriptorType          = 0x21;
+        HID_Handle->HID_Desc.bcdHID                   = 0x0110;
+        HID_Handle->HID_Desc.bCountryCode             = 0x00;
+        HID_Handle->HID_Desc.bNumDescriptors          = 0x01;
+        HID_Handle->HID_Desc.bReportDescriptorType    = 0x22;
+        HID_Handle->HID_Desc.wItemLength              = 0x0045;
+
         HID_Handle->ctl_state = HID_REQ_GET_REPORT_DESC;
       }
 
@@ -875,6 +910,29 @@ static USBH_StatusTypeDef USBH_HID_ClassRequest(USBH_HandleTypeDef *phost)
     return (phost->iface_waiting ? USBH_BUSY: USBH_OK);
 }
 
+static void
+USBH_OpenEpPipes(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle)
+{
+    uint8_t interface = HID_Handle->interface;
+    USBH_InterfaceDescTypeDef *ifd = &phost->device.CfgDesc.Itf_Desc[interface];
+    uint max_ep = (ifd->bNumEndpoints <= USBH_MAX_NUM_ENDPOINTS) ?
+                   ifd->bNumEndpoints : USBH_MAX_NUM_ENDPOINTS;
+
+    for (uint num = 0U; num < max_ep; num++) {
+      if (ifd->Ep_Desc[num].bEndpointAddress & 0x80U) {
+        /* Open pipe for IN endpoint */
+        USBH_OpenPipe(phost, HID_Handle->InPipe, HID_Handle->InEp,
+                      phost->device.address, phost->device.speed,
+                      USB_EP_TYPE_INTR, HID_Handle->length_max);
+      } else {
+        /* Open pipe for OUT endpoint */
+        USBH_OpenPipe(phost, HID_Handle->OutPipe, HID_Handle->OutEp,
+                      phost->device.address, phost->device.speed,
+                      USB_EP_TYPE_INTR, HID_Handle->length);
+      }
+    }
+}
+
 static USBH_StatusTypeDef USBH_HID_Process_ll(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle)
 {
   USBH_StatusTypeDef status = USBH_OK;
@@ -891,22 +949,7 @@ static USBH_StatusTypeDef USBH_HID_Process_ll(USBH_HandleTypeDef *phost, HID_Han
         break;
       }
       HID_Handle->state = HID_VENDOR;
-
-      uint8_t interface = HID_Handle->interface;
-      uint max_ep = ((phost->device.CfgDesc.Itf_Desc[interface].bNumEndpoints <= USBH_MAX_NUM_ENDPOINTS) ?
-             phost->device.CfgDesc.Itf_Desc[interface].bNumEndpoints : USBH_MAX_NUM_ENDPOINTS);
-
-      for (uint num = 0U; num < max_ep; num++) {
-        if (phost->device.CfgDesc.Itf_Desc[interface].Ep_Desc[num].bEndpointAddress & 0x80U) {
-        /* Open pipe for IN endpoint */
-          USBH_OpenPipe(phost, HID_Handle->InPipe, HID_Handle->InEp, phost->device.address,
-                        phost->device.speed, USB_EP_TYPE_INTR, HID_Handle->length_max);
-        } else {
-        /* Open pipe for OUT endpoint */
-          USBH_OpenPipe(phost, HID_Handle->OutPipe, HID_Handle->OutEp, phost->device.address,
-                        phost->device.speed, USB_EP_TYPE_INTR, HID_Handle->length);
-        }
-      }
+      USBH_OpenEpPipes(phost, HID_Handle);
 
       USBH_LL_SetToggle(phost, HID_Handle->InPipe, 0U);
 
@@ -922,26 +965,27 @@ static USBH_StatusTypeDef USBH_HID_Process_ll(USBH_HandleTypeDef *phost, HID_Han
 
     case HID_VENDOR:
       /* Execute vendor-specific code */
-      if (HID_Handle->Vendor != NULL) {
+      if (HID_Handle->Vendor != NULL)
         status = HID_Handle->Vendor(phost, HID_Handle);
-        switch (status) {
-          default:
-            printf("USB%u.%u.%u Unknown status %d from vendor init\n",
-                   get_port(phost), phost->address, HID_Handle->interface,
-                   status);
-            /* Fall through */
-          case USBH_OK:
-            HID_Handle->state = HID_IDLE;
-            break;
-          case USBH_BUSY:  // Stay in current state
-            break;
+
+      if (status == USBH_OK) {
+        switch (USBH_HID_GetDeviceType(phost, HID_Handle->interface)) {
+            case HID_KEYBOARD:
+            case HID_MOUSE:
+                /*
+                 * Some keyboards and mice react badly to GET_REPORT, so
+                 * skip it for all of them. The Corsair K55 is one example.
+                 */
+                HID_Handle->state = HID_SYNC;
+                break;
+            default:
+                HID_Handle->state = HID_GET_REPORT;
+                break;
         }
-      } else {
-        HID_Handle->state = HID_IDLE;
       }
       break;
 
-    case HID_IDLE:
+    case HID_GET_REPORT:
       // HID_Handle pData and length_max are updated in the HID protocol handler
       status = USBH_HID_GetReport(phost, 0x01U, 0U, HID_Handle->pData, (uint8_t)HID_Handle->length_max);
       if (status == USBH_OK)
@@ -950,22 +994,20 @@ static USBH_StatusTypeDef USBH_HID_Process_ll(USBH_HandleTypeDef *phost, HID_Han
       }
       else if (status == USBH_BUSY)
       {
-        HID_Handle->state = HID_IDLE;
-
-        static uint16_t busy_too_long = 0;
-        if (busy_too_long++ > 1024) {
-            busy_too_long = 0;
-            HID_Handle->state = HID_SYNC;
-            status = USBH_OK;
-            printf("USB%u.%u.%u busy too long for HID GetReport\n",
-                   get_port(phost), phost->address, HID_Handle->interface);
-        }
+        /* Stay in same state */
       }
       else if (status == USBH_NOT_SUPPORTED)
       {
         PPRINTF(" ->NOSUP");
         HID_Handle->state = HID_SYNC;
         status = USBH_OK;
+      }
+      else if (status == USBH_TIMEOUT)
+      {
+        printf("USB%u.%u.%u HID GetReport timeout\n",
+               get_port(phost), phost->address, HID_Handle->interface);
+        status = USBH_OK;
+        HID_Handle->state = HID_SYNC;
       }
       else
       {
@@ -1009,19 +1051,30 @@ static USBH_StatusTypeDef USBH_HID_Process_ll(USBH_HandleTypeDef *phost, HID_Han
 #endif
       break;
 
-    case HID_GET_DATA:
+    case HID_GET_DATA: {
+      disable_irq();
+      if (USBH_LL_GetURBState(phost, HID_Handle->InPipe) == USBH_URB_DONE) {
+        enable_irq();
+        goto do_hid_poll;
+      }
       USBH_InterruptReceiveData(phost, HID_Handle->pData,
                                 (uint8_t)HID_Handle->length_max,
                                 HID_Handle->InPipe);
+      enable_irq();
 
-      HID_Handle->state = HID_POLL;
       HID_Handle->timer = phost->Timer;
+      HID_Handle->state = HID_POLL;
       HID_Handle->DataReady = 0U;
       break;
+    }
 
     case HID_POLL:
+do_hid_poll:
       if (USBH_LL_GetURBState(phost, HID_Handle->InPipe) == USBH_URB_DONE)
       {
+        /* Mark the URB as received */
+        USBH_LL_SetURBState(phost, HID_Handle->InPipe, USBH_URB_IDLE);
+
         XferSize = USBH_LL_GetLastXferSize(phost, HID_Handle->InPipe);
 
         if ((HID_Handle->DataReady == 0U) && (XferSize != 0U))

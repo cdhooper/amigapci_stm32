@@ -112,7 +112,7 @@ const char cmd_usb_help[] =
    "usb debug <mask> - set debug mask\n"
    "usb disable      - reset and disable USB\n"
    "usb kbd [on|off] - take input from USB keyboard\n"
-   "usb ls           - list USB devices present\n"
+   "usb ls [v] [c]   - list USB devices present\n"
    "usb off          - power off USB ports\n"
    "usb on           - power on USB ports\n"
    "usb regs         - display USB device registers\n"
@@ -584,6 +584,8 @@ cmd_usb(int argc, char * const *argv)
         while (argc >= 2) {
             if (strncmp(argv[1], "verbose", 1) == 0)
                 verbose++;
+            if (strncmp(argv[1], "config", 1) == 0)
+                verbose |= 0x100;
             argc--;
             argv++;
         }

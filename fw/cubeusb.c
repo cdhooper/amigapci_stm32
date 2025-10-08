@@ -173,9 +173,9 @@ static const char * const host_controlstate_types[] = {
 };
 
 static const char * const hid_state_types[] = {
-    "HID_INIT", "HID_VENDOR", "HID_IDLE", "HID_SEND_DATA",
-    "HID_BUSY", "HID_GET_DATA", "HID_SYNC", "HID_POLL",
-    "HID_ERROR", "HID_NO_SUPPORT"
+    "HID_INIT", "HID_VENDOR", "HID_GET_REPORT",
+    "HID_SEND_DATA", "HID_BUSY", "HID_GET_DATA", "HID_SYNC",
+    "HID_POLL", "HID_ERROR", "HID_NO_SUPPORT"
 };
 
 static const char * const hid_ctl_state_types[] = {
@@ -416,6 +416,7 @@ usb_ls_classes(USBH_HandleTypeDef *phost, uint verbose)
     uint i;
     char *protostr;
     char *ifsclass_str;
+    uint show_config = verbose & 0x100;
 
     if (numif > USBH_MAX_NUM_INTERFACES)
         numif = USBH_MAX_NUM_INTERFACES;
@@ -466,7 +467,7 @@ usb_ls_classes(USBH_HandleTypeDef *phost, uint verbose)
                ifproto, protostr);
         if (ifclass == 0)
             continue;
-        if (verbose) {
+        if (verbose & 0xff) {
             switch (ifclass) {
                 case USB_HID_CLASS: {
                     HID_HandleTypeDef *HID_Handle = data;
@@ -480,12 +481,11 @@ usb_ls_classes(USBH_HandleTypeDef *phost, uint verbose)
                         }
 
                         printf("          OutEp=%x InEp=%x state=%s "
-                               "ctl_state=%x %s\n",
+                               "ctl_state=%s\n",
                                HID_Handle->OutEp, HID_Handle->InEp,
                                (HID_Handle->state <
                                 ARRAY_SIZE(hid_state_types)) ?
                                hid_state_types[HID_Handle->state] : "Unknown",
-                               HID_Handle->ctl_state,
                                (HID_Handle->ctl_state <
                                 ARRAY_SIZE(hid_ctl_state_types)) ?
                                hid_ctl_state_types[HID_Handle->ctl_state] :
@@ -499,10 +499,13 @@ usb_ls_classes(USBH_HandleTypeDef *phost, uint verbose)
                         printf("          usage=%s",
                                get_hid_usage_str(HID_Handle->HID_RDesc.usage));
                         if (HID_Handle->HID_RDesc.pos_keymod ||
-                            HID_Handle->HID_RDesc.pos_key6kro) {
-                            printf("  keymod=%u 6kro=%u",
+                            HID_Handle->HID_RDesc.pos_keynkro) {
+                            uint which = HID_Handle->HID_RDesc.pos_keynkro &
+                                         BIT(15);
+                            printf("  keymod=%u %ckro=%u",
                                    HID_Handle->HID_RDesc.pos_keymod,
-                                   HID_Handle->HID_RDesc.pos_key6kro);
+                                   which ? 'n' : '6',
+                                   HID_Handle->HID_RDesc.pos_keynkro & 0x7fff);
                         }
                         printf("\n");
                         if (HID_Handle->HID_RDesc.bits_x ||
@@ -609,6 +612,34 @@ usb_ls_classes(USBH_HandleTypeDef *phost, uint verbose)
                 }
             }
         }
+        if (show_config) {
+            USBH_DeviceTypeDef *dev = &phost->device;
+            USBH_CfgDescTypeDef *cd = &dev->CfgDesc;
+            USBH_InterfaceDescTypeDef *id = &cd->Itf_Desc[ifnum];
+            uint ep;
+            printf("          IDesc bLength=%x bDescriptorType=%x "
+                   "bInterfaceNumber=%x\n",
+                   id->bLength, id->bDescriptorType, id->bInterfaceNumber);
+            printf("                bAlternateSetting=%x bNumEndpoints=%x "
+                   "bInterfaceClass=%x\n",
+                   id->bAlternateSetting, id->bNumEndpoints,
+                   id->bInterfaceClass);
+            printf("                bInterfaceSubClass=%x "
+                   "bInterfaceProtocol=%x iInterface=%x\n",
+                   id->bInterfaceSubClass, id->bInterfaceProtocol,
+                   id->iInterface);
+            for (ep = 0; ep < id->bNumEndpoints; ep++) {
+                USBH_EpDescTypeDef *ed = &id->Ep_Desc[ep];
+                printf("          EDesc%u bLength=%x bDescriptorType=%x "
+                       "bEndpointAddress=%x\n",
+                       ep, ed->bLength, ed->bDescriptorType,
+                       ed->bEndpointAddress);
+                printf("                 bmAttributes=%x wMaxPacketSize=%x "
+                       "bInterval=%x\n",
+                       ed->bmAttributes, ed->wMaxPacketSize,
+                       ed->bInterval);
+            }
+        }
     }
 }
 
@@ -617,6 +648,8 @@ usb_ls(uint verbose)
 {
     uint port;
     uint hubport;
+    uint show_config = verbose & 0x100;
+
     for (port = 0; port < 2; port++) {
         for (hubport = 0; hubport < MAX_HUB_PORTS + 1; hubport++) {
             USBH_HandleTypeDef *phost = &usb_handle[port][hubport];
@@ -645,7 +678,32 @@ usb_ls(uint verbose)
                 if (devclass == phost->pClass[classnum]->ClassCode)
                     break;
             }
-            if (verbose) {
+            if (show_config) {
+                USBH_DeviceTypeDef *dev = &phost->device;
+                USBH_DevDescTypeDef *dd = &dev->DevDesc;
+                USBH_CfgDescTypeDef *cd = &dev->CfgDesc;
+                printf("\n          enabled=%x connected=%x disconnected=%x "
+                       "re-enumerated=%x",
+                       dev->PortEnabled, dev->is_connected,
+                       dev->is_disconnected, dev->is_ReEnumerated);
+                printf("\n          Dev bLength=%x bDescriptorType=%x "
+                       "bDeviceClass=%x bDeviceSubClass=%x",
+                       dd->bLength, dd->bDescriptorType,
+                       dd->bDeviceClass, dd->bDeviceSubClass);
+                printf("\n              bDeviceProtocol=%x bcdUSB=%x "
+                       "bcdDevice=%x bNumConfigurations=%x",
+                       dd->bcdUSB, dd->bDeviceProtocol, dd->bcdDevice,
+                       dd->bNumConfigurations);
+                printf("\n          Cfg bLength=%x bDescriptorType=%x "
+                       "wTotalLength=%x bNumInterfaces=%x ",
+                       cd->bLength, cd->bDescriptorType, cd->wTotalLength,
+                       cd->bNumInterfaces);
+                printf("\n              bConfigurationValue=%x02 "
+                       "bmAttributes=%02x bMaxPower=%x",
+                       cd->bConfigurationValue, cd->bmAttributes,
+                       cd->bMaxPower);
+            }
+            if (verbose & 0xff) {
                 printf("\n          class=%x %s ",
                        devclass, get_devclass_str(devclass));
                 printf(" gstate=%s ",
@@ -659,26 +717,26 @@ usb_ls(uint verbose)
                 printf("\n          estate=%s ",
                        (phost->EnumState < ARRAY_SIZE(host_enumstate_types)) ?
                        host_enumstate_types[phost->EnumState] : "Unknown");
-                printf(" polls=%lu  usec %llu max %llu",
-                       phost->poll_count, timer_tick_to_usec(phost->tick_total),
-                       timer_tick_to_usec(phost->tick_max));
-                printf("\n          ctlstate=%s ",
+                printf(" ctlstate=%s ",
                        (phost->Control.state <
                         ARRAY_SIZE(host_controlstate_types)) ?
                        host_controlstate_types[phost->Control.state] :
                        "Unknown");
+                printf(" app=%s",
+                       host_appstate[usbdev[port][hubport].appstate]);
+                printf("\n          polls=%lu  usec %llu max %llu",
+                       phost->poll_count, timer_tick_to_usec(phost->tick_total),
+                       timer_tick_to_usec(phost->tick_max));
                 printf(" ifs=%u hub=%x hubifs=%x",
                        phost->device.CfgDesc.bNumInterfaces,
                        phost->hub, phost->interfaces);
-                printf(" out=%u in=%u",
-                       phost->Control.pipe_out, phost->Control.pipe_in);
                 printf("\n          lastreq=%02x val=%02x ind=%02x len=%02x",
                        phost->Control.setup.b.bRequest,
                        phost->Control.setup.b.wValue.w,
                        phost->Control.setup.b.wIndex.w,
                        phost->Control.setup.b.wLength.w);
-                printf(" app=%s",
-                       host_appstate[usbdev[port][hubport].appstate]);
+                printf(" out=%u in=%u",
+                       phost->Control.pipe_out, phost->Control.pipe_in);
                 if (phost->busy) {
                     printf("  BUSY");
                     if (phost->busy > 1)
@@ -913,8 +971,7 @@ USBH_reset_state_machine(int port)
 {
     usb_handle[port][0].gState = HOST_IDLE;
     usb_handle[port][0].EnumState = ENUM_IDLE;
-    if (usb_handle[port][0].RequestState == CMD_WAIT)
-        usb_handle[port][0].busy--;
+    usb_handle[port][0].busy = 0;
     usb_handle[port][0].RequestState = CMD_SEND;
     usb_handle[port][0].Timer = 0U;
     usb_handle[port][0].Control.state = CTRL_SETUP;
@@ -1371,6 +1428,14 @@ USBH_URBStateTypeDef
 USBH_LL_GetURBState(USBH_HandleTypeDef *phost, uint8_t pipe)
 {
     return (USBH_URBStateTypeDef) HAL_HCD_HC_GetURBState(phost->pData, pipe);
+}
+
+void
+USBH_LL_SetURBState(USBH_HandleTypeDef *phost, uint8_t pipe,
+                    USBH_URBStateTypeDef state)
+{
+    HCD_HandleTypeDef *hhcd = phost->pData;
+    hhcd->hc[pipe].urb_state = (USB_URBStateTypeDef) state;
 }
 
 USBH_StatusTypeDef

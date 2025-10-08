@@ -1251,11 +1251,8 @@ keyboard_handle_magic(uint8_t keycode, uint modifier)
     static uint8_t       stm32_pos;
     uint8_t              ascii = scancode_to_ascii_ext[keycode];
     if ((modifier & (KEYBOARD_MODIFIER_LEFTCTRL |
-                    KEYBOARD_MODIFIER_RIGHTCTRL)) == 0) {
-        power_pos = 0;
-        reset_pos = 0;
-        stm32_pos = 0;
-        return;
+                     KEYBOARD_MODIFIER_RIGHTCTRL)) == 0) {
+        ascii = 0;  // Reset all magic state machines
     }
     if (ascii == power_seq[power_pos]) {
         if (++power_pos == ARRAY_SIZE(power_seq)) {
