@@ -839,7 +839,7 @@ gpio_init(void)
 
     gpio_setv(D16_PORT, D16_PIN | D17_PIN | D18_PIN | D19_PIN, 1);
     gpio_setmode(D16_PORT, D16_PIN | D17_PIN | D18_PIN | D19_PIN,
-                 GPIO_SETMODE_OUTPUT_ODRAIN_100 | GPIO_SETMODE_PU);
+                 GPIO_SETMODE_INPUT_PU);
     gpio_setmode(A2_PORT, A2_PIN | A3_PIN | A4_PIN | A5_PIN,
                  GPIO_SETMODE_INPUT_PU);
 

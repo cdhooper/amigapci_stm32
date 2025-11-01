@@ -712,8 +712,10 @@ rtc_to_utc(uint year, uint mon, uint day, uint hour, uint min, uint sec)
 {
     uint leap = (is_leap_year(year) && (mon > 2)) ? 1 : 0;
 
+#if 0
     dprintf(DF_RTC, "RTC: %04u-%02u-%02u %02u:%02u:%02u leap=%u since1970=%u\n",
             year, mon, day, hour, min, sec, leap, days_since_1970(year));
+#endif
 
     return (sec +
             60 * (min +
@@ -880,20 +882,35 @@ time_str(uint32_t secs, uint32_t msec, char *buf, size_t buflen)
  * rtc_print() displays the current wall clock time of the STM32F2 RTC.
  *             This function is called for the user "time" command.
  *
+ * @param [in]  which - 0 = physical RTC
+ *                      1 = converted time
  * @param [in]  newline - End output with a newline.
  *
  * @return      None.
  */
 void
-rtc_print(uint newline)
+rtc_print(uint which, uint newline)
 {
     char buf[32];
     uint sec;
     uint msec;
 
-    sec = time_get_utc(&msec);
-    time_str(sec, msec, buf, sizeof (buf));
-    printf("%s (0x%08x)", buf, sec);
+    if (which == 0) {
+        uint year;
+        uint mon;
+        uint day;
+        uint hour;
+        uint min;
+        uint leap;
+        rtc_get_time(&year, &mon, &day, &hour, &min, &sec, &msec);
+        leap = (is_leap_year(year) && (mon > 2)) ? 1 : 0;
+        printf("%04u-%02u-%02u %02u:%02u:%02u leap=%u since1970=%u",
+                year, mon, day, hour, min, sec, leap, days_since_1970(year));
+    } else {
+        sec = time_get_utc(&msec);
+        time_str(sec, msec, buf, sizeof (buf));
+        printf("%s (0x%08x)", buf, sec);
+    }
     if (newline)
         putchar('\n');
 }
@@ -1029,7 +1046,7 @@ rtc_calibrate(void)
             sec_last = sec;
             tick_now = timer_tick_get();
             printf("\r");
-            rtc_print(0);
+            rtc_print(1, 0);
             if (saw_first) {
                 diff_usec = timer_tick_to_usec(tick_now - tick_last);
                 instant_diff = diff_usec - 1000000;
@@ -1158,9 +1175,14 @@ rtc_init(void)
     }
     // Alarm values can now be changed
 
-    /* Set up wake-up timer */
-    RTC_CR = (RTC_CR & ~7) | 4;      // RTC clock selected
-    RTC_WUTR = 0x0001;               // Wakeup each second
+    /*
+     * Set up wake-up timer.
+     * The RTC clock is 32768 Hz, divided by 16 is 2048 Hz.
+     * If wakeup occurs every 32 clocks, that is 256 Hz, which is
+     * an interval of every 3.9 msec.
+     */
+    RTC_CR = (RTC_CR & ~7) | 0;          // RTC/16 clock selected
+    RTC_WUTR = 32 - 1;                   // Wakeup interval (32 clocks)
 
     RTC_ALRMAR =  // RTC_ALRMXR_MSK1 |  // Ignore seconds
                   RTC_ALRMXR_MSK2 |  // Ignore minutes
@@ -1183,7 +1205,6 @@ rtc_init(void)
     RTC_CR |= RTC_CR_WUTE;    // Wake up timer enablke
     RTC_CR |= RTC_CR_ALRAE;   // Alarm A enable
     RTC_CR |= RTC_CR_ALRBE;   // Alarm B enable
-
 
     /* Configure the RTC prescaler (MUST be done as two separate writes) */
     RTC_PRER  = ((prediv_async - 1) << 16);
@@ -1218,5 +1239,5 @@ rtc_init(void)
     /* Enable battery backup of SRAM */
     PWR_CSR |= PWR_CSR_BRE;
 
-    rtc_print(1);
+    rtc_print(1, 1);
 }

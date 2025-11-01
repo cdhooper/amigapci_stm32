@@ -1151,6 +1151,7 @@ static void
 amiga_keyboard_sync(void)
 {
     static uint8_t  sync_state;
+    static uint8_t  kbdata_stuck;
     static uint64_t timer_kbsync;
 
 #if 0
@@ -1219,7 +1220,10 @@ amiga_keyboard_sync(void)
                 /* Still low */
                 if (timer_tick_has_elapsed(timer_kbsync)) {
                     /* KBDATA Stuck low */
-                    printf("Stuck");
+                    if (kbdata_stuck == 0) {
+                        kbdata_stuck = 1;
+                        printf("KBDATA Stuck");
+                    }
                     set_kbclk_1();
                     sync_state = 0;  // Start all over again
                     timer_kbsync = timer_tick_plus_msec(1);
@@ -1231,6 +1235,7 @@ amiga_keyboard_sync(void)
             /* Amiga is no longer driving low: got sync */
             amiga_keyboard_has_sync = 1;
             sync_state = 0;   // Reset state for next loss of sync
+            kbdata_stuck = 0;
             break;
     }
 }

@@ -162,6 +162,9 @@ const char cmd_time_help[] =
 "time calibrate         - compare the RTC with timer while PC13 = 500 Hz\n"
 #endif
 "time cmd <cmd>         - measure command execution time\n"
+#ifdef EMBEDDED_CMD
+"time log               - display log of reset Amiga RTC accesses\n"
+#endif
 #ifndef AMIGA
 "time now               - display the current time\n"
 #endif

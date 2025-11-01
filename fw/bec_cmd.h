@@ -32,7 +32,7 @@
 /* Command codes sent to AmigaPCI STM32 */
 #define BEC_CMD_NULL         0x00  // Do nothing (no reply)
 #define BEC_CMD_NOP          0x01  // Do nothing but reply (success)
-#define BEC_CMD_ID           0x01  // Send STM32 firmware ID and configuration
+#define BEC_CMD_ID           0x02  // Send STM32 firmware ID and configuration
 #define BEC_CMD_UPTIME       0x03  // Send STM32 uptime in microseconds (64-bit)
 #define BEC_CMD_TESTPATT     0x05  // Send test pattern
 #define BEC_CMD_LOOPBACK     0x06  // Reply with (exact) sent message
@@ -46,7 +46,7 @@
 /* Status codes returned by AmigaPCI STM32 */
 #define BEC_STATUS_OK        0x00  // Success
 #define BEC_STATUS_FAIL      0x01  // Generic failure
-#define BEC_STATUS_CRC       0x02  // CRC failure
+#define BEC_STATUS_LOOPBACK  0x02  // Special loopback return code
 #define BEC_STATUS_UNKCMD    0x03  // Unknown command
 #define BEC_STATUS_BADARG    0x04  // Bad command argument
 #define BEC_STATUS_BADLEN    0x05  // Bad message length
@@ -55,10 +55,11 @@
 #define BEC_STATUS_TIMEOUT   0x08  // Timeout talking with BEC
 #define BEC_STATUS_BADMAGIC  0x09  // Bad magic in response message
 #define BEC_STATUS_REPLYLEN  0x0a  // Response message is too long
-#define BEC_STATUS_REPLYCRC  0x0a  // Response message has bad CRC
+#define BEC_STATUS_REPLYCRC  0x0b  // Response message has bad CRC
+#define BEC_STATUS_CRC       0x0c  // CRC failure
 
-#define BEC_MSG_HDR_LEN 8
-#define BEC_MSG_CRC_LEN 8
+#define BEC_MSG_HDR_LEN 4  // Number of bytes in Magic + cmd + length
+#define BEC_MSG_CRC_LEN 4  // Number of bytes in CRC
 
 typedef struct {
     uint16_t bid_version[2];       // BEC firmware version    (major-minor)
@@ -68,7 +69,7 @@ typedef struct {
     uint16_t bid_features;         // Available features
     uint16_t bid_rev;              // Protocol revision (00.01)
     char     bid_name[16];         // Unique name for this board
-    uint8_t  bid_unused[24];       // Unused space
+    uint8_t  bid_unused[32];       // Unused space
 } bec_id_t;
 
 typedef struct {
@@ -86,4 +87,3 @@ typedef struct {
 #define BKM_WHICH_JDIRECTMAP   0x06
 
 #endif  /* _BEC_CMD_H */
-

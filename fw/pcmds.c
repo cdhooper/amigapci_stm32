@@ -286,7 +286,7 @@ cmd_time_set(int argc, char * const *argv)
             return (RC_BAD_PARAM);
         }
     }
-    rtc_print(1);
+    rtc_print(1, 1);
 
     return (RC_SUCCESS);
 }
@@ -316,11 +316,17 @@ cmd_time(int argc, char * const *argv)
         printf("%llu us\n", timer_tick_to_usec(time_diff));
         if (rc == RC_USER_HELP)
             rc = RC_FAILURE;
+    } else if (strcmp(argv[1], "log") == 0) {
+        amigartc_log();
+        rc = RC_SUCCESS;
     } else if (strncmp(argv[1], "now", 1) == 0) {
         uint64_t now = timer_tick_get();
-        printf("tick=0x%llx uptime=%llu usec\ntime=",
+        printf("tick   0x%llx uptime=%llu usec\nRTC    ",
                now, timer_tick_to_usec(now));
-        rtc_print(1);
+        rtc_print(0, 1);
+        printf("utime  ");
+        rtc_print(1, 1);
+        printf("RP5C01 ");
         amigartc_print();
         rc = RC_SUCCESS;
     } else if (strcmp(argv[1], "set") == 0) {

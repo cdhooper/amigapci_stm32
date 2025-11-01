@@ -56,6 +56,7 @@ void reset_check(void);
 void get_reset_reason(void);
 void show_reset_reason(void);
 void identify_cpu(void);
+extern char cpu_serial_str[];
 
 extern uint8_t cold_poweron;
 

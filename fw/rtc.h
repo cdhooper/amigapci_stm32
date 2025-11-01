@@ -23,7 +23,7 @@ void rtc_get_time(uint *year, uint *mon, uint *day,
                   uint *hour, uint *min, uint *sec, uint *msec);
 void utc_to_rtc(uint32_t secs, uint *year, uint *mon, uint *day, uint *hour,
                 uint *min, uint *sec);
-void rtc_print(uint newline);
+void rtc_print(uint which, uint newline);
 uint32_t rtc_read_nvram(uint reg);
 void rtc_write_nvram(uint reg, uint32_t value);
 void rtc_calibrate(void);

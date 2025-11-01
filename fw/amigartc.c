@@ -18,19 +18,30 @@
 #include "bec_cmd.h"
 #include "crc32.h"
 #include "main.h"
+#include "config.h"
 #include "gpio.h"
 #include "uart.h"
 #include "utils.h"
 #include "rtc.h"
 #include "timer.h"
 #include "cmdline.h"
+#include "power.h"
+#include "utils.h"
+#include "version.h"
 
 /* Enable RP5C01 response */
-#undef RESPOND_AS_RP5C01
+#define RESPOND_AS_RP5C01
+
+/* RP5C01 Debug output */
+#undef DEBUG_RP5C01_ACCESS
+#ifdef DEBUG_RP5C01_ACCESS
+#define DPRINTF(x...) printf(x)
+#else
+#define DPRINTF(x...) do { } while (0)
+#endif
 
 /* Enable capture of RP5C01 accesses in interrupt handler */
-#undef INTERRUPT_CAPTURE_RP5C01
-
+#define INTERRUPT_CAPTURE_RP5C01
 
 #define SWAP16(x)   __builtin_bswap16(x)
 #define SWAP32(x)   __builtin_bswap32(x)
@@ -39,10 +50,12 @@
 #define likely(x)   __builtin_expect((x), 1)
 #define unlikely(x) __builtin_expect((x), 0)
 
+#define RAM_FUNCTION __attribute__((section(".ramtext")))
 
 #ifdef INTERRUPT_CAPTURE_RP5C01
-static volatile uint16_t amigartc_cap[512];
-static volatile uint16_t amigartc_cap_count = 0;
+static uint16_t amigartc_cap[256];
+static uint16_t amigartc_tick[256];
+static uint8_t  amigartc_prod;
 #endif
 
 volatile uint8_t rtc_data[4][0x10];
@@ -50,6 +63,7 @@ volatile uint8_t rtc_cur_bank;
 static volatile uint8_t rtc_timer_en;
 static volatile uint8_t rtc_touched;
 static volatile uint8_t rtc_ram_touched;
+
 
 static const uint8_t rtc_mask[4][0x10] = {
     { 0xf, 0x7, 0xf, 0x7, 0xf, 0x3, 0x7, 0xf,
@@ -73,46 +87,48 @@ static const uint8_t testpatt_reply[] = {
 
 static const uint8_t bec_magic[] = { 0xc, 0xd, 0x6, 0x8 };
 
-static uint8_t bec_msg_inbuf[280];
-static uint8_t bec_msg_outbuf[280];
-static uint bec_msg_in;
-static uint bec_msg_out;
-static uint bec_msg_out_max;
+static uint8_t  bec_msg_inbuf[280];
+static uint8_t  bec_msg_outbuf[280];
+static uint     bec_msg_in;         // Current receive position in nibbles
+static uint     bec_msg_out;        // Current send position in nibbles
+static uint     bec_msg_out_max;    // Message length in nibbles
 static uint64_t bec_msg_in_timeout;
 
 /*
  * RP5C01 registers (each register is 4 bits)
  *
- *      MODE0              MODE1                MODE2   MODE3
- *   0  1-second counter   x                    RAM     RAM
- *   1  10-second counter  x                    RAM     RAM
- *   2  1-minute counter   1-minute alarm       RAM     RAM
- *   3  10-minute counter  10-minute alarm      RAM     RAM
- *   4  1-hour counter     1-hour alarm         RAM     RAM
- *   5  10-hour counter    10-hour alarm        RAM     RAM
- *   6  day-of-week count  day-of-week alarm    RAM     RAM
- *   7  1-day counter      1-day alarm          RAM     RAM
- *   8  10-day counter     10-day alarm         RAM     RAM
- *   9  1-month counter    x                    RAM     RAM
- *   A  10-mount counter   12/24 hour+AM/PM     RAM     RAM
- *   B  1-year counter     Leap year counter    RAM     RAM
- *   C  10-year counter    x (0 for AmigaOS)    RAM     RAM
- *   D  MODE register      MODE register        ditto   ditto
- *   E  TEST register      TEST register        ditto   ditto
- *   F  RESET register     RESET register       ditto   ditto
+ *      MODE0              MODE1                MODE2   MODE3   Amiga Addr
+ *   0  1-second counter   x (0)                RAM     RAM     dc0001
+ *   1  10-second counter  x (0)                RAM     RAM     dc0005
+ *   2  1-minute counter   1-minute alarm       RAM     RAM     dc0009
+ *   3  10-minute counter  10-minute alarm      RAM     RAM     dc000d
+ *   4  1-hour counter     1-hour alarm         RAM     RAM     dc0011
+ *   5  10-hour counter    10-hour alarm        RAM     RAM     dc0015
+ *   6  day-of-week count  day-of-week alarm    RAM     RAM     dc0019
+ *   7  1-day counter      1-day alarm          RAM     RAM     dc001d
+ *   8  10-day counter     10-day alarm         RAM     RAM     dc0021
+ *   9  1-month counter    x (0)                RAM     RAM     dc0025
+ *   A  10-month counter   12/24 hour+AM/PM     RAM     RAM     dc0029
+ *   B  1-year counter     Leap year counter    RAM     RAM     dc002d
+ *   C  10-year counter    x (0 for AmigaOS)    RAM     RAM     dc0031
+ *   D  MODE register      MODE register        ditto   ditto   dc0035
+ *   E  TEST register      TEST register        ditto   ditto   dc0039
+ *   F  RESET register     RESET register       ditto   ditto   dc003d
  *
- * Control registers    D3          D2          D1          D0
- * D  MODE register     TIMER_EN    ALARM_EN    MODE_M1     MODE_M0
- * E  TEST register     TEST3       TEST2       TEST1       TEST0
- * F  RESET register    1HZ         16HZ        TIMER_RESET ALARM_RESET
+ * Control registers    D3           D2           D1           D0
+ * D  MODE register     TIMER_EN     ALARM_EN     MODE_M1      MODE_M0
+ * E  TEST register     TEST3        TEST2        TEST1        TEST0
+ * F  RESET register    1 Hz         16 Hz        TIMER_RESET  ALARM_RESET
  *
  * D  MODE register     TIMER_EN    ALARM_EN    MODE_M1     MODE_M0
  *      TIMER_EN=1 to enable the RTCc counters
+ *                 When this bit is 0, the RTC registers will stop updates.
+ *                 This is so a user program can acquire a consistent time.
  *      ALARM_EN=1 to enable alarm output (not connected on Amiga)
  *      M1=0 M0=0  MODE00: Setting and read of time
  *      M1=0 M0=1  MODE01: Setting and read of alarm, 12/24 hour, and leap year
- *      M1=1 MO=0  MODE10: RAM Block10
- *      M1=1 MO=1  MODE11: RAM Block11
+ *      M1=1 M0=0  MODE10: RAM Block10 (12 registers x 4 bits)
+ *      M1=1 M0=1  MODE11: RAM Block11 (12 registers x 4 bits)
  *
  *      Documentation implies that setting TIMER_EN=0 for less than a second
  *      will not result in loss of time (the lower order tick still occurs,
@@ -149,6 +165,24 @@ static uint64_t bec_msg_in_timeout;
 //      GPIO_BSRR(GPIOx) = GPIO_Pins;
 // set 0:
 //      GPIO_BSRR(GPIOx) = GPIO_Pins << 16;
+
+static inline void
+set_rtc_dx_output(void)
+{
+    /*
+     * MODER uses 2 bits for every GPIO.
+     *
+     * D16_PIN | D17_PIN | D18_PIN | D19_PIN
+     * xxxx xxxx 1111 xxxx -> xxxx xxxx xxxx xxxx 0101 0101 xxxx xxxx
+     */
+    GPIO_MODER(D16_PORT) = (GPIO_MODER(D16_PORT) & ~0x0000ff00) | 0x00005500;
+}
+
+static inline void
+set_rtc_dx_input(void)
+{
+    GPIO_MODER(D16_PORT) &= ~0x0000ff00; // (D16_PIN .. D19_PIN) * 2 bits
+}
 
 static void
 amigartc_snoop_show(uint16_t *cap, uint count, int debug)
@@ -189,7 +223,7 @@ amigartc_snoop(int debug)
     uint timeout = 2000000;
     uint first_cap = 1;
     uint16_t cap[512];
-    printf("Press ^C to end\n");
+    printf("Watching A2-A5 and D16-D19. Press ^C to end\n");
 
     nvic_disable_irq(NVIC_EXTI0_IRQ);
 
@@ -211,68 +245,103 @@ dump_cap:
         gpio_value &= (A2_PIN | A3_PIN | A4_PIN | A5_PIN |
                        D16_PIN | D17_PIN | D18_PIN | D19_PIN |
                        R_WA_PIN | RTCEN_PIN);
-        if ((((gpio_value & RTCEN_PIN) == 0) ||
+        if (((debug > 1) && (gpio_last != gpio_value)) ||
+            ((((gpio_value & RTCEN_PIN) == 0) ||
              ((gpio_last & RTCEN_PIN) == 0)) &&
-            (gpio_last != gpio_value)) {
+            (gpio_last != gpio_value))) {
             gpio_last = gpio_value;
             cap[count++] = gpio_value;
             if (count == ARRAY_SIZE(cap))
                 goto dump_cap;  // No more space
         }
     }
+#ifdef RESPOND_AS_RP5C01
     nvic_enable_irq(NVIC_EXTI0_IRQ);
+#endif
 }
 
+/*
+ * amigartc_log() displays the Amiga RTC access log
+ */
+void
+amigartc_log(void)
+{
+#ifdef INTERRUPT_CAPTURE_RP5C01
+    uint cur = (amigartc_prod + 1) % ARRAY_SIZE(amigartc_cap);
+    while (cur != amigartc_prod) {
+        if ((amigartc_cap[cur] & RTCEN_PIN) == 0) {
+            uint16_t v = amigartc_cap[cur];
+
+            printf("%5u %04x %c %x = %x\n", amigartc_tick[cur], v,
+                   (v & R_WA_PIN) ? 'R' : 'W',
+                   (v >> 10) & 0xf,
+                   (v >> 4) & 0xf);
+        }
+        cur = (cur + 1) % ARRAY_SIZE(amigartc_cap);
+    }
+    memset(&amigartc_cap, 0xff, sizeof (amigartc_cap));
+#else
+    printf("RTC capture not enabled at compile-time\n");
+#endif
+}
+
+RAM_FUNCTION
 void
 exti0_isr(void)
 {
-    uint count;
-    uint32_t gpio_value = GPIO_IDR(A4_PORT);
-#ifdef INTERRUPT_CAPTURE_RP5C01
-    if (amigartc_cap_count < ARRAY_SIZE(amigartc_cap)) {
-        amigartc_cap[amigartc_cap_count] = gpio_value;
-        amigartc_cap_count++;
-    }
-#endif
+    uint count = 0;
+    uint32_t gpio_value = (volatile uint32_t) GPIO_IDR(A4_PORT);
+    uint32_t ngpio_value;
 
-    if ((gpio_value & RTCEN_PIN) == 0) {
+#define exti_reset_request(x) EXTI_PR = x
+    exti_reset_request(EXTI0);
+
+    /* This loop can service back-to-back read and write requests */
+    while ((gpio_value & RTCEN_PIN) == 0) {
         if (likely(gpio_value & R_WA_PIN)) {
             /* Amiga reading from RP5C01 */
-#ifdef RESPOND_AS_RP5C01
+            set_rtc_dx_output();
             uint addr = (gpio_value >> 10) & 0xf;
             uint data = rtc_data[rtc_cur_bank][addr];
-//          GPIO_BSRR(A4_PORT) = 0x00f40000 | (data << 4);  // Assert data pins
-            GPIO_BSRR(A4_PORT) = 0x00f00000 | (data << 4);  // Assert data pins
-// printf("%x", data);
+            GPIO_BSRR(D16_PORT) = 0x00f00000 | (data << 4);  // Set data pins
+            gpio_value = (gpio_value & ~0x00f0) | (data << 4);
 
-            /* Wait until RTCEN is released */
-            for (count = 0; count < 1000; count++)
-                if (GPIO_IDR(A4_PORT) & RTCEN_PIN)
+#if 1
+            /* Wait for _RTCEN to deassert */
+            count = 0;
+            while ((GPIO_IDR(A4_PORT) & RTCEN_PIN) == 0)
+                if (count++ == 100) {
+                    printf("H");
                     break;
-//          GPIO_BSRR(A4_PORT) = 0x000000f4;  // De-assert data pins
-            GPIO_BSRR(A4_PORT) = 0x000000f0;  // De-assert data pins
-
-            if ((rtc_cur_bank == 1) && (addr == 9)) {
-                if (bec_msg_out != 0) {
-                    if (bec_msg_out == bec_msg_out_max) {
-                        rtc_data[1][9] = 0;
-                        bec_msg_out = 0;  // End of message
-                    } else {
-                        data = bec_msg_outbuf[bec_msg_out / 2];
-                        if (bec_msg_out & 1)
-                            rtc_data[1][9] = data;
-                        else
-                            rtc_data[1][9] = data >> 4;
-                        bec_msg_out++;
-                    }
+                }
+#endif
+#define RP_MAGIC_HI 0
+#define RP_MAGIC_LO 1
+            if ((rtc_cur_bank == 1) && (addr == RP_MAGIC_LO)) {
+                if (bec_msg_out < bec_msg_out_max) {
+                    bec_msg_out += 2;
+                    data = bec_msg_outbuf[bec_msg_out / 2];
+                    rtc_data[1][RP_MAGIC_HI] = data >> 4;
+                    rtc_data[1][RP_MAGIC_LO] = data & 0xf;
+                } else if (bec_msg_out == bec_msg_out_max) {
+                    bec_msg_out = 0;  // End of message
+                    rtc_data[1][RP_MAGIC_HI] = 0;
+                    rtc_data[1][RP_MAGIC_LO] = 0;
                 }
             }
-#endif
         } else {
             /* Amiga writing to RP5C01 */
             uint addr;
             uint data;
             uint bank;
+
+            /* If data pins were being driven, flip them to inputs */
+            if ((GPIO_MODER(D16_PORT) & 0x00ff00) != 0) {
+                set_rtc_dx_input();  // Stop driving data pins
+                __asm__ volatile("dmb");
+                printf("M");
+                gpio_value = GPIO_IDR(A4_PORT);
+            }
 #if 0
             uint32_t nvalue = GPIO_IDR(A4_PORT);
             if (((nvalue & RTCEN_PIN) == 0) && ((nvalue & R_WA_PIN) == 0)) {
@@ -283,13 +352,6 @@ exti0_isr(void)
             addr = (gpio_value >> 10) & 0xf;
             data = (gpio_value >> 4) & 0xf;
             bank = rtc_cur_bank;
-#if 0
-            if (bank == 1) {
-                // XXX: Could intercept magic writes here
-                if ((addr == 0) || (addr == 1) || (addr == 9) || (addr == 12))
-                    data = 0;  // Reserved register
-            }
-#endif
             rtc_data[bank][addr] = data & rtc_mask[bank][addr];
             switch (addr) {
                 default:
@@ -298,23 +360,32 @@ exti0_isr(void)
                     else
                         rtc_touched++;
                     break;
-                case 0x9:  // AmigaPCI STM32 message interface
+                case 0x0:  // AmigaPCI STM32 message interface
+                    if (bank == 1) {
+                        bec_msg_inbuf[bec_msg_in / 2] = (data << 4);
+                    }
+                    break;
+
+                case 0x1:  // AmigaPCI STM32 message interface
                     if (bank == 1) {
                         if (bec_msg_in < 4) {
-                            if (data != bec_magic[bec_msg_in]) {
+                            if ((bec_msg_inbuf[bec_msg_in / 2] !=
+                                 (bec_magic[bec_msg_in] << 4)) ||
+                                (data != bec_magic[bec_msg_in + 1])) {
                                 bec_msg_in = 0;
                                 break;
                             }
-                            if (bec_msg_in > ARRAY_SIZE(bec_msg_inbuf) / 2) {
-                                bec_msg_in = 0;
-                                break;
-                            }
-                            if (bec_msg_in & 1)
-                                bec_msg_inbuf[bec_msg_in / 2] |= data;
-                            else
-                                bec_msg_inbuf[bec_msg_in / 2] = (data << 4);
-                            bec_msg_in++;
                         }
+                        if (bec_msg_in >= ARRAY_SIZE(bec_msg_inbuf) * 2) {
+                            uint expected = BEC_MSG_HDR_LEN +
+                                            BEC_MSG_CRC_LEN + bec_msg_inbuf[3];
+                            if (bec_msg_in / 2 >= expected)
+                                break;  // Got message
+                            bec_msg_in = 0;
+                            break;
+                        }
+                        bec_msg_inbuf[bec_msg_in / 2] |= data;
+                        bec_msg_in += 2;
                     }
                     break;
                 case 0x0d:  // MODE register
@@ -327,22 +398,49 @@ exti0_isr(void)
                     data = 0;
                     goto common_register;
                 case 0x0f:  // RESET register
+                    /* XXX: Handle reset? */
 common_register:
                     rtc_data[0][addr] = data;
                     rtc_data[1][addr] = data;
                     rtc_data[2][addr] = data;
                     break;
             }
-
-            /* Wait until RTCEN is released */
-            for (count = 0; count < 1000; count++)
-                if (GPIO_IDR(A4_PORT) & RTCEN_PIN)
+#if 1
+            /* Wait for _RTCEN to deassert */
+            count = 0;
+            while ((GPIO_IDR(A4_PORT) & RTCEN_PIN) == 0)
+                if (count++ == 100) {
+                    printf("H");
                     break;
+                }
+#endif
+            DPRINTF(" %x=%x", addr, data);
+        }
+#ifdef INTERRUPT_CAPTURE_RP5C01
+        amigartc_cap[amigartc_prod] = gpio_value;
+        amigartc_tick[amigartc_prod] = TIM_CNT(TIM2);
+        amigartc_prod = (amigartc_prod + 1) % ARRAY_SIZE(amigartc_cap);
+#endif
+#if 0
+        count = 0;
+        do {
+            ngpio_value = GPIO_IDR(A4_PORT);
+            if (count++ > 1000) {
+                set_rtc_dx_input();  // Stop driving data pins
+                return;
+            }
+        } while (ngpio_value == gpio_value);
+#else
+        set_rtc_dx_input();  // Stop driving data pins
+        return;
+#endif
+        gpio_value = ngpio_value;
+        if ((GPIO_IDR(STMRSTA_PORT) & STMRSTA_PIN) == 0) {
+            break;  // Amiga in reset or off -- stop interrupt service
         }
     }
 
-#define exti_reset_request(x) EXTI_PR = x
-    exti_reset_request(EXTI0);
+    set_rtc_dx_input();  // Stop driving data pins
 }
 
 /*
@@ -425,6 +523,30 @@ amigartc_copy_time_rp5c01_to_stm32(void)
     uint dow      = rtc_data[0][6];
     uint hour_24  = rtc_data[1][0xa] & BIT(0);
     uint am_pm    = rtc_data[1][0xa] & BIT(1);
+
+    if ((rtc_data[0][1] > 5) ||        // second
+        (rtc_data[0][0] > 9) ||        // second
+        (second > 59) ||               // second
+        (rtc_data[0][3] > 5) ||        // minute
+        (rtc_data[0][2] > 9) ||        // minute
+        (minute > 59) ||               // minute
+        (rtc_data[0][5] > 2) ||        // hour
+        (rtc_data[0][4] > 9) ||        // hour
+        (hour > 23) ||                 // hour
+        (rtc_data[0][8] > 3) ||        // day
+        (rtc_data[0][7] > 9) ||        // day
+        (day < 1) || (day > 31) ||     // day
+        (rtc_data[0][10] > 1) ||       // month
+        (rtc_data[0][9] > 9) ||        // month
+        (month < 1) || (month > 12) || // month
+        (year < 25) || (year > 30) ||  // year
+        (year != 25) || // DEBUG DEBUG DEBUG DEBUG
+        (rtc_data[0][12] > 9) ||       // year
+        (rtc_data[0][11] > 9)) {       // year
+        printf("Not saving invalid Amiga RTC date\n");
+        return;
+    }
+// dprintf(DF_RTC, "%u-%u-%u %u:%u:%u", year, month, day, hour, minute, second);
 
     rtc_allow_writes(TRUE);
     rtc_set_date(year, month, day, dow);
@@ -546,7 +668,13 @@ rtc_wkup_isr(void)
 
     /* Sweep STM32 RTC to RP5C01 RAM */
     if (rtc_timer_en && !rtc_touched) {
-        amigartc_copy_time_stm32_to_rp5c01();
+        uint8_t second = RTC_TR & 0x7f;
+        static uint8_t second_last;
+
+        if (second_last != second) {
+            second_last = second;
+            amigartc_copy_time_stm32_to_rp5c01();
+        }
     }
 }
 
@@ -564,30 +692,27 @@ rtc_alarm_isr(void)
 void
 amigartc_print(void)
 {
-    uint second   = rtc_data[0][0]  + rtc_data[0][1]  * 10;
-    uint minute   = rtc_data[0][2]  + rtc_data[0][3]  * 10;
-    uint hour     = rtc_data[0][4]  + rtc_data[0][5]  * 10;
-    uint day      = rtc_data[0][7]  + rtc_data[0][8]  * 10;
-    uint month    = rtc_data[0][9]  + rtc_data[0][10] * 10;
-    uint year     = rtc_data[0][11] + rtc_data[0][12] * 10;
-    uint dow      = rtc_data[0][6];
-    uint a_minute = rtc_data[1][2] + rtc_data[0][3]  * 10;
-    uint a_hour   = rtc_data[1][4] + rtc_data[0][5]  * 10;
-    uint a_day    = rtc_data[1][7] + rtc_data[0][8]  * 10;
-    uint a_month  = rtc_data[1][9] + rtc_data[0][10] * 10;
-    uint a_dow    = rtc_data[1][6];
     uint hour_24  = rtc_data[1][0xa] & BIT(0);
     uint am_pm    = rtc_data[1][0xa] & BIT(1);
+    uint year     = rtc_data[0][11] + rtc_data[0][12] * 10;
 
-    if (year >= 70)
-        year += 1900;
-    else
-        year += 2000;
-    printf("artc=%04u-%02u-%02u %02u:%02u:%02u dow=%u %u-hr%s  "
-           "alarm=%02u-%02u %02u:%02u dow=%u EN=%u\n",
-           year, month, day, hour, minute, second, dow,
+    printf("%02u%x%x-%x%x-%x%x %x%x:%x%x:%x%x dow=%x %u-hr%s  "
+           "alarm=%x%x-%x%x %x%x:%x%x dow=%x EN=%u\n",
+           (year >= 78) ? 19 : 20,
+           rtc_data[0][12], rtc_data[0][11],  // year
+           rtc_data[0][10], rtc_data[0][9],   // month
+           rtc_data[0][8], rtc_data[0][7],    // day
+           rtc_data[0][5], rtc_data[0][4],    // hour
+           rtc_data[0][3], rtc_data[0][2],    // minute
+           rtc_data[0][1], rtc_data[0][0],    // second
+           rtc_data[0][6],                    // dow
            hour_24 ? 24 : 12, hour_24 ? "" : am_pm ? " p.m." : " a.m.",
-           a_month, a_day, a_hour, a_minute, a_dow, !!rtc_timer_en);
+           rtc_data[1][10], rtc_data[1][9],   // alarm month
+           rtc_data[1][8], rtc_data[1][7],    // alarm day
+           rtc_data[1][5], rtc_data[1][4],    // alarm hour
+           rtc_data[1][3], rtc_data[1][2],    // alarm minute
+           rtc_data[1][6],                    // alarm dow
+           !!rtc_timer_en);
 }
 
 static void
@@ -597,18 +722,31 @@ bec_reply(uint rstatus, uint rlen, const void *data_p)
     const uint8_t *data = (const uint8_t *)data_p;
     bec_msg_out = 0;
     bec_msg_outbuf[0] = (bec_magic[0] << 4) | bec_magic[1];
-    bec_msg_outbuf[1] = (bec_magic[1] << 4) | bec_magic[3];
-    bec_msg_outbuf[3] = rstatus;
-    bec_msg_outbuf[2] = rlen;
+    bec_msg_outbuf[1] = (bec_magic[2] << 4) | bec_magic[3];
+    bec_msg_outbuf[2] = rstatus;
+    bec_msg_outbuf[3] = rlen;
     if (rlen > 0)
         memcpy(&bec_msg_outbuf[4], data, rlen);
-    crc = crc32(0, bec_msg_outbuf + 2, rlen + BEC_MSG_HDR_LEN - 2);
-    memcpy(&bec_msg_outbuf[4 + rlen], &crc, BEC_MSG_CRC_LEN);
-    bec_msg_out_max = rlen + BEC_MSG_HDR_LEN + BEC_MSG_CRC_LEN;
 
-    /* Kick off reply by pre-loading first response nibble */
-    rtc_data[1][9] = bec_msg_outbuf[0] >> 4;
+    /* CRC includes cmd + length + data */
+    crc = crc32(0, bec_msg_outbuf + 2, rlen + BEC_MSG_HDR_LEN - 2);
+    crc = SWAP32(crc);
+    memcpy(&bec_msg_outbuf[4 + rlen], &crc, BEC_MSG_CRC_LEN);
+    bec_msg_out_max = (rlen + BEC_MSG_HDR_LEN + BEC_MSG_CRC_LEN) * 2;
+
+    /* Kick off reply by pre-loading first response byte */
+    rtc_data[1][RP_MAGIC_HI] = bec_msg_outbuf[0] >> 4;
+    rtc_data[1][RP_MAGIC_LO] = bec_msg_outbuf[0] & 0xf;
     bec_msg_out = 1;
+#if 0
+    {
+        uint pos;
+        printf("R");
+        for (pos = 0; pos < bec_msg_out_max / 2; pos++)
+            printf(" %02x", bec_msg_outbuf[pos]);
+        printf("\n");
+    }
+#endif
 }
 
 static void
@@ -622,11 +760,13 @@ bec_msg_process(void)
 
     memcpy(&crc_expect, bec_msg_inbuf + BEC_MSG_HDR_LEN + msglen,
            sizeof (crc_expect));
-    crc_calc = crc32(0, &bec_msg_inbuf[2], BEC_MSG_HDR_LEN - 2);
+    crc_calc = crc32(0, &bec_msg_inbuf[2], BEC_MSG_HDR_LEN - 2 + msglen);
+    crc_calc = SWAP32(crc_calc);
     if (crc_expect != crc_calc) {
         bec_reply(BEC_STATUS_CRC, 0, NULL);
-        printf("cmd=%x l=%04x CRC %08lx != calc %08lx\n",
+        printf("cmd=%02x l=%02x CRC %08lx != calc %08lx\n",
                cmd, msglen, crc_expect, crc_calc);
+        return;
     }
     switch (cmd) {
         case BEC_CMD_NULL:
@@ -635,6 +775,37 @@ bec_msg_process(void)
         case BEC_CMD_NOP:
             bec_reply(BEC_STATUS_OK, 0, NULL);
             break;
+        case BEC_CMD_ID: {
+            bec_id_t reply;
+            uint temp[3];
+            memset(&reply, 0, sizeof (reply));
+            sscanf(version_str + 8, "%u.%u%n", &temp[0], &temp[1], &pos);
+            reply.bid_version[0] = SWAP16(temp[0]);
+            reply.bid_version[1] = SWAP16(temp[1]);
+            if (pos == 0)
+                pos = 18;
+            else
+                pos += 8 + 7;
+            sscanf(version_str + pos, "%04u-%02u-%02u",
+                   &temp[0], &temp[1], &temp[2]);
+            reply.bid_date[0] = temp[0] / 100;
+            reply.bid_date[1] = temp[0] % 100;
+            reply.bid_date[2] = temp[1];
+            reply.bid_date[3] = temp[2];
+            pos += 11;
+            sscanf(version_str + pos, "%02u:%02u:%02u",
+                   &temp[0], &temp[1], &temp[2]);
+            reply.bid_time[0] = temp[0];
+            reply.bid_time[1] = temp[1];
+            reply.bid_time[2] = temp[2];
+            reply.bid_time[3] = 0;
+            strcpy(reply.bid_serial, (const char *)cpu_serial_str);
+            reply.bid_rev      = SWAP16(0x0001);     // Protocol version 0.1
+            reply.bid_features = SWAP16(0x0000);     // Features
+            strcpy(reply.bid_name, config.name);
+            bec_reply(BEC_STATUS_OK, sizeof (reply), &reply);
+            break;
+        }
         case BEC_CMD_UPTIME: {
             uint64_t now = timer_tick_get();
             uint64_t usec = timer_tick_to_usec(now);
@@ -646,7 +817,7 @@ bec_msg_process(void)
             bec_reply(BEC_STATUS_OK, sizeof (testpatt_reply), &testpatt_reply);
             break;
         case BEC_CMD_LOOPBACK:
-            bec_reply(BEC_STATUS_OK, msglen, bec_msg_inbuf + BEC_MSG_HDR_LEN);
+            bec_reply(cmd, msglen, bec_msg_inbuf + BEC_MSG_HDR_LEN);
             break;
         case BEC_CMD_CONS_OUTPUT: {
             /* Output from STM32 */
@@ -668,58 +839,135 @@ bec_msg_process(void)
             bec_reply(BEC_STATUS_UNKCMD, 0, NULL);
             break;
     }
-
-    printf("len=%02x cmd=%02x", msglen, cmd);
+#if 0
+    printf("cmd=%02x len=%02x", cmd, msglen);
     for (pos = 0; pos < msglen; pos++)
         printf(" %02x", bec_msg_inbuf[4 + pos]);
     printf("\n");
+#endif
 }
 
 void
 amigartc_poll(void)
 {
-#ifdef INTERRUPT_CAPTURE_RP5C01
-    if (amigartc_cap_count != 0) {
-        static uint last;
-        if (last != amigartc_cap_count) {
-            last = amigartc_cap_count;
-            return;  // Wait until it stops chaning
-        }
-        printf("cap count=%u\n", amigartc_cap_count);
-        amigartc_cap_count = 0;
-        amigartc_snoop_show((uint16_t *) amigartc_cap, last, 0);
-        last = 0;
-    }
-#endif
     if (rtc_touched && rtc_timer_en) {
         rtc_touched = 0;
 
-        /* Sweep RP5C01 date/time to STM32 RTC */
-        amigartc_copy_time_rp5c01_to_stm32();
-        amigartc_print();
+        if (power_state == POWER_STATE_ON) {
+            /* Sweep RP5C01 date/time to STM32 RTC */
+            amigartc_copy_time_rp5c01_to_stm32();
+            amigartc_print();
+        } else {
+            rtc_touched = 0;
+        }
     }
     if (rtc_ram_touched) {
         rtc_ram_touched = 0;
 
-        /* Sweep RP5C01 RAM to STM32 RTC */
-        amigartc_copy_ram_rp5c01_to_stm32();
-        printf("RP->STM32 RAM\n");
+        if (power_state == POWER_STATE_ON) {
+            /* Sweep RP5C01 RAM to STM32 RTC */
+            amigartc_copy_ram_rp5c01_to_stm32();
+            printf("RP->STM32 RAM\n");
+        } else {
+            rtc_ram_touched = 0;
+        }
     }
-    if (bec_msg_in > 0) {
+    if (bec_msg_in >= (BEC_MSG_HDR_LEN + BEC_MSG_CRC_LEN) * 2) {
         uint expected = BEC_MSG_HDR_LEN + BEC_MSG_CRC_LEN + bec_msg_inbuf[3];
-        if (bec_msg_in == expected) {
+#if 0
+{
+// XXX: CDH debug
+    static uint oexpected;
+    static uint omsg_in;
+    if (oexpected != expected) {
+        oexpected = expected;
+        printf("e %x\n", expected);
+    }
+    if (omsg_in != bec_msg_in) {
+        omsg_in = bec_msg_in;
+        printf("i %x\n", bec_msg_in);
+    }
+}
+#endif
+        if (bec_msg_in == expected * 2) {
             bec_msg_process();
             bec_msg_in_timeout = 0;
             bec_msg_in = 0;
         } else if (bec_msg_in_timeout == 0) {
-            bec_msg_in_timeout = timer_tick_plus_msec(100);
+            bec_msg_in_timeout = timer_tick_plus_msec(500);
         } else if (timer_tick_has_elapsed(bec_msg_in_timeout)) {
-            printf("Msg in timeout: got %u of %u\n", bec_msg_in, expected);
+            uint pos;
+            printf("Msg in timeout: got %u of %u\n  ",
+                   bec_msg_in / 2, expected);
+            for (pos = 0; pos < bec_msg_in / 2; pos++)
+                printf(" %02x", bec_msg_inbuf[pos]);
+            printf("\n");
             bec_msg_in_timeout = 0;
             bec_msg_in = 0;
         }
     }
 }
+
+static void
+msg_init(void)
+{
+#if 0
+    /* Map PA4 to EXTI4 */
+    exti_select_source(EXTI4, GPIOA);
+    exti_set_trigger(EXTI4, EXTI_TRIGGER_FALLING);
+    exti_enable_request(EXTI4);
+    exti_reset_request(EXTI4);
+    nvic_set_priority(NVIC_EXTI4_IRQ, 0x10);
+    nvic_enable_irq(NVIC_EXTI4_IRQ);
+#endif
+#if 0
+    exti_select_source(EXTI5, GPIOA);
+    exti_set_trigger(EXTI5, EXTI_TRIGGER_FALLING);
+    exti_enable_request(EXTI5);
+    exti_reset_request(EXTI5);
+    nvic_set_priority(NVIC_EXTI9_5_IRQ, 0x10);
+    nvic_enable_irq(NVIC_EXTI9_5_IRQ);
+#endif
+}
+
+#if 0
+void
+exti4_isr(void)
+{
+    uint16_t val;
+    val = gpio_get(PotX_PORT, PotX_PIN | PotY_PIN);
+    exti_reset_request(EXTI4);
+//  val = gpio_get(PotX_PORT, PotX_PIN | PotY_PIN);
+    if (val == 0) {
+        /* Both driven, drive U D L R */
+        gpio_setv(FORWARD_PORT, FORWARD_PIN | BACK_PIN | LEFT_PIN | RIGHT_PIN, 0);
+        timer_delay_usec(1000);
+printf("(4)");
+        gpio_setv(FORWARD_PORT, FORWARD_PIN | BACK_PIN | LEFT_PIN | RIGHT_PIN, 1);
+        printf("t");
+    } else {
+        printf(" %x", val);
+    }
+}
+
+void
+exti9_5_isr(void)
+{
+    uint16_t val;
+    exti_reset_request(EXTI5);
+    val = gpio_get(PotX_PORT, PotX_PIN | PotY_PIN);
+    if (val == 0) {
+        /* Both driven, drive U D L R */
+        gpio_setv(FORWARD_PORT, FORWARD_PIN | BACK_PIN | LEFT_PIN | RIGHT_PIN, 0);
+        timer_delay_usec(1000);
+printf("(5)");
+        gpio_setv(FORWARD_PORT, FORWARD_PIN | BACK_PIN | LEFT_PIN | RIGHT_PIN, 1);
+        printf("t");
+    } else {
+        printf(" %x", val);
+    }
+}
+#endif
 
 void
 amigartc_init(void)
@@ -735,7 +983,9 @@ amigartc_init(void)
     rcc_periph_clock_enable(RCC_SYSCFG);
 
     nvic_set_priority(NVIC_EXTI0_IRQ, 0x10);
+#ifdef RESPOND_AS_RP5C01
     nvic_enable_irq(NVIC_EXTI0_IRQ);
+#endif
 
     /* Map PB0 to EXTI0 */
     exti_select_source(EXTI0, GPIOB);
@@ -746,13 +996,21 @@ amigartc_init(void)
 // EXTI line 17 is connected to the RTC Alarm event
 // EXTI line 21 is connected to the RTC Tamper and TimeStamp events
 // EXTI line 22 is connected to the RTC Wakeup event
+#if 0
     exti_set_trigger(EXTI7, EXTI_TRIGGER_RISING);   // ALARM
     exti_enable_request(EXTI7);
     exti_reset_request(EXTI7);
+#endif
 //  exti_set_trigger(EXTI21, EXTI_TRIGGER_RISING);
 //  exti_enable_request(EXTI21);
 //  exti_reset_request(EXTI21);
+
     exti_set_trigger(EXTI22, EXTI_TRIGGER_RISING);  // WKUP
     exti_enable_request(EXTI22);
     exti_reset_request(EXTI22);
+
+    msg_init();
+#ifdef INTERRUPT_CAPTURE_RP5C01
+    memset(&amigartc_cap, 0xff, sizeof (amigartc_cap));
+#endif
 }

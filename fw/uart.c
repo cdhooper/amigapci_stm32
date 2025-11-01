@@ -39,7 +39,7 @@ static uint8_t       cons_in_rb[4096];    // Console input ring buffer (FIFO)
 static uint8_t       usb_out_buf[4096];   // USB output buffer
 #endif
 static uint8_t       uart_out_buf[2048];  // UART output
-static uint8_t       ami_out_buf[1024];   // Amiga output buffer
+static uint8_t       ami_out_buf[2048];   // Amiga output buffer
 static uint16_t      uart_out_prod;       // UART output producer
 #if 0
 static uint16_t      usb_out_bufpos = 0;  // USB output buffer position
@@ -381,7 +381,7 @@ ami_putchar_wait(int ch)
             while (new_prod == ami_out_cons) {
                 if (timer_tick_has_elapsed(timeout)) {
                     ami_console_active = false;
-;
+                    break;
                 }
             }
         }

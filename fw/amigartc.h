@@ -14,6 +14,7 @@
 
 void amigartc_snoop(int debug);
 void amigartc_print(void);
+void amigartc_log(void);
 void amigartc_poll(void);
 void amigartc_init(void);
 

@@ -84,7 +84,19 @@ static void SystemInit_post(void) { }
 #define RESET_TO_DFU_ROM_MAGIC 0xd0df00ba  // STM32 ROM DFU programmer
 #define RESET_TO_DFU_MAGIC     0xd0df0bee  // Stand-alone DFU (in firmware)
 
+/*
+ * #define STM32F0_UDID_BASE            0x1ffff7ac
+ * #define STM32F1_UDID_BASE            0x1ffff7e8
+ * #define STM32F2_UDID_BASE            0x1fff7a10
+ * #define STM32F3_UDID_BASE            0x1ffff7ac
+ * #define STM32F4_UDID_BASE            0x1fff7a10
+ * #define STM32F7_UDID_BASE            0x1ff0f420
+ */
+#define STM32_UDID_LEN                  12    // 96 bits
+#define STM32_UDID_BASE                 DESIG_UNIQUE_ID_BASE
+
 SRAM_PERSIST static uint32_t system_reset_to_dfu_magic;
+char cpu_serial_str[32];
 
 extern uint _binary_objs_usbdfu_bin_start;
 extern uint _binary_objs_usbdfu_bin_end;
@@ -198,6 +210,44 @@ show_reset_reason(void)
     } else if (reset_state_flags & RCC_CSR_PINRSTF) {
         printf("    %s\n", "NRST pin reset");
     }
+}
+
+/**
+ * get_cpu_serial() reads the STM32 Unique Device ID from the CPU's system
+ *                  memory area of the Flash memory module. It converts
+ *                  the ID to a printable string.
+ *
+ * @param [out] buf - A buffer to hold the converted serial number.
+ *
+ * @return      None.
+ */
+static void
+get_cpu_serial(char *buf)
+{
+    uint len = 0;
+    uint pos;
+
+    for (pos = 0; pos < STM32_UDID_LEN; pos++) {
+        uint8_t temp  = *ADDR8(STM32_UDID_BASE + pos);
+        uint8_t ch_hi = (temp >> 4) + '0';
+        uint8_t ch_lo = (temp & 0xf) + '0';
+
+        if (temp == 0xff)
+            continue;
+        if ((temp >= '0') && (temp <= 'Z')) {
+            /* Show ASCII directly */
+            buf[len++] = (char) temp;
+            continue;
+        }
+        if (ch_hi > '9')
+            ch_hi += 'a' - '0' - 10;
+        if (ch_lo > '9')
+            ch_lo += 'a' - '0' - 10;
+
+        buf[len++] = ch_hi;
+        buf[len++] = ch_lo;
+    }
+    buf[len++] = '\0';
 }
 
 void
@@ -433,6 +483,7 @@ identify_cpu(void)
     printf("    FlashSize=%u KB\n", *ADDR16(FLASHSIZE_BASE));
 #endif
 #endif
+    get_cpu_serial(cpu_serial_str);
 }
 
 /* Deal with annoying newlib warnings */

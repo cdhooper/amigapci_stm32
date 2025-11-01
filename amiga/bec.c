@@ -107,6 +107,7 @@ long_to_short_t long_to_short_main[] = {
     { "-s", "set" },
     { "-t", "test" },
     { "-T", "term" },
+    { "-z", "z" },
 };
 
 BOOL __check_abort_enabled = 0;       // Disable gcc clib2 ^C break handling
@@ -253,25 +254,27 @@ show_test_state(const char * const name, int state)
 }
 
 /* RTC offsets for Ricoh RP5C01 in AmigaPCI */
-#define RP_ONE_SEC    (0x0 * 4 + 1)  /* Second One's */
-#define RP_TEN_SEC    (0x1 * 4 + 1)  /* Second Ten's */
-#define RP_ONE_MIN    (0x2 * 4 + 1)  /* Minute One's */
-#define RP_TEN_MIN    (0x3 * 4 + 1)  /* Minute Ten's */
-#define RP_ONE_HOUR   (0x4 * 4 + 1)  /* Hour One's */
-#define RP_TEN_HOUR   (0x5 * 4 + 1)  /* Hour Ten's */
-#define RP_DOW        (0x6 * 4 + 1)  /* Day of Week */
-#define RP_ONE_DAY    (0x7 * 4 + 1)  /* Day of Month One's */
-#define RP_TEN_DAY    (0x8 * 4 + 1)  /* Day of Month Ten's */
-#define RP_ONE_MONTH  (0x9 * 4 + 1)  /* Month of Year One's */
-#define RP_TEN_MONTH  (0xa * 4 + 1)  /* Month of Year Ten's */
-#define RP_ONE_YEAR   (0xb * 4 + 1)  /* Year of Century One's */
-#define RP_TEN_YEAR   (0xc * 4 + 1)  /* Year of Century Ten's */
-#define RP_MODE       (0xd * 4 + 1)  /* Mode register */
-#define RP_TEST       (0xe * 4 + 1)  /* Test register */
-#define RP_RESET      (0xf * 4 + 1)  /* Reset controller, etc */
-#define RP_MAGIC      (0x9 * 4 + 1)  /* Mode 1 AmigaPCI magic register */
-#define RP_M1_12_24   (0xa * 4 + 1)  /* Mode 1 12/24 Hour select (0=AM, 1=24, 2=PM) */
-#define RP_M1_LEAP    (0xb * 4 + 1)  /* Mode 1 Leap Year Counter (increments w/ year */
+#define RP_ONE_SEC   (0x0 * 4 + 1)  // M0 Second One's
+#define RP_TEN_SEC   (0x1 * 4 + 1)  // M0 Second Ten's
+#define RP_ONE_MIN   (0x2 * 4 + 1)  // M0 Minute One's
+#define RP_TEN_MIN   (0x3 * 4 + 1)  // M0 Minute Ten's
+#define RP_ONE_HOUR  (0x4 * 4 + 1)  // M0 Hour One's
+#define RP_TEN_HOUR  (0x5 * 4 + 1)  // M0 Hour Ten's
+#define RP_DOW       (0x6 * 4 + 1)  // M0 Day of Week
+#define RP_ONE_DAY   (0x7 * 4 + 1)  // M0 Day of Month One's
+#define RP_TEN_DAY   (0x8 * 4 + 1)  // M0 Day of Month Ten's
+#define RP_ONE_MONTH (0x9 * 4 + 1)  // M0 Month of Year One's
+#define RP_TEN_MONTH (0xa * 4 + 1)  // M0 Month of Year Ten's
+#define RP_ONE_YEAR  (0xb * 4 + 1)  // M0 Year of Century One's
+#define RP_TEN_YEAR  (0xc * 4 + 1)  // M0 Year of Century Ten's
+#define RP_MODE      (0xd * 4 + 1)  // M0 Mode register
+#define RP_TEST      (0xe * 4 + 1)  // M0 Test register
+#define RP_RESET     (0xf * 4 + 1)  // M0 Reset controller, etc
+#define RP_MAGIC     (0x9 * 4 + 1)  // M1 AmigaPCI magic register
+#define RP_MAGIC_HI  (0x0 * 4 + 1)  // M1 AmigaPCI magic register hi
+#define RP_MAGIC_LO  (0x1 * 4 + 1)  // M1 AmigaPCI magic register lo
+#define RP_M1_12_24  (0xa * 4 + 1)  // M1 12/24 Hour select (0=AM, 1=24, 2=PM)
+#define RP_M1_LEAP   (0xb * 4 + 1)  // M1 Leap Year Counter (increments w/ year
 
 #define RP_MODE_M0         0      /* Mode 0 */
 #define RP_MODE_M1         1      /* Mode 1 */
@@ -339,22 +342,74 @@ cia_spin(unsigned int ticks)
     }
 }
 
+static inline void
+rtc_delay(void)
+{
+#if 1
+    for (int i = 0; i < 1000; i++)
+        __asm("nop");
+#else
+    __asm("nop");
+    __asm("nop");
+    __asm("nop");
+#endif
+}
+
+static inline uint8_t
+get_nibble_hi(void)
+{
+    uint8_t data;
+    rtc_delay();
+    __asm__("nop");
+    data = RTC_REG(RP_MAGIC_HI) & 0x0f;
+    rtc_delay();
+    return (data);
+}
+
+static inline uint8_t
+get_nibble_lo(void)
+{
+    uint8_t data;
+    rtc_delay();
+    __asm__("nop");
+    data = RTC_REG(RP_MAGIC_LO) & 0x0f;
+    rtc_delay();
+    return (data);
+}
+
+#if 0
 static uint8_t
 get_nibble(void)
 {
-    return (RTC_REG(RP_MAGIC) & 0x0f);
+    uint8_t data;
+    rtc_delay();
+    data = RTC_REG(RP_MAGIC) & 0x0f;
+    rtc_delay();
+    return (data);
 }
+#endif
 
+#if 0
 static uint8_t
 get_byte(void)
 {
     return ((get_nibble() << 4) | get_nibble());
 }
+#else
+static uint8_t
+get_byte(void)
+{
+    return ((get_nibble_hi() << 4) | get_nibble_lo());
+}
+#endif
 
+#if 0
 static void
 send_nibble(uint8_t nibble)
 {
+    rtc_delay();
     RTC_REG(RP_MAGIC) = nibble;
+    rtc_delay();
 }
 
 static void
@@ -363,6 +418,30 @@ send_byte(uint8_t byte)
     send_nibble(byte >> 4);
     send_nibble(byte);
 }
+#else
+static void
+send_nibble_hi(uint8_t nibble)
+{
+    rtc_delay();
+    RTC_REG(RP_MAGIC_HI) = nibble;
+    rtc_delay();
+}
+
+static void
+send_nibble_lo(uint8_t nibble)
+{
+    rtc_delay();
+    RTC_REG(RP_MAGIC_LO) = nibble;
+    rtc_delay();
+}
+
+static void
+send_byte(uint8_t byte)
+{
+    send_nibble_hi(byte >> 4);
+    send_nibble_lo(byte);
+}
+#endif
 
 static uint
 send_cmd(uint8_t cmd, void *arg, uint8_t arglen,
@@ -380,9 +459,12 @@ send_cmd(uint8_t cmd, void *arg, uint8_t arglen,
     uint32_t got_crc;
     uint32_t calc_crc;
 
-    for (pos = 0; pos < ARRAY_SIZE(bec_magic); pos++)
-        send_nibble(bec_magic[pos]);
-    send_byte(arglen);
+    RTC_REG(RP_MODE) = RP_MODE_M1 | RP_MODE_TIMER_EN;
+    rtc_delay();
+    send_nibble_hi(bec_magic[0]);
+    send_nibble_lo(bec_magic[1]);
+    send_nibble_hi(bec_magic[2]);
+    send_nibble_lo(bec_magic[3]);
     send_byte(cmd);
     send_byte(arglen);
     for (pos = 0; pos < arglen; pos++)
@@ -396,23 +478,42 @@ send_cmd(uint8_t cmd, void *arg, uint8_t arglen,
     send_byte(crc);
 
     /* Wait for reply */
+#if 0
     cia_spin(CIA_USEC(10));
     for (timeout = 100; timeout > 0; timeout--) {
         cia_spin(1);
         if ((got_magic[0] = get_nibble()) == bec_magic[0])
             break;
     }
+#else
+    cia_spin(CIA_USEC(100));
+    for (timeout = 10; timeout > 0; timeout--) {
+        cia_spin(CIA_USEC(100));
+        if ((got_magic[0] = get_nibble_hi()) == bec_magic[0])
+            break;
+    }
+#endif
     if (timeout == 0) {
-        printf("AP Timeout\n");
+        printf("BEC Timeout\n");
         return (BEC_STATUS_TIMEOUT);
     }
+#if 0
     for (pos = 1; pos < ARRAY_SIZE(bec_magic); pos++) {
         uint8_t nibble = got_magic[pos] = get_nibble();
         if (nibble != bec_magic[pos])
             bad_magic++;
     }
+#else
+    got_magic[1] = get_nibble_lo();
+    got_magic[2] = get_nibble_hi();
+    got_magic[3] = get_nibble_lo();
+
+    for (pos = 1; pos < ARRAY_SIZE(bec_magic); pos++)
+        if (got_magic[pos] != bec_magic[pos])
+            bad_magic++;
+#endif
     if (bad_magic) {
-        printf("AP bad magic:");
+        printf("BEC bad magic:");
         for (pos = 0; pos < ARRAY_SIZE(got_magic); pos++)
             printf(" %x", got_magic[pos]);
         printf("\n");
@@ -435,16 +536,17 @@ send_cmd(uint8_t cmd, void *arg, uint8_t arglen,
         return (BEC_STATUS_REPLYLEN); // Too long; truncated
 
     /* Get CRC */
-    got_crc = (get_byte() << 24) |
-              (get_byte() << 16) |
-              (get_byte() << 8) |
-              get_byte();
+    got_crc  = (get_byte() << 24);
+    got_crc |= (get_byte() << 16);
+    got_crc |= (get_byte() << 8);
+    got_crc |= get_byte();
+
     calc_crc = crc32(0, &status, 1);
     calc_crc = crc32(calc_crc, &msglen, 1);
     calc_crc = crc32(calc_crc, replybuf, msglen);
     if (calc_crc != got_crc) {
-        printf("Bad CRC %08x !+ expected %08x rc=%x l=%x\n",
-               calc_crc, got_crc, status, msglen);
+        printf("Bad CRC %08x != calc %08x rc=%x l=%x\n",
+               got_crc, calc_crc, status, msglen);
         return (BEC_STATUS_REPLYCRC);
     }
 
@@ -452,16 +554,6 @@ send_cmd(uint8_t cmd, void *arg, uint8_t arglen,
 }
 
 #define DUMP_VALUE_UNASSIGNED 0xffffffff
-
-static char
-printable_ascii(uint8_t ch)
-{
-    if (ch >= ' ' && ch <= '~')
-        return (ch);
-    if (ch == '\t' || ch == '\r' || ch == '\n' || ch == '\0')
-        return (' ');
-    return ('.');
-}
 
 /*
  * dump_memory
@@ -477,34 +569,22 @@ void
 dump_memory(void *buf, uint len, uint dump_base)
 {
     uint pos;
-    uint strpos;
-    char str[20];
-    uint32_t *src = buf;
+    uint8_t *src = buf;
 
-    len = (len + 3) / 4;
+    if (len > 0x100) {
+        printf("Bad len %x\n", len);
+        len = 0x100;
+    }
     if (dump_base != DUMP_VALUE_UNASSIGNED)
         printf("%05x:", dump_base);
-    for (strpos = 0, pos = 0; pos < len; pos++) {
-        uint32_t val = src[pos];
-        printf(" %08x", val);
-        str[strpos++] = printable_ascii(val >> 24);
-        str[strpos++] = printable_ascii(val >> 16);
-        str[strpos++] = printable_ascii(val >> 8);
-        str[strpos++] = printable_ascii(val);
-        if ((pos & 3) == 3) {
-            str[strpos] = '\0';
-            strpos = 0;
-            printf(" %s\n", str);
-            if ((dump_base != DUMP_VALUE_UNASSIGNED) && ((pos + 1) < len)) {
-                dump_base += 16;
-                printf("%05x:", dump_base);
-            }
-        }
+    for (pos = 0; pos < len; pos++) {
+        printf(" %02x", src[pos]);
+
+        if ((pos & 0xf) == 0xf)
+            printf("\n");
     }
-    if ((pos & 3) != 0) {
-        str[strpos] = '\0';
-        printf("%*s%s\n", (4 - (pos & 3)) * 9 + 1, "", str);
-    }
+    if ((pos & 0xf) != 0x0)
+        printf("\n");
 }
 
 static const char *const bec_status_s[] = {
@@ -565,18 +645,21 @@ bec_identify(void)
 
     if (rc != 0) {
         printf("Reply message failure: (%s)\n", bec_err(rc));
-        if (flag_debug)
+        if (flag_debug) {
+            if (rlen > 256)
+                rlen = 256;
             dump_memory(&id, rlen, DUMP_VALUE_UNASSIGNED);
+        }
         return (rc);
     }
     if (flag_quiet == 0) {
         printf("ID\n");
-        printf("  APCTrL %u.%u built %02u%02u-%02u-%02u %02u:%02u:%02u\n",
+        printf("  BEC %u.%u built %02u%02u-%02u-%02u %02u:%02u:%02u\n",
                id.bid_version[0], id.bid_version[1],
                id.bid_date[0], id.bid_date[1],
                id.bid_date[2], id.bid_date[3],
                id.bid_time[0], id.bid_time[1], id.bid_time[2]);
-        printf("   Serial \"%s\"  Name \"%s\"\n",
+        printf("  Serial \"%s\"  Name \"%s\"\n",
                id.bid_serial, id.bid_name);
     }
 
@@ -626,28 +709,25 @@ static const uint8_t test_pattern[] = {
 static int
 bec_test_pattern(void)
 {
-    uint32_t reply_buf[64];
+    uint8_t reply_buf[64];
     uint start;
     uint pos;
     uint err_count = 0;
-    uint rlen;
+    uint rlen = 0;
     uint rc;
 
     show_test_state("Test pattern", -1);
 
     memset(reply_buf, 0, sizeof (reply_buf));
-#ifdef SEND_TESTPATT_ALT
-    reply_buf[0] = 0xa5a5a5a5;
-    rc = send_cmd(BEC_CMD_TESTPATT, reply_buf, 2, reply_buf,
-                  sizeof (reply_buf), &rlen);
-#else
     rc = send_cmd(BEC_CMD_TESTPATT, NULL, 0, reply_buf,
                   sizeof (reply_buf), &rlen);
-#endif
     if (rc != 0) {
         printf("Reply message failure: (%s)\n", bec_err(rc));
-        if (flag_debug)
+        if (flag_debug) {
+            if (rlen > 256)
+                rlen = 256;
             dump_memory(reply_buf, rlen, DUMP_VALUE_UNASSIGNED);
+        }
         show_test_state("Test pattern", rc);
         return (rc);
     }
@@ -738,8 +818,9 @@ fail_handle_debug:
                     break;
             dump_memory(tx_buf, nums, DUMP_VALUE_UNASSIGNED);
             if (pos < nums) {
-                printf("--- Tx above  Rx below --- ");
-                printf("First diff at 0x%x of 0x%x\n", pos, nums);
+                printf("--- Tx (0x%x) above; Rx (0x%x) below; "
+                       "first diff at 0x%x ---\n",
+                       nums, rlen, pos);
                 dump_memory(rx_buf, rlen, DUMP_VALUE_UNASSIGNED);
             } else {
                 printf("Tx and Rx buffers (len=0x%x) match\n", nums);
@@ -779,10 +860,11 @@ fail_loopback:
 static int
 bec_test_loopback_perf(void)
 {
-    const uint lb_size  = 250;
-    const uint xfers    = 100;
+    const uint lb_size  = 220;
+    const uint xfers    = 20;
     const uint lb_alloc = lb_size + BEC_MSG_HDR_LEN + BEC_MSG_CRC_LEN;
-    uint32_t  *buf;
+    uint8_t   *txbuf;
+    uint8_t   *rxbuf;
     uint       cur;
     uint       rc;
     uint       diff;
@@ -793,23 +875,31 @@ bec_test_loopback_perf(void)
 
     show_test_state("Loopback perf", -1);
 
-    buf = AllocMem(lb_alloc, MEMF_PUBLIC);
-    if (buf == NULL) {
+    txbuf = AllocMem(lb_alloc, MEMF_PUBLIC);
+    if (txbuf == NULL) {
         printf("Memory allocation failure\n");
         return (1);
     }
-    memset(buf, 0xa5, lb_size);
+    rxbuf = AllocMem(lb_alloc, MEMF_PUBLIC);
+    if (rxbuf == NULL) {
+        printf("Memory allocation failure\n");
+        rc = 1;
+        goto cleanup;
+    }
+    memset(rxbuf, 0x00, lb_size);
+    for (cur = 0; cur < lb_size; cur++)
+        txbuf[cur] = cur + 4;
 
     time_start = bec_time();
 
     for (cur = 0; cur < xfers; cur++) {
-        rc = send_cmd(BEC_CMD_LOOPBACK, buf, lb_size, buf, lb_size, NULL);
+        rc = send_cmd(BEC_CMD_LOOPBACK, txbuf, lb_size, rxbuf, lb_size, NULL);
         if (rc == BEC_CMD_LOOPBACK) {
             rc = 0;
         } else {
-            printf("FAIL: (%s)\n", bec_err(rc));
+            printf("FAIL: (%s) at pass %u\n", bec_err(rc), cur);
             if (flag_debug) {
-                dump_memory(buf, lb_size, DUMP_VALUE_UNASSIGNED);
+                dump_memory(rxbuf, lb_size, DUMP_VALUE_UNASSIGNED);
             }
             goto cleanup;
         }
@@ -827,8 +917,10 @@ bec_test_loopback_perf(void)
     }
 
 cleanup:
-    if (buf != NULL)
-        FreeMem(buf, lb_alloc);
+    if (txbuf != NULL)
+        FreeMem(txbuf, lb_alloc);
+    if (rxbuf != NULL)
+        FreeMem(rxbuf, lb_alloc);
     return (rc);
 }
 
@@ -1103,16 +1195,18 @@ cmd_set_usage:
  * --------
  * Open a KickSmash terminal.
  */
-int
+static int
 cmd_term(int argc, char *argv[])
 {
     int ch;
     uint rlen;
-    uint rc;
+    uint rc = 0;
+    uint fail_count = 0;
     uint is_poll = 0;
+    uint count = 0;
     ULONG ihandle = Input();
-    __attribute__((aligned(4))) uint8_t buf[256];
-    uint16_t maxlen = sizeof (buf) - 4;
+    __attribute__((aligned(4))) uint8_t buf[64];
+    uint8_t maxlen = sizeof (buf) - 4;
 
     (void) argc;
     (void) argv;
@@ -1123,7 +1217,7 @@ cmd_term(int argc, char *argv[])
     SetMode(Output(), 1);
 
 #define KEY_CTRL_X 0x18
-    while (1) {
+    while (fail_count < 10) {
         /* Poll for keystroke input */
         if (WaitForChar(ihandle, 0)) {
             if (Read(ihandle, buf, 1) == 0) {
@@ -1137,11 +1231,16 @@ cmd_term(int argc, char *argv[])
                 break;
             }
             rc = send_cmd(BEC_CMD_CONS_INPUT, buf, 1, NULL, 0, &rlen);
-            if (rc != 0)
-                break;
+            if (rc != 0) {
+                fail_count++;
+                continue;
+            }
         }
 
-        /* Poll for AP Controler output */
+        if ((count++ & 0xf) != 0)
+            continue;  // Poll infrequently for BEC output
+
+        /* Poll for BEC Controler output */
         maxlen = sizeof (buf) - 2;
         rc = send_cmd(BEC_CMD_CONS_OUTPUT, &maxlen, sizeof (maxlen),
                       buf, sizeof (buf), &rlen);
@@ -1156,8 +1255,12 @@ cmd_term(int argc, char *argv[])
 #endif
         if (rc != 0) {
             is_poll = 1;
-            break;
+            fail_count++;
+            continue;
         }
+        if (rlen > 0)
+            count = 0;  // Got output -- poll again right away
+
         if ((rlen > 0) && Write(Output(), buf, rlen) == 0) {
             setvbuf(stdout, NULL, _IOLBF, 0);  // Line output mode
             printf("\nWrite fail\n");
@@ -1254,6 +1357,38 @@ showsystime(uint sec, uint usec)
 }
 #endif
 
+#define POT0DAT   VADDR16(0x00dff012)  // Counter for proportional input port 0
+#define POTGOR    VADDR16(0x00dff016)  // Prop. pin and start counters (read)
+#define POTGO     VADDR16(0x00dff034)  // Prop. pin and start counters (write)
+
+#define JOY0DAT   VADDR16(0x00dff00a)  // Counter for digital mouse input port 0
+
+static int
+cmd_z(void)
+{
+    uint16_t potgo_orig = *POTGOR;
+    uint16_t potgo_x;
+    uint16_t joydat_1;
+    uint16_t joydat_2;
+
+    printf("orig=%04x\n", potgo_orig);
+    if ((potgo_orig & (BIT(8) | BIT(10))) != (BIT(8) | BIT(10))) {
+        printf("Mouse button already pressed: %04x\n", potgo_orig);
+        return (1);
+    }
+    joydat_1 = *JOY0DAT;
+    INTERRUPTS_DISABLE();
+    *POTGO = (potgo_orig & 0xf000) | BIT(9) | BIT(11);  // Drop middle and right mouse buttons
+    cia_spin(50);
+    joydat_2 = *JOY0DAT;
+    potgo_x = *POTGOR;
+    cia_spin(50);
+    *POTGO = potgo_orig;
+    INTERRUPTS_ENABLE();
+    printf("dat = %04x %04x [%04x]\n", joydat_1, joydat_2, potgo_x);
+    return (0);
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -1263,6 +1398,7 @@ main(int argc, char *argv[])
     uint     flag_inquiry = 0;
     uint     flag_test = 0;
     uint     flag_test_mask = 0;
+    uint     flag_z = 0;
     uint     errs = 0;
     uint     do_multiple = 0;
 
@@ -1307,8 +1443,11 @@ main(int argc, char *argv[])
                     case 't':  // test
                         flag_test++;
                         break;
-                    case 'T':  // AP Controler firmware terminal
+                    case 'T':  // BEC Controler firmware terminal
                         exit(cmd_term(argc - 1, argv + 1));
+                        break;
+                    case 'z':  // z cmd
+                        flag_z++;
                         break;
                     default:
                         printf("Unknown argument %s\n", ptr);
@@ -1326,7 +1465,7 @@ main(int argc, char *argv[])
         }
     }
 
-    if ((flag_inquiry | flag_test) == 0) {
+    if ((flag_inquiry | flag_test | flag_z) == 0) {
         printf("You must specify an operation to perform\n");
         usage();
         exit(1);
@@ -1366,6 +1505,12 @@ main(int argc, char *argv[])
         }
         if (flag_test) {
             if (bec_test(flag_test_mask) && ((loops == 1) || (loop > 1))) {
+                errs++;
+                break;
+            }
+        }
+        if (flag_z) {
+            if (cmd_z() != 0) {
                 errs++;
                 break;
             }
