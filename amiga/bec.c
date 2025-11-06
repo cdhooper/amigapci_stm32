@@ -346,7 +346,7 @@ static inline void
 rtc_delay(void)
 {
 #if 1
-    for (int i = 0; i < 1000; i++)
+//  for (int i = 0; i < 1000; i++)
         __asm("nop");
 #else
     __asm("nop");
@@ -478,25 +478,15 @@ send_cmd(uint8_t cmd, void *arg, uint8_t arglen,
     send_byte(crc);
 
     /* Wait for reply */
-#if 0
-    cia_spin(CIA_USEC(10));
-    for (timeout = 100; timeout > 0; timeout--) {
-        cia_spin(1);
-        if ((got_magic[0] = get_nibble()) == bec_magic[0])
-            break;
-    }
-#else
     cia_spin(CIA_USEC(100));
-    for (timeout = 10; timeout > 0; timeout--) {
-        cia_spin(CIA_USEC(100));
+    for (timeout = 20; timeout > 0; timeout--) {
+        cia_spin(CIA_USEC(10));
         if ((got_magic[0] = get_nibble_hi()) == bec_magic[0])
             break;
     }
-#endif
-    if (timeout == 0) {
-        printf("BEC Timeout\n");
+
+    if (timeout == 0)
         return (BEC_STATUS_TIMEOUT);
-    }
 #if 0
     for (pos = 1; pos < ARRAY_SIZE(bec_magic); pos++) {
         uint8_t nibble = got_magic[pos] = get_nibble();
@@ -513,10 +503,12 @@ send_cmd(uint8_t cmd, void *arg, uint8_t arglen,
             bad_magic++;
 #endif
     if (bad_magic) {
-        printf("BEC bad magic:");
-        for (pos = 0; pos < ARRAY_SIZE(got_magic); pos++)
-            printf(" %x", got_magic[pos]);
-        printf("\n");
+        if (flag_debug) {
+            printf("BEC bad magic:");
+            for (pos = 0; pos < ARRAY_SIZE(got_magic); pos++)
+                printf(" %x", got_magic[pos]);
+            printf("\n");
+        }
         return (BEC_STATUS_BADMAGIC);
     }
 
@@ -545,13 +537,36 @@ send_cmd(uint8_t cmd, void *arg, uint8_t arglen,
     calc_crc = crc32(calc_crc, &msglen, 1);
     calc_crc = crc32(calc_crc, replybuf, msglen);
     if (calc_crc != got_crc) {
-        printf("Bad CRC %08x != calc %08x rc=%x l=%x\n",
-               got_crc, calc_crc, status, msglen);
+        if (flag_debug) {
+            printf("Bad CRC %08x != calc %08x rc=%x l=%x\n",
+                   got_crc, calc_crc, status, msglen);
+        }
         return (BEC_STATUS_REPLYCRC);
     }
 
     return (status);
 }
+
+static uint
+send_cmd_retry(uint8_t cmd, void *arg, uint8_t arglen,
+               void *reply, uint replymax, uint *replyalen)
+{
+    uint tries = 10;
+    uint rc;
+
+    do {
+        rc = send_cmd(cmd, arg, arglen, reply, replymax, replyalen);
+        if ((rc != BEC_STATUS_CRC) &&
+            (rc != BEC_STATUS_REPLYLEN) &&
+            (rc != BEC_STATUS_REPLYCRC) &&
+            (rc != BEC_STATUS_BADMAGIC) &&
+            (rc != BEC_STATUS_TIMEOUT)) {
+            break;
+        }
+    } while (--tries > 0);
+    return (rc);
+}
+
 
 #define DUMP_VALUE_UNASSIGNED 0xffffffff
 
@@ -625,7 +640,7 @@ static uint64_t
 bec_time(void)
 {
     uint64_t usecs;
-    if (send_cmd(BEC_CMD_UPTIME, NULL, 0, &usecs, sizeof (usecs), NULL))
+    if (send_cmd_retry(BEC_CMD_UPTIME, NULL, 0, &usecs, sizeof (usecs), NULL))
         return (0);
     return (usecs);
 }
@@ -641,7 +656,7 @@ bec_identify(void)
     uint       rc;
 
     memset(&id, 0, sizeof (id));
-    rc = send_cmd(BEC_CMD_ID, NULL, 0, &id, sizeof (id), &rlen);
+    rc = send_cmd_retry(BEC_CMD_ID, NULL, 0, &id, sizeof (id), &rlen);
 
     if (rc != 0) {
         printf("Reply message failure: (%s)\n", bec_err(rc));
@@ -1230,10 +1245,13 @@ cmd_term(int argc, char *argv[])
                 printf("\n");
                 break;
             }
-            rc = send_cmd(BEC_CMD_CONS_INPUT, buf, 1, NULL, 0, &rlen);
+            rc = send_cmd_retry(BEC_CMD_CONS_INPUT, buf, 1, NULL, 0, &rlen);
             if (rc != 0) {
                 fail_count++;
                 continue;
+            } else {
+                if (fail_count > 0)
+                    fail_count--;
             }
         }
 
@@ -1242,8 +1260,8 @@ cmd_term(int argc, char *argv[])
 
         /* Poll for BEC Controler output */
         maxlen = sizeof (buf) - 2;
-        rc = send_cmd(BEC_CMD_CONS_OUTPUT, &maxlen, sizeof (maxlen),
-                      buf, sizeof (buf), &rlen);
+        rc = send_cmd_retry(BEC_CMD_CONS_OUTPUT, &maxlen, sizeof (maxlen),
+                            buf, sizeof (buf), &rlen);
 #if 0
         if (rc == MSG_STATUS_BAD_CRC) {
             uint pos;
@@ -1257,6 +1275,9 @@ cmd_term(int argc, char *argv[])
             is_poll = 1;
             fail_count++;
             continue;
+        } else {
+            if (fail_count > 0)
+                fail_count--;
         }
         if (rlen > 0)
             count = 0;  // Got output -- poll again right away

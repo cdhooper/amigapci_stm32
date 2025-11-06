@@ -6,4 +6,5 @@ stutils/
 tinyusb/
 objs
 bec
+apciflash
 .*.sw?

@@ -4,23 +4,24 @@
 
 BEC_PROG  := bec
 BEC_TOOL  := bectool
+FLASH_PROG := apciflash
 
-ALL_PROGS    := $(BEC_PROG)
+ALL_PROGS    := $(BEC_PROG) $(FLASH_PROG)
 #ALL_PROGS    := $(BEC_PROG) $(BEC_TOOL)
 
 OBJDIR       := objs
 CRC32_C      := ../fw/crc32.c
 CTRL_SRCS   := bec.c $(CRC32_C)
 CTRL_HDRS   := ../fw/crc32.h
-APTEST_SRCS   := bectest.c $(CRC32_C)
-APTEST_HDRS   := ../fw/crc32.h
+FLASH_SRCS   := apciflash.c cpu_control.c
+FLASH_HDRS   := cpu_control.h
 
 CC      := m68k-amigaos-gcc
 STRIP   := m68k-amigaos-strip
 CFLAGS  := -Wall -Wextra -Wno-pointer-sign -Wno-format -Wno-strict-aliasing
 CFLAGS  += -Wno-sign-compare -fomit-frame-pointer -I../fw -mcpu=68060
 LDFLAGS_CTRL = -Xlinker -Map=$(OBJDIR)/$@.map -Wa,-a > $(OBJDIR)/$@_prog.lst -mcrt=clib2 -lgcc -lc -lamiga
-LDFLAGS_APTEST = -Xlinker -Map=$(OBJDIR)/$@.map -Wa,-a > $(OBJDIR)/$@_prog.lst -mcrt=clib2 -lgcc -lc -lamiga
+LDFLAGS_FLASH = -Xlinker -Map=$(OBJDIR)/$@.map -Wa,-a > $(OBJDIR)/$@_prog.lst -mcrt=clib2 -lgcc -lc -lamiga
 
 NOW  := $(shell date +%s)
 ifeq ($(OS),Darwin)
@@ -75,12 +76,12 @@ $(3) += $(patsubst %,$(2)/%,$(filter-out $(2)/%,$(basename $(notdir $(1))).o))
 endef
 
 $(foreach SRCFILE,$(CTRL_SRCS),$(eval $(call DEPEND_SRC,$(SRCFILE),$(OBJDIR),CTRL_OBJS)))
-$(foreach SRCFILE,$(APTEST_SRCS),$(eval $(call DEPEND_SRC,$(SRCFILE),$(OBJDIR),APTEST_OBJS)))
+$(foreach SRCFILE,$(FLASH_SRCS),$(eval $(call DEPEND_SRC,$(SRCFILE),$(OBJDIR),FLASH_OBJS)))
 
-OBJS := $(sort $(CTRL_OBJS) $(APTEST_OBJS))
+OBJS := $(sort $(CTRL_OBJS) $(FLASH_OBJS))
 
 $(CTRL_OBJS): $(CTRL_HDRS)
-$(APTEST_OBJS): $(APTEST_HDRS)
+$(FLASH_OBJS): $(FLASH_HDRS)
 
 $(OBJS): Makefile | $(OBJDIR)
 	@echo Building $@
@@ -90,9 +91,13 @@ $(BEC_PROG): $(CTRL_OBJS)
 	@echo Building $@
 	$(QUIET)$(CC) $^ $(LDFLAGS_CTRL) -o $@
 
-$(BEC_TOOL): $(APTEST_OBJS)
+$(FLASH_PROG): $(FLASH_OBJS)
 	@echo Building $@
-	$(QUIET)$(CC) $^ $(LDFLAGS_APTEST) -o $@
+	$(QUIET)$(CC) $^ $(LDFLAGS_FLASH) -o $@
+
+$(BEC_TOOL): $(CTRL_OBJS)
+	@echo Building $@
+	$(QUIET)$(CC) $^ $(LDFLAGS_CTRL) -o $@
 
 $(OBJDIR):
 	mkdir -p $@
