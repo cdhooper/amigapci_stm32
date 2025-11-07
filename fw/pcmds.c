@@ -84,17 +84,21 @@ const char cmd_reset_help[] =
 
 const char cmd_set_help[] =
 "set cpu_temp_bias <num>  - Bias (+/-) for CPU temperature\n"
-"set debug <flags> [save] - set debug flags\n"
+"set debug <flags> [save] - Debug flags\n"
 "set defaults [keymap]    - Force settings to default values\n"
 "set fan_rpm_max <num>    - Fan maximum speed in RPM\n"
 "set fan_speed <num>|auto - Fan speed\n"
 "set fan_speed_min <num>  - Fan speed minimum percent\n"
 "set fan_temp_max <num>   - CPU temp for max fan speed\n"
 "set fan_temp_min <num>   - CPU temp for min fan speed\n"
-"set flags <flags> [save] - set config flags\n"
-"set name <name>          - set board name\n"
-"set pson <num>           - set power on mode (1=On at AC restore)\n"
-"set time <y/m/d>|<h:m:s> - set RTC time and/or date";
+"set flags <flags> [save] - Config flags\n"
+"set mouse_div_x <num>    - Mouse X speed divisor\n"
+"set mouse_div_y <num>    - Mouse Y speed divisor\n"
+"set mouse_mul_x <num>    - Mouse X speed multiplier\n"
+"set mouse_mul_y <num>    - Mouse Y speed multiplier\n"
+"set name <name>          - Board name\n"
+"set pson <num>           - Power on mode (1=On at AC restore)\n"
+"set time <y/m/d>|<h:m:s> - RTC time and/or date";
 
 const char cmd_power_help[] =
 "power cycle - cycle the power supply off/on\n"
@@ -717,7 +721,7 @@ static const char *const debug_flag_bits[] = {
 static const char *const config_flag_bits[] = {
     "InvertX", "InvertY", "InvertW", "InvertP",
         "SwapXY", "SwapWP", "KeyupWP", "GamepadMouse",
-    "HaveFan", "KeyboardNosync", "", "",
+    "HaveFan", "KeyboardNoSync", "KeyboardSwapAlt", "",
         "", "", "", "",
     "", "", "", "",
         "", "", "", "",
@@ -791,6 +795,14 @@ static const config_set_t config_set[] = {
       CFOFF(fan_temp_min), MODE_DEC },
     { "flags",          "",
       CFOFF(flags), MODE_HEX | MODE_BIT_FLAGS },
+    { "mouse_div_x",    "Mouse X speed divisor",
+      CFOFF(mouse_div_x), MODE_DEC },
+    { "mouse_div_y",    "Mouse Y speed divisor",
+      CFOFF(mouse_div_y), MODE_DEC },
+    { "mouse_mul_x",    "Mouse X speed multiplier",
+      CFOFF(mouse_mul_x), MODE_DEC },
+    { "mouse_mul_y",    "Mouse Y speed multiplier",
+      CFOFF(mouse_mul_y), MODE_DEC },
     { "name",          "Board name",
       CFOFF(name), MODE_STRING },
     { "pson",          "Power on at AC restored",
@@ -1028,7 +1040,7 @@ cmd_set(int argc, char * const *argv)
                    "specify all bit numbers or names\n");
             for (bit = 0; bit < 32; bit++)
                 if (config_flag_bits[bit][0] != '\0')
-                    printf(" %c %2u  %s\n",
+                    printf(" %c %2x  %s\n",
                            config.flags & BIT(bit) ? '*' : ' ',
                            bit, config_flag_bits[bit]);
             printf("Current config %08lx  ", config.flags);
@@ -1142,13 +1154,23 @@ invalid_value:
                 switch (cs_size) {
                     default:
                     case 1:
-                        if (value > 0x100)
-                            goto invalid_value;
+                        if (cs_mode & MODE_SIGNED) {
+                            if ((value > 127) || (value < -128))
+                                goto invalid_value;
+                        } else {
+                            if (value >= 0x100)
+                                goto invalid_value;
+                        }
                         *ptr = value;
                         break;
                     case 2:
-                        if (value >= 0x10000)
-                            goto invalid_value;
+                        if (cs_mode & MODE_SIGNED) {
+                            if ((value > 32767) || (value < -32768))
+                                goto invalid_value;
+                        } else {
+                            if (value >= 0x10000)
+                                goto invalid_value;
+                        }
                         *(uint16_t *)ptr = value;
                         break;
                     case 4:

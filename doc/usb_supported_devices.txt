@@ -109,8 +109,13 @@ USB Keyboard / Mouse combination
     Dual PS/2 to USB adapter PCP-BCG4209 (active)
         ID 13ba:0018 PCPlay Barcode PCP-BCG4209
         https://www.amazon.com/dp/B075T1LS3V
+    Lantronix SpiderDuo KVM
+        ID 14dd:0002 Peppercon AG: Multidevice
+        Set Host Interface to USB under Keyboard/Mouse tab of Interfaces tab
+        Depending your host OS, "set flag +keyboardswapalt save" may be useful
     PiKVM v3
         ID 1d6b:0104 PiKVM: PiKVM Composite Device
+        Depending your host OS, "set flag +keyboardswapalt save" may be useful
 
 PS/2 Mouse (through active PS/2 -> USB adapter)
     Sony VAIO PCVA-MSPB wired PS/2 mouse

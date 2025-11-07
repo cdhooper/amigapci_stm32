@@ -64,16 +64,19 @@ static volatile uint8_t rtc_timer_en;
 static volatile uint8_t rtc_touched;
 static volatile uint8_t rtc_ram_touched;
 
-
+/*
+ * RP5C01 TEST and RESET registers always read as 0, regardless of
+ * what was written there.
+ */
 static const uint8_t rtc_mask[4][0x10] = {
     { 0xf, 0x7, 0xf, 0x7, 0xf, 0x3, 0x7, 0xf,
-      0x3, 0xf, 0x1, 0xf, 0xf, 0xf, 0xf, 0xf },
+      0x3, 0xf, 0x1, 0xf, 0xf, 0xf, 0x0, 0x0 },
     { 0x0, 0x0, 0xf, 0x7, 0xf, 0x3, 0x7, 0xf,
-      0x3, 0x0, 0x1, 0x3, 0x0, 0xf, 0xf, 0xf },
+      0x3, 0x0, 0x1, 0x3, 0x0, 0xf, 0x0, 0x0 },
     { 0xf, 0xf, 0xf, 0xf, 0xf, 0xf, 0xf, 0xf,
-      0xf, 0xf, 0xf, 0xf, 0xf, 0xf, 0xf, 0xf },
+      0xf, 0xf, 0xf, 0xf, 0xf, 0xf, 0x0, 0x0 },
     { 0xf, 0xf, 0xf, 0xf, 0xf, 0xf, 0xf, 0xf,
-      0xf, 0xf, 0xf, 0xf, 0xf, 0xf, 0xf, 0xf },
+      0xf, 0xf, 0xf, 0xf, 0xf, 0xf, 0x0, 0x0 },
 };
 
 static const uint8_t testpatt_reply[] = {
@@ -93,6 +96,7 @@ static uint     bec_msg_in;         // Current receive position in nibbles
 static uint     bec_msg_out;        // Current send position in nibbles
 static uint     bec_msg_out_max;    // Message length in nibbles
 static uint64_t bec_msg_in_timeout;
+static uint64_t bec_msg_out_timeout;
 
 /*
  * RP5C01 registers (each register is 4 bits)
@@ -317,13 +321,14 @@ exti0_isr(void)
 #endif
 #define RP_MAGIC_HI 0
 #define RP_MAGIC_LO 1
-            if ((rtc_cur_bank == 1) && (addr == RP_MAGIC_LO)) {
+            if ((rtc_cur_bank == 1) && (addr == RP_MAGIC_LO) &&
+                (bec_msg_out != 0)) {
+                bec_msg_out += 2;
                 if (bec_msg_out < bec_msg_out_max) {
-                    bec_msg_out += 2;
                     data = bec_msg_outbuf[bec_msg_out / 2];
                     rtc_data[1][RP_MAGIC_HI] = data >> 4;
                     rtc_data[1][RP_MAGIC_LO] = data & 0xf;
-                } else if (bec_msg_out == bec_msg_out_max) {
+                } else if (bec_msg_out >= bec_msg_out_max) {
                     bec_msg_out = 0;  // End of message
                     rtc_data[1][RP_MAGIC_HI] = 0;
                     rtc_data[1][RP_MAGIC_LO] = 0;
@@ -393,16 +398,32 @@ exti0_isr(void)
 #define RTC_MODE_TIMER_MODE (BIT(0) | BIT(1))
                     rtc_cur_bank = data & RTC_MODE_TIMER_MODE;
                     rtc_timer_en = data & RTC_MODE_TIMER_EN;
-                    goto common_register;
-                case 0x0e:  // TEST register
-                    data = 0;
-                    goto common_register;
-                case 0x0f:  // RESET register
-                    /* XXX: Handle reset? */
-common_register:
                     rtc_data[0][addr] = data;
                     rtc_data[1][addr] = data;
                     rtc_data[2][addr] = data;
+                    rtc_data[3][addr] = data;
+                    break;
+                case 0x0e:  // TEST register
+                    break;
+                case 0x0f:  // RESET register
+                    if (data & BIT(0)) {
+                        /* Reset alarm registers */
+                        rtc_data[0][0xd] &= ~BIT(2);  // ALARM_EN
+                        rtc_data[1][0xd]  = rtc_data[0][0xd];
+                        rtc_data[2][0xd]  = rtc_data[0][0xd];
+                        rtc_data[3][0xd]  = rtc_data[0][0xd];
+                        rtc_data[1][0x2]  = 0;  // 1-minute alarm
+                        rtc_data[1][0x3]  = 0;  // 10-minute alarm
+                        rtc_data[1][0x4]  = 0;  // 1-hour alarm
+                        rtc_data[1][0x5]  = 0;  // 10-hour alarm
+                        rtc_data[1][0x6]  = 0;  // day-of-week alarm
+                        rtc_data[1][0x7]  = 0;  // 1-day alarm
+                        rtc_data[1][0x8]  = 0;  // 10-day alarm
+                    }
+                    if (data & BIT(1)) {
+                        /* Reset cascade register triggered */
+                        amigartc_reset();
+                    }
                     break;
             }
 #if 1
@@ -734,6 +755,8 @@ bec_reply(uint rstatus, uint rlen, const void *data_p)
     memcpy(&bec_msg_outbuf[4 + rlen], &crc, BEC_MSG_CRC_LEN);
     bec_msg_out_max = (rlen + BEC_MSG_HDR_LEN + BEC_MSG_CRC_LEN) * 2;
 
+    bec_msg_out_timeout = timer_tick_plus_msec(1000);
+
     /* Kick off reply by pre-loading first response byte */
     rtc_data[1][RP_MAGIC_HI] = bec_msg_outbuf[0] >> 4;
     rtc_data[1][RP_MAGIC_LO] = bec_msg_outbuf[0] & 0xf;
@@ -889,12 +912,12 @@ amigartc_poll(void)
     }
 }
 #endif
-        if (bec_msg_in == expected * 2) {
+        if (bec_msg_in >= expected * 2) {
             bec_msg_process();
             bec_msg_in_timeout = 0;
             bec_msg_in = 0;
         } else if (bec_msg_in_timeout == 0) {
-            bec_msg_in_timeout = timer_tick_plus_msec(500);
+            bec_msg_in_timeout = timer_tick_plus_msec(1000);
         } else if (timer_tick_has_elapsed(bec_msg_in_timeout)) {
             uint pos;
             printf("Msg in timeout: got %u of %u\n  ",
@@ -905,6 +928,12 @@ amigartc_poll(void)
             bec_msg_in_timeout = 0;
             bec_msg_in = 0;
         }
+    }
+    if ((bec_msg_out != 0) && (bec_msg_out_timeout != 0) &&
+        timer_tick_has_elapsed(bec_msg_out_timeout)) {
+        printf("Msg out timeout: sent %u of %u\n",
+               (bec_msg_out - 1) / 2, bec_msg_out_max / 2);
+        bec_msg_out = 0;
     }
 }
 
@@ -969,6 +998,24 @@ printf("(5)");
 }
 #endif
 
+/*
+ * amigartc_reset() resets runtime state of the Amiga RTC when the Amiga is
+ *                  in reset. It does not clobber the current time.
+ */
+void
+amigartc_reset(void)
+{
+    uint cur;
+    bec_msg_out = 0;
+    rtc_data[1][RP_MAGIC_HI] = 0;  // BEC message interface
+    rtc_data[1][RP_MAGIC_LO] = 0;  // BEC message interface
+    for (cur = 0; cur < 4; cur++) {
+        rtc_data[cur][0xd] = 8;    // MODE register (clock running)
+        rtc_data[cur][0xe] = 0;    // TEST register
+        rtc_data[cur][0xf] = 0;    // RESET register
+    }
+}
+
 void
 amigartc_init(void)
 {
@@ -977,6 +1024,7 @@ amigartc_init(void)
     rtc_ram_touched = 0;
     rtc_timer_en    = 1;
 
+    amigartc_reset();
     amigartc_copy_time_stm32_to_rp5c01();
     amigartc_copy_ram_stm32_to_rp5c01();
 

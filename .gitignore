@@ -8,3 +8,5 @@ objs
 bec
 apciflash
 .*.sw?
+.cscope*
+cscope.out

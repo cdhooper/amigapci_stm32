@@ -200,9 +200,12 @@ typedef struct _HIDDescriptor
 }
 HID_DescTypeDef;
 
+#define DEV_FLAG_ABSOLUTE 0x01  // Device gives absolute position (not relative)
+
 typedef struct _HIDRDescriptor
 {
   uint16_t   usage;            // Top level Usage
+  uint16_t   dev_flag;         // Device flags
   uint16_t   pos_x;            // Position of Mouse X movement
   uint16_t   pos_y;            // Position of Mouse Y movement
   uint16_t   pos_wheel;        // Position of Mouse wheel movement

@@ -18,6 +18,7 @@
 #include "timer.h"
 #include "kbrst.h"
 #include "power.h"
+#include "amigartc.h"
 
 uint8_t         amiga_in_reset         = 0xff;  // Not initialized
 static uint64_t amiga_reset_timer      = 0;  // Timer to take Amiga out of reset
@@ -98,6 +99,9 @@ kbrst_poll(void)
     if (in_reset_last != in_reset) {
         in_reset_last = in_reset;
         /* Amiga reset state change has occurred */
+
+        if (in_reset)
+            amigartc_reset();
 
         if (power_state == POWER_STATE_ON) {
             /* Only report reset state when power is on */

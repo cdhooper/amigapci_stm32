@@ -38,6 +38,7 @@
 #define CF_GAMEPAD_MOUSE    0x00000080  // Use joystick on gamepad as mouse
 #define CF_HAVE_FAN         0x00000100  // Board has fan attached
 #define CF_KEYBOARD_NOSYNC  0x00000200  // Skip sync for Amiga keyboard
+#define CF_KEYBOARD_SWAPALT 0x00000400  // Swap Alt and Amiga keys
 
 typedef struct {
     uint32_t    magic;          // Structure magic
@@ -66,7 +67,11 @@ typedef struct {
     uint32_t    jdirectmap[4];  // Joystick direction mappings (U, D, L, R)
     uint32_t    scrollmap[4];   // Mouse scroll wheel mappings (U, D, L, R)
     uint32_t    sysctlmap[4];   // System control button mappings
-    uint8_t     unused[624];    // Unused
+    uint8_t     mouse_div_x;    // Mouse X speed scaling divisor
+    uint8_t     mouse_div_y;    // Mouse Y speed scaling divisor
+    uint8_t     mouse_mul_x;    // Mouse X speed scaling factor
+    uint8_t     mouse_mul_y;    // Mouse Y speed scaling factor
+    uint8_t     unused[620];    // Unused
 } config_t;
 
 extern config_t config;

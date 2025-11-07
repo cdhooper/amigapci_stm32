@@ -279,6 +279,10 @@ void USBH_HID_Process_HIDReportDescriptor(USBH_HandleTypeDef *phost, HID_HandleT
                             } else if (x <= usage_count) {
                                 switch (usage_array[x]) {
                                     case HID_USAGE_X:
+                                        if ((value & BIT(2)) == 0) {
+                                            DPRINTF(" Absolute");
+                                            rd->dev_flag |= DEV_FLAG_ABSOLUTE;
+                                        }
                                         DPRINTF(" X=%u", bitpos);
                                         rd->pos_x = bitpos;
                                         rd->bits_x = report_size;
@@ -1697,13 +1701,63 @@ USBH_HID_DecodeReport(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle, 
 
         if (((rd->id_mouse != 0) && (rd->id_mouse == id)) ||
             ((rd->id_mouse == 0) && (devtype == HID_MOUSE))) {
+            int16_t x;
+            int16_t y;
+            int     mul_x = config.mouse_mul_x;
+            int     div_x = config.mouse_div_x;
+            int     mul_y = config.mouse_mul_y;
+            int     div_y = config.mouse_div_y;
+            static  int accum_x;
+            static  int accum_y;
 is_mouse:
             dprintf(DF_USB_DECODE_MOUSE, "\n%08lx %08lx ",
                     report_data[0], report_data[1]);
 
             report_info->buttons = readbits_buttons(report_data, rd);
-            report_info->x = readbits(report_data, rd->pos_x, rd->bits_x, 1);
-            report_info->y = readbits(report_data, rd->pos_y, rd->bits_y, 1);
+            x = readbits(report_data, rd->pos_x, rd->bits_x, 1);
+            y = readbits(report_data, rd->pos_y, rd->bits_y, 1);
+            if (rd->dev_flag & DEV_FLAG_ABSOLUTE) {
+                static int16_t x_last;
+                static int16_t y_last;
+                int16_t        temp;
+                temp = x;
+                x -= x_last;
+                x_last = temp;
+
+                temp = y;
+                y -= y_last;
+                y_last = temp;
+
+                x /= 4;  // Assume screen has higher X resolution
+                y /= 8;
+
+                if (div_x == 0)
+                    div_x = 4;
+                if (div_y == 0)
+                    div_y = 4;
+            } else {
+                if (div_x == 0)
+                    div_x = 2;
+                if (div_y == 0)
+                    div_y = 2;
+            }
+            if (mul_x == 0)
+                mul_x = 1;
+            if (mul_y == 0)
+                mul_y = 1;
+
+            /*
+             * The below code handles fractional mouse movements by
+             * remembering the remainder from previous mouse input.
+             */
+            accum_x       += x * mul_x;
+            report_info->x = accum_x / div_x;
+            accum_x       -= (report_info->x * div_x);
+
+            accum_y       += y * mul_y;
+            report_info->y = accum_y / div_y;
+            accum_y       -= (report_info->y * div_y);
+
             if (rd->bits_wheel != 0) {
                 report_info->wheel = readbits(report_data, rd->pos_wheel,
                                               rd->bits_wheel, 1);

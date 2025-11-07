@@ -170,7 +170,9 @@ uint8_t keyboard_raw_mode;   // Send USB keystrokes through unaltered
 #define AS_NONE        (0xff)  // Not a valid keycode
 
 
+/* sa_flags values */
 #define SAF_ADD_SHIFT 0x01
+
 static const struct {
     uint8_t sa_amiga;    // Amiga scancode
     uint8_t sa_shifted;  // Only if different from native key
@@ -227,7 +229,8 @@ static const struct {
     { AS_LBRACKET,   AS_NONE, 0x00 },  // 0x2f  '{' and '['
     { AS_RBRACKET,   AS_NONE, 0x00 },  // 0x30  '}' and ']'
     { AS_BACKSLASH,  AS_NONE, 0x00 },  // 0x31  '|' and '\'
-    { AS_3, AS_BACKTICK, 0x01 }, // 0x32  '~' and '#' (Non-US)
+//  { AS_3,      AS_BACKTICK, 0x01 },  // 0x32  '~' and '#' (Non-US)
+    { AS_BACKSLASH,  AS_NONE, 0x00 },  // 0x32  '|' and '\' (Override to US)
     { AS_SEMICOLON,  AS_NONE, 0x00 },  // 0x33  ':' and ';'
     { AS_APOSTROPHE, AS_NONE, 0x00 },  // 0x34  '"' and '''
     { AS_BACKTICK,   AS_NONE, 0x00 },  // 0x35  '~' and '`'
@@ -1300,10 +1303,29 @@ keyboard_usb_input(usb_keyboard_report_t *report)
     static uint8_t capslock;
     uint modifier = report->modifier;
     uint pmodifier = prev_report.modifier;
-    uint mod_diff = modifier ^ pmodifier;
+    uint mod_diff;
     uint cur;
     uint ascii;
     uint32_t mouse_buttons_old = mouse_buttons_add;
+
+    if (config.flags & CF_KEYBOARD_SWAPALT) {
+        /*
+         * Swap Alt keys and Amiga keys
+         *    Bit 0 Left Ctrl
+         *    Bit 1 Left Shift
+         *    Bit 2 Left Alt
+         *    Bit 3 Left Amiga
+         *    Bit 4 Right Control
+         *    Bit 5 Right Shift
+         *    Bit 6 Right Alt
+         *    Bit 7 Right Amiga
+         */
+        modifier = (modifier & 0x33) |        // Ctrl and Shift
+                   ((modifier & 0x44) << 1) | // Alt -> Amiga
+                   ((modifier & 0x88) >> 1);  // Amiga -> Alt
+        report->modifier = modifier;
+    }
+    mod_diff = modifier ^ pmodifier;
 
     last_key_report_modifier = modifier;
 
