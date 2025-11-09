@@ -155,6 +155,7 @@ static const memmap_t memmap[] = {
     { "GPIOD",  GPIOD_BASE },
     { "GPIOE",  GPIOE_BASE },
     { "IWDG",   IWDG_BASE },
+    { "NVIC",   NVIC_BASE },
     { "PWR",    POWER_CONTROL_BASE },
     { "RCC",    RCC_BASE },
     { "RTC",    RTC_BASE },

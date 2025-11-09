@@ -40,11 +40,11 @@ USB Keyboard
         FN+F7 to FN+F12 drive various mouse button combinations
     Corsair K55 RGB PRO Wired Gaming Keyboard
         ID 1b1c:1b3d Corsair Gaming K55 RGB Keyboard
-        Jason's keyboard -- shows up and identifies, but no input
-        ** Might work now.
         Hold Lock + F1 for 5 seconds to force USB boot protocol
             For newer models, hold S + B keys while powering on
         Hold Fn + F4 for 5 seconds to factory reset the keyboard
+        By default, this keyboard reports keyboard input using a bitmap of
+            scancodes rather than standard USB boot protocol.
     Das Keyboard 5Q Soft Tactile RGB Smart Mechanical Keyboard (Kickstarter)
         ID 24f0.2020 Das Keyboard 5Q RGB Mechanical Keyboard
             v7.3.253 (latest is 7.4.51)

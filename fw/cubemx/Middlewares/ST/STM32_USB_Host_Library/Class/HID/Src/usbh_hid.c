@@ -1056,15 +1056,12 @@ static USBH_StatusTypeDef USBH_HID_Process_ll(USBH_HandleTypeDef *phost, HID_Han
       break;
 
     case HID_GET_DATA: {
-      disable_irq();
       if (USBH_LL_GetURBState(phost, HID_Handle->InPipe) == USBH_URB_DONE) {
-        enable_irq();
         goto do_hid_poll;
       }
       USBH_InterruptReceiveData(phost, HID_Handle->pData,
                                 (uint8_t)HID_Handle->length_max,
                                 HID_Handle->InPipe);
-      enable_irq();
 
       HID_Handle->timer = phost->Timer;
       HID_Handle->state = HID_POLL;

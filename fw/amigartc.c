@@ -310,7 +310,6 @@ exti0_isr(void)
             GPIO_BSRR(D16_PORT) = 0x00f00000 | (data << 4);  // Set data pins
             gpio_value = (gpio_value & ~0x00f0) | (data << 4);
 
-#if 1
             /* Wait for _RTCEN to deassert */
             count = 0;
             while ((GPIO_IDR(A4_PORT) & RTCEN_PIN) == 0)
@@ -318,7 +317,7 @@ exti0_isr(void)
                     printf("H");
                     break;
                 }
-#endif
+
 #define RP_MAGIC_HI 0
 #define RP_MAGIC_LO 1
             if ((rtc_cur_bank == 1) && (addr == RP_MAGIC_LO) &&
@@ -347,13 +346,6 @@ exti0_isr(void)
                 printf("M");
                 gpio_value = GPIO_IDR(A4_PORT);
             }
-#if 0
-            uint32_t nvalue = GPIO_IDR(A4_PORT);
-            if (((nvalue & RTCEN_PIN) == 0) && ((nvalue & R_WA_PIN) == 0)) {
-                gpio_value = nvalue;
-//              printf(".");
-            }
-#endif
             addr = (gpio_value >> 10) & 0xf;
             data = (gpio_value >> 4) & 0xf;
             bank = rtc_cur_bank;
@@ -426,7 +418,7 @@ exti0_isr(void)
                     }
                     break;
             }
-#if 1
+
             /* Wait for _RTCEN to deassert */
             count = 0;
             while ((GPIO_IDR(A4_PORT) & RTCEN_PIN) == 0)
@@ -434,7 +426,6 @@ exti0_isr(void)
                     printf("H");
                     break;
                 }
-#endif
             DPRINTF(" %x=%x", addr, data);
         }
 #ifdef INTERRUPT_CAPTURE_RP5C01
@@ -442,19 +433,9 @@ exti0_isr(void)
         amigartc_tick[amigartc_prod] = TIM_CNT(TIM2);
         amigartc_prod = (amigartc_prod + 1) % ARRAY_SIZE(amigartc_cap);
 #endif
-#if 0
-        count = 0;
-        do {
-            ngpio_value = GPIO_IDR(A4_PORT);
-            if (count++ > 1000) {
-                set_rtc_dx_input();  // Stop driving data pins
-                return;
-            }
-        } while (ngpio_value == gpio_value);
-#else
         set_rtc_dx_input();  // Stop driving data pins
         return;
-#endif
+
         gpio_value = ngpio_value;
         if ((GPIO_IDR(STMRSTA_PORT) & STMRSTA_PIN) == 0) {
             break;  // Amiga in reset or off -- stop interrupt service

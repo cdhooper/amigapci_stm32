@@ -293,6 +293,8 @@ static const gpio_names_t gpio_names[] = {
     { "USB1_DP",    GPIO_A, 12 },
     { "STM_DIO",    GPIO_A, 13 },
     { "STM_SWCLK",  GPIO_A, 14 },
+    { "SCL",        GPIO_A, 10 },
+    { "SDA",        GPIO_A, 15 },
 };
 
 /*
@@ -831,6 +833,10 @@ gpio_init(void)
     gpio_setmode(VMON5_PORT, VMON5_PIN | VMON5SB_PIN | VMON3V3_PIN |
                  VMON1V2_PIN | VMONx_PIN | VMONy_PIN, GPIO_SETMODE_INPUT);
     gpio_setmode(VMON12_PORT, VMON12_PIN | VMONNEG12_PIN, GPIO_SETMODE_INPUT);
+
+    gpio_setv(I2C_SCL_PORT, I2C_SCL_PIN | I2C_SDA_PIN, 1);
+    gpio_setmode(I2C_SCL_PORT, I2C_SCL_PIN | I2C_SDA_PIN,
+                 GPIO_SETMODE_OUTPUT_ODRAIN_25 | GPIO_SETMODE_PU);
 
     gpio_setmode(RTCEN_PORT, RTCEN_PIN | R_WA_PIN, GPIO_SETMODE_INPUT_PU);
 

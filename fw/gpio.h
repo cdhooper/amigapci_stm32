@@ -15,96 +15,101 @@
 #include <libopencm3/stm32/gpio.h>
 
 #define POWER_LED_PORT      GPIOA
-#define POWER_LED_PIN           GPIO8
+#define POWER_LED_PIN           GPIO8   // PA8
 
 #define USB_ENABLE_PORT     GPIOA
-#define USB_ENABLE_PIN          GPIO9   // Enable power to USB port
+#define USB_ENABLE_PIN          GPIO9   // PA9 Enable power to USB port
 #define USB1_DM_PORT        GPIOA
-#define USB1_DM_PIN             GPIO11
+#define USB1_DM_PIN             GPIO11  // PA11
 #define USB1_DP_PORT        GPIOA
-#define USB1_DP_PIN             GPIO12
+#define USB1_DP_PIN             GPIO12  // PA12
 #define USB2_DM_PORT        GPIOB
-#define USB2_DM_PIN             GPIO14
+#define USB2_DM_PIN             GPIO14  // PB14
 #define USB2_DP_PORT        GPIOB
-#define USB2_DP_PIN             GPIO15
+#define USB2_DP_PIN             GPIO15  // PB15
+
+#define I2C_SCL_PORT        GPIOA
+#define I2C_SCL_PIN             GPIO10  // PA10 I2C SCL
+#define I2C_SDA_PORT        GPIOA
+#define I2C_SDA_PIN             GPIO15  // PA15 I2C SDA
 
 #define RTCEN_PORT          GPIOB
-#define RTCEN_PIN               GPIO0   // RTC bus active (low)
+#define RTCEN_PIN               GPIO0   // PB0 RTC bus active (low)
 #define R_WA_PORT           GPIOB
-#define R_WA_PIN                GPIO1   // RTC read/write operation
+#define R_WA_PIN                GPIO1   // PB1 RTC read/write operation
 #define HIDEN_PORT          GPIOB
-#define HIDEN_PIN               GPIO2
+#define HIDEN_PIN               GPIO2   // PB2
 #define D16_PORT            GPIOB
-#define D16_PIN                 GPIO4
+#define D16_PIN                 GPIO4   // PB4
 #define D17_PORT            GPIOB
-#define D17_PIN                 GPIO5
+#define D17_PIN                 GPIO5   // PB5
 #define D18_PORT            GPIOB
-#define D18_PIN                 GPIO6
+#define D18_PIN                 GPIO6   // PB6
 #define D19_PORT            GPIOB
-#define D19_PIN                 GPIO7
+#define D19_PIN                 GPIO7   // PB7
 #define A2_PORT             GPIOB
-#define A2_PIN                  GPIO10
+#define A2_PIN                  GPIO10  // PB10
 #define A3_PORT             GPIOB
-#define A3_PIN                  GPIO11
+#define A3_PIN                  GPIO11  // PB11
 #define A4_PORT             GPIOB
-#define A4_PIN                  GPIO12
+#define A4_PIN                  GPIO12  // PB12
 #define A5_PORT             GPIOB
-#define A5_PIN                  GPIO13
+#define A5_PIN                  GPIO13  // PB13
 
 #define FANPWM_PORT         GPIOB
-#define FANPWM_PIN              GPIO8   // Fan speed select
+#define FANPWM_PIN              GPIO8   // PB8 Fan speed select
 #define FANTACH_PORT        GPIOB
-#define FANTACH_PIN             GPIO9   // Fan speed measurement
+#define FANTACH_PIN             GPIO9   // PB9 Fan speed measurement
 
 #define PWRSW_PORT          GPIOC
-#define PWRSW_PIN               GPIO12  // User power switch/button
+#define PWRSW_PIN               GPIO12  // PC12 User power switch/button
 #define STMRSTA_PORT        GPIOC
-#define STMRSTA_PIN             GPIO13  // Signal STM32 to reset USB, etc
+#define STMRSTA_PIN             GPIO13  // PC13 Signal STM32 to reset USB, etc
 #define PSON_PORT           GPIOD
-#define PSON_PIN                GPIO2   // Power supply "button"
+#define PSON_PIN                GPIO2   // PCD2 Power supply "button"
 
 #define LSCLKIN_PORT        GPIOC
-#define LSCLKIN_PIN             GPIO14
+#define LSCLKIN_PIN             GPIO14  // PC14
 #define LSCLKOUT_PORT       GPIOC
-#define LSCLKOUT_PIN            GPIO15
+#define LSCLKOUT_PIN            GPIO15  // PC15
 
 #define PotX_PORT           GPIOA
-#define PotX_PIN                GPIO4
+#define PotX_PIN                GPIO4  // PA4
 #define PotY_PORT           GPIOA
-#define PotY_PIN                GPIO5
+#define PotY_PIN                GPIO5  // PA5
 #define FORWARD_PORT        GPIOC
-#define FORWARD_PIN             GPIO0
+#define FORWARD_PIN             GPIO0  // PC2
 #define BACK_PORT           GPIOC
-#define BACK_PIN                GPIO1
+#define BACK_PIN                GPIO1  // PC3
 #define LEFT_PORT           GPIOC
-#define LEFT_PIN                GPIO2
+#define LEFT_PIN                GPIO2  // PC4
 #define RIGHT_PORT          GPIOC
-#define RIGHT_PIN               GPIO3
+#define RIGHT_PIN               GPIO3  // PC5
 #define FIRE_PORT           GPIOC
-#define FIRE_PIN                GPIO6
+#define FIRE_PIN                GPIO6  // PC6
 #define KBRST_PORT          GPIOC
-#define KBRST_PIN               GPIO7
+#define KBRST_PIN               GPIO7  // PC7
 #define KBDATA_PORT         GPIOC
-#define KBDATA_PIN              GPIO8
+#define KBDATA_PIN              GPIO8  // PC8
 #define KBCLK_PORT          GPIOC
-#define KBCLK_PIN               GPIO9
+#define KBCLK_PIN               GPIO9  // PC9
 
 #define VMON5_PORT          GPIOA
-#define VMON5_PIN               GPIO0   // 5V
+#define VMON5_PIN               GPIO0  // PA0 5V
 #define VMON5SB_PORT        GPIOA
-#define VMON5SB_PIN             GPIO1   // 5V Standby
+#define VMON5SB_PIN             GPIO1  // PA1 5V Standby
 #define VMON3V3_PORT        GPIOA
-#define VMON3V3_PIN             GPIO2   // 3.3V
+#define VMON3V3_PIN             GPIO2  // PA2 3.3V
 #define VMON1V2_PORT        GPIOA
-#define VMON1V2_PIN             GPIO3   // 1.2V
+#define VMON1V2_PIN             GPIO3  // PA3 1.2V
 #define VMONx_PORT          GPIOA
-#define VMONx_PIN               GPIO6
+#define VMONx_PIN               GPIO6  // PA6
 #define VMONy_PORT          GPIOA
-#define VMONy_PIN               GPIO7
+#define VMONy_PIN               GPIO7  // PA7
 #define VMON12_PORT         GPIOC
-#define VMON12_PIN              GPIO4   // 12V
+#define VMON12_PIN              GPIO4  // PC4 12V
 #define VMONNEG12_PORT      GPIOC
-#define VMONNEG12_PIN           GPIO5   // -12V Analog
+#define VMONNEG12_PIN           GPIO5  // PC5 -12V Analog
 
 
 /*
