@@ -25,15 +25,16 @@ const char *version = "\0$VER: apciflash "VERSION" ("BUILD_DATE") © Chris Hooper
 #include <exec/memory.h>
 #include "cpu_control.h"
 
-#define STATUS_OK          0
-#define STATUS_FAIL        1
-#define STATUS_PRG_FAIL    2
-#define STATUS_PRG_TIMEOUT 3
-#define STATUS_BAD_DATA    4
+#define STATUS_OK               0
+#define STATUS_FAIL             1
+#define STATUS_PRG_FAIL         2
+#define STATUS_PRG_TIMEOUT      3
+#define STATUS_BAD_DATA         4
 
-#define ROM_BANKS 4
+#define ROM_BANKS               4
+#define BANK_SIZE               (512 << 10)  // Each bank is 512 KB
 
-#define DUMP_VALUE_UNASSIGNED 0xffffffff
+#define DUMP_VALUE_UNASSIGNED   0xffffffff
 
 static int flash_id(uint32_t *dev);
 
@@ -63,14 +64,14 @@ static const char cmd_options[] =
     "usage: apciflash <options>\n"
     "   debug         show debug output (-d)\n"
     "   erase <opt>   erase flash (-e ?, bank, ...)\n"
-    "   identify      identify Kicksmash and Flash parts (-i])\n"
+    "   identify      identify flash part (-i])\n"
     "   read <opt>    read from flash (-r ?, bank, file, ...)\n"
     "   test          test flash ID (-t) [-l <loops>]\n"
     "   verify <opt>  verify flash matches file (-v ?, bank, file, ...)\n"
     "   write <opt>   write to flash (-w ?, bank, file, ...)\n";
 
 static const char cmd_read_options[] =
-    "smash read options\n"
+    "flash read options\n"
     "   addr <hex>   starting address (-a)\n"
     "   bank <num>   flash bank on which to operate (-b)\n"
     "   dump         save hex/ASCII instead of binary (-d)\n"
@@ -80,7 +81,7 @@ static const char cmd_read_options[] =
     "   yes          skip prompt (-y)\n";
 
 static const char cmd_write_options[] =
-    "smash write options\n"
+    "flash write options\n"
     "   addr <hex>   starting address (-a)\n"
     "   bank <num>   flash bank on which to operate (-b)\n"
 //  "   dump         save hex/ASCII instead of binary (-d)\n"
@@ -90,7 +91,7 @@ static const char cmd_write_options[] =
     "   yes          skip prompt (-y)\n";
 
 static const char cmd_verify_options[] =
-    "smash verify options\n"
+    "flash verify options\n"
     "   addr <hex>   starting address (-a)\n"
     "   bank <num>   flash bank on which to operate (-b)\n"
 //  "   dump         save hex/ASCII instead of binary (-d)\n"
@@ -100,7 +101,7 @@ static const char cmd_verify_options[] =
     "   yes          skip prompt (-y)\n";
 
 static const char cmd_erase_options[] =
-    "smash erase options\n"
+    "flash erase options\n"
     "   addr <hex>   starting address (-a)\n"
     "   bank <num>   flash bank on which to operate (-b)\n"
     "   len <hex>    length to erase in bytes (-l)\n"
@@ -211,6 +212,17 @@ static void
 usage(void)
 {
     printf("%s\n\n%s", version + 7, cmd_options);
+}
+
+static void
+show_rom_banks(void)
+{
+    uint bank;
+    printf("  Bank  Address range\n"
+           "  ----  -------------------\n");
+    for (bank = 0; bank < ARRAY_SIZE(bank_to_base_addr); bank++)
+        printf("%5d   %08x - %08x\n", bank, bank_to_base_addr[bank],
+               bank_to_base_addr[bank] + BANK_SIZE - 1);
 }
 
 const char *
@@ -1048,7 +1060,7 @@ flash_erase(uint bank, uint addr, uint len, uint flag_yes)
 
         rc = erase_flash_block(bank, addr);
         if (rc != 0) {
-            printf("\nKicksmash failure (%s)\n", status_string(rc));
+            printf("\nErase failure (%s)\n", status_string(rc));
             break;
         }
         if (is_user_abort()) {
@@ -1105,7 +1117,7 @@ cmd_erase(int argc, char *argv[])
     uint        len  = VALUE_UNASSIGNED;
     uint        flag_yes = 0;
     uint        rc = 1;
-    uint        bank_size;
+    uint        bank_size = BANK_SIZE;
     int         arg;
     int         pos;
 
@@ -1116,8 +1128,9 @@ cmd_erase(int argc, char *argv[])
             for (++ptr; *ptr != '\0'; ptr++) {
                 switch (*ptr) {
                     case 'a':  // addr
-                        if (++arg > argc) {
-                            printf("smash %s %s requires an option\n",
+                        if (++arg >= argc) {
+                            show_rom_banks();
+                            printf("apciflash %s -%s requires an option\n",
                                    argv[0], ptr);
                             goto usage;
                         }
@@ -1126,12 +1139,14 @@ cmd_erase(int argc, char *argv[])
                             (pos == 0) || (argv[arg][pos] != '\0')) {
                             printf("Invalid argument \"%s\" for %s -%s\n",
                                    argv[arg], argv[0], ptr);
+                            show_rom_banks();
                             goto usage;
                         }
                         break;
                     case 'b':  // bank
-                        if (++arg > argc) {
-                            printf("smash %s %s requires an option\n",
+                        if (++arg >= argc) {
+                            show_rom_banks();
+                            printf("apciflash %s -%s requires an option\n",
                                    argv[0], ptr);
                             goto usage;
                         }
@@ -1141,6 +1156,7 @@ cmd_erase(int argc, char *argv[])
                             (bank >= ROM_BANKS)) {
                             printf("Invalid argument \"%s\" for %s -%s\n",
                                    argv[arg], argv[0], ptr);
+                            show_rom_banks();
                             goto usage;
                         }
                         break;
@@ -1153,8 +1169,8 @@ usage:
                         printf("%s", cmd_erase_options);
                         return (rc);
                     case 'l':  // length
-                        if (++arg > argc) {
-                            printf("smash %s %s requires an option\n",
+                        if (++arg >= argc) {
+                            printf("apciflash %s -%s requires an option\n",
                                    argv[0], ptr);
                         }
                         pos = 0;
@@ -1193,7 +1209,7 @@ usage:
         printf("You must supply a bank number\n");
         goto usage;
     }
-    bank_size = 512 << 10;
+    bank_size = BANK_SIZE;
 
     if (len == VALUE_UNASSIGNED) {
         /* Get length from size of bank */
@@ -1248,7 +1264,7 @@ cmd_readwrite(int argc, char *argv[])
     uint        dot_iters = 1;
     uint        dot_max;
     uint8_t    *buf;
-    uint8_t    *vbuf = NULL;
+    uint8_t    *rbuf = NULL;
 
     /* First Just determine the read/write/verify mode */
     for (arg = 0; arg < argc; arg++) {
@@ -1271,15 +1287,16 @@ cmd_readwrite(int argc, char *argv[])
         }
     }
 
-    for (arg = 1; arg < argc; arg++) {
+    for (arg = 0; arg < argc; arg++) {
         ptr = long_to_short(argv[arg], long_to_short_readwrite,
                             ARRAY_SIZE(long_to_short_readwrite));
         if (*ptr == '-') {
             for (++ptr; *ptr != '\0'; ptr++) {
                 switch (*ptr) {
                     case 'a':  // addr
-                        if (++arg > argc) {
-                            printf("smash %s %s requires an option\n",
+                        if (++arg >= argc) {
+                            show_rom_banks();
+                            printf("apciflash %s -%s requires an option\n",
                                    argv[0], ptr);
                             goto usage;
                         }
@@ -1288,12 +1305,14 @@ cmd_readwrite(int argc, char *argv[])
                             (pos == 0) || (argv[arg][pos] != '\0')) {
                             printf("Invalid argument \"%s\" for %s -%s\n",
                                    argv[arg], argv[0], ptr);
+                            show_rom_banks();
                             goto usage;
                         }
                         break;
                     case 'b':  // bank
-                        if (++arg > argc) {
-                            printf("smash %s %s requires an option\n",
+                        if (++arg >= argc) {
+                            show_rom_banks();
+                            printf("apciflash %s -%s requires an option\n",
                                    argv[0], ptr);
                             goto usage;
                         }
@@ -1303,6 +1322,7 @@ cmd_readwrite(int argc, char *argv[])
                             (bank >= ROM_BANKS)) {
                             printf("Invalid argument \"%s\" for %s -%s\n",
                                    argv[arg], argv[0], ptr);
+                            show_rom_banks();
                             goto usage;
                         }
                         break;
@@ -1313,8 +1333,8 @@ cmd_readwrite(int argc, char *argv[])
                         flag_dump++;
                         break;
                     case 'f':  // file
-                        if (++arg > argc) {
-                            printf("smash %s %s requires an option\n",
+                        if (++arg >= argc) {
+                            printf("apciflash %s -%s requires an option\n",
                                    argv[0], ptr);
                             goto usage;
                         }
@@ -1333,8 +1353,8 @@ usage:
                             printf("%s", cmd_verify_options);
                         return (rc);
                     case 'l':  // length
-                        if (++arg > argc) {
-                            printf("smash %s %s requires an option\n",
+                        if (++arg >= argc) {
+                            printf("apciflash %s -%s requires an option\n",
                                    argv[0], ptr);
                             goto usage;
                         }
@@ -1347,8 +1367,8 @@ usage:
                         }
                         break;
                     case 's':  // swap
-                        if (++arg > argc) {
-                            printf("smash %s %s requires an option\n",
+                        if (++arg >= argc) {
+                            printf("apciflash %s -%s requires an option\n",
                                    argv[0], ptr);
                             goto usage;
                         }
@@ -1379,11 +1399,13 @@ usage:
                             return (1);
                         }
                         break;
-                    case 'v':  // verify
-                        verifymode++;
-                        break;
                     case 'y':  // yes
                         flag_yes++;
+                        break;
+                    case 'r':  // read
+                    case 'v':  // verify
+                    case 'w':  // write
+                        /* These were handled in the first pass */
                         break;
                     default:
                         printf("Unknown argument %s \"-%s\"\n",
@@ -1482,6 +1504,16 @@ usage:
             printf(" (ASCII dump)");
         printf("\n");
     }
+    if (len > ROM_WINDOW_SIZE) {
+        printf("Length %x is larger than bank size %x\n", len, ROM_WINDOW_SIZE);
+        rc = 1;
+        goto fail_end;
+    }
+    if ((addr > ROM_WINDOW_SIZE) && addr_to_bank(&addr, &bank)) {
+        rc = 1;
+        goto fail_end;
+    }
+
     if ((!flag_yes) && (!file_is_stdio || (flag_dump && (len >= 0x1000))) &&
         (!are_you_sure("Proceed"))) {
         return (1);
@@ -1491,14 +1523,6 @@ usage:
     if (buf == NULL) {
         printf("Failed to allocate 0x%x bytes\n", MAX_CHUNK);
         return (1);
-    }
-    if (verifymode) {
-        vbuf = AllocMem(MAX_CHUNK, MEMF_PUBLIC);
-        if (vbuf == NULL) {
-            printf("Failed to allocate 0x%x bytes\n", MAX_CHUNK);
-            FreeMem(buf, MAX_CHUNK);
-            return (1);
-        }
     }
 
     if (file_is_stdio) {
@@ -1519,21 +1543,24 @@ usage:
             rc = 1;
             goto fail_end;
         }
+
+        if (writemode || verifymode) {
+            rbuf = AllocVec(len, MEMF_PUBLIC);
+            if (rbuf == NULL) {
+                printf("Failed to allocate 0x%x bytes\n", MAX_CHUNK);
+                rc = 1;
+                goto fail_end;
+            }
+            bytes = fread(rbuf, 1, len, file);
+            if (bytes < (int) len) {
+                printf("\nFailed to read %u bytes from %s\n", len, filename);
+                rc = 1;
+                goto fail_end;
+            }
+        }
     }
 
     rc = 0;
-
-    time_start = get_usec_time();
-
-    if (len > ROM_WINDOW_SIZE) {
-        printf("Length %x is larger than bank size %x\n", len, ROM_WINDOW_SIZE);
-        rc = 1;
-        goto fail_end;
-    }
-    if ((addr > ROM_WINDOW_SIZE) && addr_to_bank(&addr, &bank)) {
-        rc = 1;
-        goto fail_end;
-    }
 
     if (writemode && (addr == 0)) {
         /* Autoerase */
@@ -1541,6 +1568,7 @@ usage:
         if (rc != 0)
             goto fail_end;
     }
+    time_start = get_usec_time();
 
     start_bank = bank;
     start_addr = 0;
@@ -1552,6 +1580,7 @@ usage:
         dot_iters <<= 1;
     }
     if (readmode || writemode) {
+        uint offset = 0;
         dot_count = 0;
         if (!file_is_stdio) {
             if (readmode)
@@ -1568,20 +1597,11 @@ usage:
                 xlen = ROM_WINDOW_SIZE - addr;
             }
 
-            if (writemode) {
-                /* Read from file */
-                bytes = fread(buf, 1, xlen, file);
-                if (bytes < (int) xlen) {
-                    printf("\nFailed to read %u bytes from %s\n",
-                           xlen, filename);
-                    rc = 1;
-                    break;
-                }
-            } else {
+            if (readmode) {
                 /* Read from flash */
                 rc = read_from_flash(bank, addr, buf, xlen);
                 if (rc != 0) {
-                    printf("\nKicksmash failure (%s)\n", status_string(rc));
+                    printf("\nFlash read failure (%s)\n", status_string(rc));
                     break;
                 }
             }
@@ -1590,9 +1610,9 @@ usage:
 
             if (writemode) {
                 /* Write to flash */
-                rc = write_to_flash(bank, addr, buf, xlen);
+                rc = write_to_flash(bank, addr, rbuf + offset, xlen);
                 if (rc != 0) {
-                    printf("\nKicksmash failure (%s)\n", status_string(rc));
+                    printf("\nFlash write failure (%s)\n", status_string(rc));
                     break;
                 }
             } else {
@@ -1618,8 +1638,9 @@ usage:
                 goto fail_end;
             }
 
-            len  -= xlen;
-            addr += xlen;
+            len    -= xlen;
+            addr   += xlen;
+            offset += xlen;
             if (addr >= ROM_WINDOW_SIZE) {
                 addr -= ROM_WINDOW_SIZE;
                 bank++;
@@ -1627,12 +1648,15 @@ usage:
         }
     }
     time_rw_end = get_usec_time();
+    if (!file_is_stdio && (rc == 0) && (readmode || writemode)) {
+        printf("]\n%s complete in ", writemode ? "Write" : "Read");
+        print_us_diff(time_start, time_rw_end);
+    }
 
     if (verifymode && (rc == 0)) {
+        uint offset = 0;
         dot_count = 0;
         if (!file_is_stdio) {
-            if ((rc == 0) && (readmode || writemode))
-                printf("]\n");
             printf("Verify [%*s]\rVerify [", dot_max, "");
             fflush(stdout);
         }
@@ -1644,6 +1668,7 @@ usage:
         len  = start_len;
 
         while (len > 0) {
+            uint8_t *vbuf = rbuf + offset;
             uint xlen = len;
             if (xlen > MAX_CHUNK)
                 xlen = MAX_CHUNK;
@@ -1651,18 +1676,10 @@ usage:
                 xlen = ROM_WINDOW_SIZE - addr;
             }
 
-            /* Read from file */
-            bytes = fread(vbuf, 1, xlen, file);
-            if (bytes < (int) xlen) {
-                printf("\nFailed to read %u bytes from %s\n", xlen, filename);
-                rc = 1;
-                break;
-            }
-
             /* Read from flash */
             rc = read_from_flash(bank, addr, buf, xlen);
             if (rc != 0) {
-                printf("\nKicksmash failure (%s)\n", status_string(rc));
+                printf("\nFlash read failure (%s)\n", status_string(rc));
                 break;
             }
             execute_swapmode(buf, xlen, SWAP_FROM_ROM, swapmode);
@@ -1688,8 +1705,9 @@ usage:
                 fflush(stdout);
             }
 
-            len  -= xlen;
-            addr += xlen;
+            len    -= xlen;
+            addr   += xlen;
+            offset += xlen;
             if (addr >= ROM_WINDOW_SIZE) {
                 addr -= ROM_WINDOW_SIZE;
                 bank++;
@@ -1701,10 +1719,6 @@ usage:
         if (rc == 0)
             printf("]\n");
         fclose(file);
-        if (readmode || writemode) {
-            printf("%s complete in ", writemode ? "Write" : "Read");
-            print_us_diff(time_start, time_rw_end);
-        }
         if (verifymode) {
             printf("%s complete in ", "Verify");
             print_us_diff(time_rw_end, time_end);
@@ -1712,8 +1726,8 @@ usage:
     }
 fail_end:
     FreeMem(buf, MAX_CHUNK);
-    if (vbuf != NULL)
-        FreeMem(vbuf, MAX_CHUNK);
+    if (rbuf != NULL)
+        FreeVec(rbuf);
     return (rc);
 }
 
@@ -1753,7 +1767,7 @@ main(int argc, char *argv[])
                         break;
                     case 'l':  // loop count
                         if (++arg >= argc) {
-                            printf("%s requires an argument\n", ptr);
+                            printf("-%s requires an argument\n", ptr);
                             exit_cleanup(1);
                         }
                         loops = atoi(argv[arg]);
