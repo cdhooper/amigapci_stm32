@@ -5,9 +5,9 @@ BOARD_REV ?= 1
 SRCS	:= main.c gpio.c led.c timer.c printf.c uart.c \
 	   mem_access.c readline.c cmdline.c cmds.c pcmds.c \
 	   utils.c scanf.c stm32flash.c version.c config.c \
-	   clock.c crc32.c usb.c kbrst.c keyboard.c mouse.c \
+	   clock.c crc32.c crc8.c usb.c kbrst.c keyboard.c mouse.c \
 	   adc.c fan.c irq.c power.c rtc.c sensor.c amigartc.c \
-	   hiden.c joystick.c
+	   hiden.c joystick.c i2c.c
 SRCS    += libopencm3_stm32f2/adc_common_v1.c \
 	   libopencm3_stm32f2/adc_common_v1_multi.c \
 	   libopencm3_stm32f2/adc_common_f47.c
@@ -112,7 +112,7 @@ LDSCRIPT = fw.ld
 LIBNAME		:= opencm3_stm32f2
 ARCH_FLAGS	:= -mthumb -mcpu=cortex-m3 -msoft-float -mfix-cortex-m3-ldrd
 DEFS		+= -DSTM32F2 -DSTM32F205 -DSTM32F205xx
-DEFS		+= -DEMBEDDED_CMD -DBOARD_REV=$(BOARD_REV)
+DEFS		+= -DEMBEDDED_CMD
 
 OPENCM3_LIB := $(OPENCM3_DIR)/lib/lib$(LIBNAME).a
 

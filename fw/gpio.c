@@ -361,7 +361,7 @@ gpio_name_match(const char **namep, uint16_t pins[NUM_GPIO_BANKS])
     return (0);
 }
 
-static const char *
+const char *
 gpio_to_name(int port, int pin)
 {
     uint cur;

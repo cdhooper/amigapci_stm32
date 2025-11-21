@@ -27,6 +27,9 @@
 #define DF_USB_DECODE_KBD   0x00001000  // USB HID decode keyboard
 #define DF_HIDEN            0x00002000  // HIDEN enable/disable
 #define DF_FAN              0x00004000  // Fan limit changes
+#define DF_UNUSED           0x00008000  // Not yet used
+#define DF_I2C              0x00010000  // I2C operations
+#define DF_I2C_LL           0x00020000  // I2C low-level operations
 
 #define CF_MOUSE_INVERT_X   0x00000001  // Invert mouse X axis
 #define CF_MOUSE_INVERT_Y   0x00000002  // Invert mouse Y axis
@@ -71,7 +74,9 @@ typedef struct {
     uint8_t     mouse_div_y;    // Mouse Y speed scaling divisor
     uint8_t     mouse_mul_x;    // Mouse X speed scaling factor
     uint8_t     mouse_mul_y;    // Mouse Y speed scaling factor
-    uint8_t     unused[620];    // Unused
+    uint16_t    i2c_max_speed;  // I2C maximum speed
+    uint16_t    i2c_min_speed;  // I2C minimum speed
+    uint8_t     unused[616];    // Unused
 } config_t;
 
 extern config_t config;

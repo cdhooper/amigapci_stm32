@@ -15,6 +15,9 @@
 #define ADDR8(x)    ((uint8_t *)  ((uintptr_t)(x)))
 #define ADDR16(x)   ((uint16_t *) ((uintptr_t)(x)))
 #define ADDR32(x)   ((uint32_t *) ((uintptr_t)(x)))
+#define VADDR8(x)    ((volatile uint8_t *)  ((uintptr_t)(x)))
+#define VADDR16(x)   ((volatile uint16_t *) ((uintptr_t)(x)))
+#define VADDR32(x)   ((volatile uint32_t *) ((uintptr_t)(x)))
 
 #define BIT(x)      (1U << (x))
 

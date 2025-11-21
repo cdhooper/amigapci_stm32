@@ -96,7 +96,7 @@ typedef struct {
 static void
 put(int ch, buf_t *desc)
 {
-    if (desc == NULL) {
+    if ((desc == NULL) || (desc->buf_cur == NULL)) {
         putchar((uint) ch);
     } else if (desc->buf_cur < desc->buf_end) {
         *(desc->buf_cur)++ = (char) ch;

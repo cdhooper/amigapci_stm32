@@ -28,6 +28,7 @@
 #include "cmdline.h"
 #include "cmds.h"
 #include "led.h"
+#include "i2c.h"
 #include "readline.h"
 #ifdef EMBEDDED_CMD
 #include "pcmds.h"
@@ -55,8 +56,6 @@ static const cmd_t cmd_list[] = {
     { cmd_comp,    "comp",    2, cmd_comp_help,
                         "[bwlqoh] <addr1> <addr2> <len>", "compare memory" },
 #ifdef EMBEDDED_CMD
-    { cmd_fan,     "fan",     2, cmd_fan_help,
-                        " auto|on|off|speed", "Fan control" },
     { cmd_cpu,     "cpu",     2, cmd_cpu_help,
                         " regs|fault", "CPU information" },
 #endif
@@ -68,8 +67,12 @@ static const cmd_t cmd_list[] = {
                         "display memory" },
     { cmd_echo,    "echo",    0, NULL, " <text>", "display text" },
 #ifdef EMBEDDED_CMD
+    { cmd_fan,     "fan",     2, cmd_fan_help,
+                        " auto|on|off|speed", "Fan control" },
     { cmd_gpio,    "gpio",    1, cmd_gpio_help,
                         " [p<a-f><0-15>[=<x>]", "show or set GPIOs" },
+    { cmd_i2c,     "i2c",    1, cmd_i2c_help,
+                        " probe|stats|verbose", "perform I2C operations" },
 #endif
     { cmd_ignore,  "ignore",  0, NULL, " <cmd>", "ignore result of command" },
     { cmd_help,    "help",    0, NULL, " [<cmd>]", "display help" },

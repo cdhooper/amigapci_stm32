@@ -22,6 +22,7 @@
 #include "clock.h"
 #include "config.h"
 #include "fan.h"
+#include "i2c.h"
 #include "kbrst.h"
 #include "keyboard.h"
 #include "mouse.h"
@@ -87,6 +88,7 @@ main(void)
     keyboard_init();
     fan_init();
     usb_init();
+    i2c_init();
 
     rl_initialize();        // Enable command editing and history
     using_history();

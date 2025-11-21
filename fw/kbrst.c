@@ -119,6 +119,7 @@ kbrst_poll(void)
 void
 kbrst_amiga(uint hold, uint longreset)
 {
+    amiga_in_reset = 1;
     gpio_setv(KBRST_PORT, KBCLK_PIN | KBDATA_PIN, 0);
     gpio_setv(KBRST_PORT, KBRST_PIN, 0);
 
