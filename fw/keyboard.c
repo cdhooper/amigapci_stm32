@@ -24,6 +24,7 @@
 #include "gpio.h"
 #include "mouse.h"
 #include <libopencm3/stm32/gpio.h>
+#include "amiga_kbd_codes.h"
 
 #undef DEBUG_KEYBOARD
 #ifdef DEBUG_KEYBOARD
@@ -42,133 +43,6 @@ uint8_t amiga_keyboard_sent_wake;
 uint8_t amiga_keyboard_has_sync;
 uint8_t amiga_keyboard_lost_sync;
 uint8_t keyboard_raw_mode;   // Send USB keystrokes through unaltered
-
-/* Amiga scancodes */
-                               // Shifted Unshifted
-#define AS_BACKTICK    (0x00)  // '~' and '`'
-#define AS_1           (0x01)  // '!' and '1'
-#define AS_2           (0x02)  // '@' and '2'
-#define AS_3           (0x03)  // '#' and '3'
-#define AS_4           (0x04)  // '$' and '4'
-#define AS_5           (0x05)  // '%' and '5'
-#define AS_6           (0x06)  // '^' and '6'
-#define AS_7           (0x07)  // '&' and '7'
-#define AS_8           (0x08)  // '*' and '8'
-#define AS_9           (0x09)  // '(' and '9'
-#define AS_0           (0x0a)  // ')' and '0'
-#define AS_MINUS       (0x0b)  // '_' and '-'
-#define AS_EQUAL       (0x0c)  // '+' and '='
-#define AS_BACKSLASH   (0x0d)  // '|' and '\'
-#define AS_KP0         (0x0f)  // Keypad '0'
-#define AS_Q           (0x10)  // 'Q' and 'q'
-#define AS_W           (0x11)  // 'W' and 'w'
-#define AS_E           (0x12)  // 'E' and 'e'
-#define AS_R           (0x13)  // 'R' and 'r'
-#define AS_T           (0x14)  // 'T' and 't'
-#define AS_Y           (0x15)  // 'Y' and 'y'
-#define AS_U           (0x16)  // 'U' and 'u'
-#define AS_I           (0x17)  // 'I' and 'i'
-#define AS_O           (0x18)  // 'O' and 'o'
-#define AS_P           (0x19)  // 'P' and 'p'
-#define AS_LBRACKET    (0x1a)  // '{' and '['
-#define AS_RBRACKET    (0x1b)  // '}' and ']'
-#define AS_KP1         (0x1d)  // Keypad '1'
-#define AS_KP2         (0x1e)  // Keypad '2'
-#define AS_KP3         (0x1f)  // Keypad '3'
-#define AS_A           (0x20)  // 'A' and 'a'
-#define AS_S           (0x21)  // 'S' and 's'
-#define AS_D           (0x22)  // 'D' and 'd'
-#define AS_F           (0x23)  // 'F' and 'f'
-#define AS_G           (0x24)  // 'G' and 'g'
-#define AS_H           (0x25)  // 'H' and 'h'
-#define AS_J           (0x26)  // 'J' and 'j'
-#define AS_K           (0x27)  // 'K' and 'k'
-#define AS_L           (0x28)  // 'L' and 'l'
-#define AS_SEMICOLON   (0x29)  // ';' and ':'
-#define AS_APOSTROPHE  (0x2a)  // ''' and '"'
-#define AS_UNLABELED1  (0x2b)  // Key next to Return
-#define AS_KP4         (0x2d)  // Keypad '4'
-#define AS_KP5         (0x2e)  // Keypad '5'
-#define AS_KP6         (0x2f)  // Keypad '6'
-#define AS_UNLABELED2  (0x30)  // Key next to Left Shift
-#define AS_Z           (0x31)  // 'Z' and 'z'
-#define AS_X           (0x32)  // 'X' and 'x'
-#define AS_C           (0x33)  // 'C' and 'c'
-#define AS_V           (0x34)  // 'V' and 'v'
-#define AS_B           (0x35)  // 'B' and 'b'
-#define AS_N           (0x36)  // 'N' and 'n'
-#define AS_M           (0x37)  // 'M' and 'm'
-#define AS_COMMA       (0x38)  // '<' and ','
-#define AS_DOT         (0x39)  // '>' and '.'
-#define AS_SLASH       (0x3a)  // '>' and '/'
-#define AS_KPDOT       (0x3c)  // Keypad '.'
-#define AS_KP7         (0x3d)  // Keypad '7'
-#define AS_KP8         (0x3e)  // Keypad '8'
-#define AS_KP9         (0x3f)  // Keypad '9'
-#define AS_SPACE       (0x40)  // Space
-#define AS_BACKSPACE   (0x41)  // Backspace
-#define AS_TAB         (0x42)  // Tab
-#define AS_KPENTER     (0x43)  // Keypad Enter
-#define AS_RETURN      (0x44)  // Carriage Return
-#define AS_ESC         (0x45)  // ESC
-#define AS_DELETE      (0x46)  // Delete
-#define AS_INSERT      (0x47)  // Insert       (not on classic keyboards)
-#define AS_PAGEUP      (0x48)  // Page Up      (not on classic keyboards)
-#define AS_PAGEDOWN    (0x49)  // Page Down    (not on classic keyboards)
-#define AS_KPMINUS     (0x4a)  // Keypad '-'
-#define AS_F11         (0x4b)  // F11          (not on classic keyboards)
-#define AS_UP          (0x4c)  // Cursor Up
-#define AS_DOWN        (0x4d)  // Cursor Down
-#define AS_RIGHT       (0x4e)  // Cursor Right
-#define AS_LEFT        (0x4f)  // Cursor Left
-#define AS_F1          (0x50)  // F1
-#define AS_F2          (0x51)  // F2
-#define AS_F3          (0x52)  // F3
-#define AS_F4          (0x53)  // F4
-#define AS_F5          (0x54)  // F5
-#define AS_F6          (0x55)  // F6
-#define AS_F7          (0x56)  // F7
-#define AS_F8          (0x57)  // F8
-#define AS_F9          (0x58)  // F9
-#define AS_F10         (0x59)  // F10
-#define AS_KP_LPAREN   (0x5a)  // Keypad '('
-#define AS_KP_RPAREN   (0x5b)  // Keypad ')'
-#define AS_KPSLASH     (0x5c)  // Keypad '/'
-#define AS_KPASTERISK  (0x5d)  // Keypad '*'
-#define AS_KPPLUS      (0x5e)  // Keypad '+'
-#define AS_HELP        (0x5f)  // Help
-#define AS_LEFTSHIFT   (0x60)  // Left Shift
-#define AS_RIGHTSHIFT  (0x61)  // Right Shift
-#define AS_CAPSLOCK    (0x62)  // Caps Lock
-#define AS_CTRL        (0x63)  // Ctrl
-#define AS_LEFTALT     (0x64)  // Left Alt
-#define AS_RIGHTALT    (0x65)  // Right Alt
-#define AS_LEFTAMIGA   (0x66)  // Left Amiga
-#define AS_RIGHTAMIGA  (0x67)  // Right Amiga
-#define AS_MENU        (0x6b)  // Menu         (not on classic keyboards)
-#define AS_PRINTSCR    (0x6d)  // Print screen (not on classic keyboards)
-#define AS_BREAK       (0x6e)  // Break        (not on classic keyboards)
-#define AS_F12         (0x6f)  // F12          (not on classic keyboards)
-#define AS_HOME        (0x70)  // Home         (not on classic keyboards)
-#define AS_END         (0x71)  // End          (not on classic keyboards)
-#define AS_STOP        (0x72)  // Stop         (CDTV & CD32)
-#define AS_PLAYPAUSE   (0x73)  // Play/Pause   (CDTV & CD32)
-#define AS_PREVTRACK   (0x74)  // Prev Track   (CDTV & CD32)  << REW
-#define AS_NEXTTRACK   (0x75)  // Next Track   (CDTV & CD32)  >> FF
-#define AS_SHUFFLE     (0x76)  // Shuffle      (CDTV & CD32)  Random Play
-#define AS_REPEAT      (0x77)  // Repeat       (CDTV & CD32)
-#define AS_RESET_WARN  (0x78)  // Reset warning
-#define AS_WHEEL_UP    (0x7a)  // Mouse Wheel Up    (NM_WHEEL_UP)
-#define AS_WHEEL_DOWN  (0x7b)  // Mouse Wheel Down  (NM_WHEEL_DOWN)
-#define AS_WHEEL_LEFT  (0x7c)  // Mouse Wheel Left  (NM_WHEEL_LEFT)
-#define AS_WHEEL_RIGHT (0x7d)  // Mouse Wheel Right (NM_WHEEL_RIGHT)
-#define AS_LOST_SYNC   (0xf9)  // Keyboard lost sync with Amiga
-#define AS_BUFOVERFLOW (0xfa)  // Keyboard output buffer overflow
-#define AS_POST_FAIL   (0xfc)  // Keyboard selftest failed
-#define AS_POWER_INIT  (0xfd)  // Keyboard powerup start key stream
-#define AS_POWER_DONE  (0xfe)  // Keyboard powerup done key stream
-#define AS_NONE        (0xff)  // Not a valid keycode
-
 
 /* sa_flags values */
 #define SAF_ADD_SHIFT 0x01
@@ -219,7 +93,7 @@ static const struct {
     { AS_8,          AS_NONE, 0x00 },  // 0x25  '*' and '8'
     { AS_9,          AS_NONE, 0x00 },  // 0x26  '(' and '9'
     { AS_0,          AS_NONE, 0x00 },  // 0x27  ')' and '0'
-    { AS_RETURN,     AS_NONE, 0x00 },  // 0x28  Enter / Return
+    { AS_ENTER,      AS_NONE, 0x00 },  // 0x28  Enter / Return
     { AS_ESC,        AS_NONE, 0x00 },  // 0x29  ESC
     { AS_BACKSPACE,  AS_NONE, 0x00 },  // 0x2a  Backspace
     { AS_TAB,        AS_NONE, 0x00 },  // 0x2b  Tab
@@ -264,22 +138,22 @@ static const struct {
     { AS_DOWN,       AS_NONE, 0x00 },  // 0x51  Cursor Down
     { AS_UP,         AS_NONE, 0x00 },  // 0x52  Cursor Up
     { AS_NONE,       AS_NONE, 0x00 },  // 0x53  Numlock
-    { AS_KPSLASH,    AS_NONE, 0x00 },  // 0x54  Keypad '/'
-    { AS_KPASTERISK, AS_NONE, 0x00 },  // 0x55  Keypad '*'
-    { AS_KPMINUS,    AS_NONE, 0x00 },  // 0x56  Keypad '-'
-    { AS_KPPLUS,     AS_NONE, 0x00 },  // 0x57  Keypad '+'
-    { AS_KPENTER,    AS_NONE, 0x00 },  // 0x58  Keypad Enter
-    { AS_KP1,        AS_NONE, 0x00 },  // 0x59  Keypad '1'
-    { AS_KP2,        AS_NONE, 0x00 },  // 0x5a  Keypad '2'
-    { AS_KP3,        AS_NONE, 0x00 },  // 0x5b  Keypad '3'
-    { AS_KP4,        AS_NONE, 0x00 },  // 0x5c  Keypad '4'
-    { AS_KP5,        AS_NONE, 0x00 },  // 0x5d  Keypad '5'
-    { AS_KP6,        AS_NONE, 0x00 },  // 0x5e  Keypad '6'
-    { AS_KP7,        AS_NONE, 0x00 },  // 0x5f  Keypad '7'
-    { AS_KP8,        AS_NONE, 0x00 },  // 0x60  Keypad '8'
-    { AS_KP9,        AS_NONE, 0x00 },  // 0x61  Keypad '9'
-    { AS_KP0,        AS_NONE, 0x00 },  // 0x62  Keypad '0'
-    { AS_KPDOT,      AS_NONE, 0x00 },  // 0x63  Keypad '.'
+    { AS_KP_DIV,     AS_NONE, 0x00 },  // 0x54  Keypad '/'
+    { AS_KP_MUL,     AS_NONE, 0x00 },  // 0x55  Keypad '*'
+    { AS_KP_MINUS,   AS_NONE, 0x00 },  // 0x56  Keypad '-'
+    { AS_KP_PLUS,    AS_NONE, 0x00 },  // 0x57  Keypad '+'
+    { AS_KP_ENTER,   AS_NONE, 0x00 },  // 0x58  Keypad Enter
+    { AS_KP_1,       AS_NONE, 0x00 },  // 0x59  Keypad '1'
+    { AS_KP_2,       AS_NONE, 0x00 },  // 0x5a  Keypad '2'
+    { AS_KP_3,       AS_NONE, 0x00 },  // 0x5b  Keypad '3'
+    { AS_KP_4,       AS_NONE, 0x00 },  // 0x5c  Keypad '4'
+    { AS_KP_5,       AS_NONE, 0x00 },  // 0x5d  Keypad '5'
+    { AS_KP_6,       AS_NONE, 0x00 },  // 0x5e  Keypad '6'
+    { AS_KP_7,       AS_NONE, 0x00 },  // 0x5f  Keypad '7'
+    { AS_KP_8,       AS_NONE, 0x00 },  // 0x60  Keypad '8'
+    { AS_KP_9,       AS_NONE, 0x00 },  // 0x61  Keypad '9'
+    { AS_KP_0,       AS_NONE, 0x00 },  // 0x62  Keypad '0'
+    { AS_KP_DOT,     AS_NONE, 0x00 },  // 0x63  Keypad '.'
     { AS_BACKSLASH,  AS_NONE, 0x00 },  // 0x64  102ND '\' and '|' (non-US)
     { AS_RIGHTAMIGA, AS_NONE, 0x00 },  // 0x65  Compose
     { AS_NONE,       AS_NONE, 0x00 },  // 0x66  Power Key
@@ -358,14 +232,14 @@ static const struct {
     { AS_NONE,       AS_NONE, 0x00 },  // 0xaf
     { AS_NONE,       AS_NONE, 0x00 },  // 0xb0  Keypad 00
     { AS_NONE,       AS_NONE, 0x00 },  // 0xb1  Keypad 000
-    { AS_NONE,       AS_NONE, 0x00 },  // 0xb2  Thousands Separator
-    { AS_NONE,       AS_NONE, 0x00 },  // 0xb3  Decimal Separator
-    { AS_NONE,       AS_NONE, 0x00 },  // 0xb4  Currency Unit
+    { AS_COMMA,      AS_NONE, 0x00 },  // 0xb2  Thousands Separator
+    { AS_DOT,        AS_NONE, 0x00 },  // 0xb3  Decimal Separator
+    { AS_4,          AS_NONE, 0x01 },  // 0xb4  Currency Unit
     { AS_NONE,       AS_NONE, 0x00 },  // 0xb5  Currency Sub-unit
     { AS_KP_LPAREN,  AS_NONE, 0x00 },  // 0xb6  Keypad '('
     { AS_KP_RPAREN,  AS_NONE, 0x00 },  // 0xb7  Keypad ')'
-    { AS_NONE,       AS_NONE, 0x00 },  // 0xb8  Keypad '{'
-    { AS_NONE,       AS_NONE, 0x00 },  // 0xb9  Keypad '}'
+    { AS_LBRACKET,   AS_NONE, 0x01 },  // 0xb8  Keypad '{'
+    { AS_RBRACKET,   AS_NONE, 0x01 },  // 0xb9  Keypad '}'
     { AS_TAB,        AS_NONE, 0x00 },  // 0xba  Keypad Tab
     { AS_BACKSPACE,  AS_NONE, 0x00 },  // 0xbb  Keypad Backspace
     { AS_A,          AS_NONE, 0x00 },  // 0xbc  Keypad 'A'
@@ -456,7 +330,7 @@ ascii_to_amiga[] = {
     AS_J | ATA_ADD_CTRL,           // 0x0a ^J
     AS_K | ATA_ADD_CTRL,           // 0x0b ^K
     AS_L | ATA_ADD_CTRL,           // 0x0c ^L
-    AS_RETURN,                     // 0x0d ^M
+    AS_ENTER,                      // 0x0d ^M
     AS_N | ATA_ADD_CTRL,           // 0x0e ^N
     AS_O | ATA_ADD_CTRL,           // 0x0f ^O
     AS_P | ATA_ADD_CTRL,           // 0x10 ^P
@@ -576,7 +450,7 @@ ascii_to_amiga[] = {
     AS_DOWN,                       // 0x82 Cursor down
     AS_LEFT,                       // 0x83 Cursor left
     AS_RIGHT,                      // 0x84 Cursor right
-    AS_KPENTER,                    // 0x85 Keypad enter
+    AS_KP_ENTER,                   // 0x85 Keypad enter
 };
 
 /*
@@ -1883,7 +1757,7 @@ keyboard_poll(void)
         recursive = 0;
     }
 
-    if ((config.board_type != 2) && amiga_in_reset)
+    if (amiga_in_reset)
         return;
 
     if (amiga_keyboard_has_sync == 0) {

@@ -2,26 +2,31 @@
 # Makefile to build AmigaOS/68k tools using Bebbo's GCC cross-compiler.
 #
 
-BEC_PROG  := bec
-BEC_TOOL  := bectool
-FLASH_PROG := apciflash
+BEC_PROG     := bec
+BECKY_PROG   := becky
+BEC_TOOL     := bectool
+FLASH_PROG   := apciflash
+PCI_PROG     := pci
 
-ALL_PROGS    := $(BEC_PROG) $(FLASH_PROG)
-#ALL_PROGS    := $(BEC_PROG) $(BEC_TOOL)
+ALL_PROGS    := $(BEC_PROG) $(BECKY_PROG) $(FLASH_PROG) $(PCI_PROG)
 
 OBJDIR       := objs
 CRC32_C      := ../fw/crc32.c
-CTRL_SRCS   := bec.c $(CRC32_C)
-CTRL_HDRS   := ../fw/crc32.h
+BEC_SRCS     := bec.c becmsg.c $(CRC32_C)
+BEC_HDRS     := becmsg.h ../fw/crc32.h ../fw/bec_cmd.h
+BECKY_SRCS   := becky.c becmsg.c $(CRC32_C)
+BECKY_HDRS   := becmsg.h ../fw/crc32.h ../fw/bec_cmd.h \
+	        ../fw/amiga_kbd_codes.h ../fw/hid_kbd_codes.h
 FLASH_SRCS   := apciflash.c cpu_control.c
 FLASH_HDRS   := cpu_control.h
+PCI_SRCS     := pci.c
+PCI_HDRS     :=
 
 CC      := m68k-amigaos-gcc
 STRIP   := m68k-amigaos-strip
 CFLAGS  := -Wall -Wextra -Wno-pointer-sign -Wno-format -Wno-strict-aliasing
 CFLAGS  += -Wno-sign-compare -fomit-frame-pointer -I../fw -mcpu=68060
-LDFLAGS_CTRL = -Xlinker -Map=$(OBJDIR)/$@.map -Wa,-a > $(OBJDIR)/$@_prog.lst -mcrt=clib2 -lgcc -lc -lamiga
-LDFLAGS_FLASH = -Xlinker -Map=$(OBJDIR)/$@.map -Wa,-a > $(OBJDIR)/$@_prog.lst -mcrt=clib2 -lgcc -lc -lamiga
+LDFLAGS = -Xlinker -Map=$(OBJDIR)/$@.map -Wa,-a > $(OBJDIR)/$@.lst -mcrt=clib2 -lgcc -lc -lamiga
 
 NOW  := $(shell date +%s)
 ifeq ($(OS),Darwin)
@@ -75,29 +80,31 @@ $(patsubst %,$(2)/%,$(filter-out $(2)/%,$(basename $(notdir $(1))).o)) $(filter 
 $(3) += $(patsubst %,$(2)/%,$(filter-out $(2)/%,$(basename $(notdir $(1))).o))
 endef
 
-$(foreach SRCFILE,$(CTRL_SRCS),$(eval $(call DEPEND_SRC,$(SRCFILE),$(OBJDIR),CTRL_OBJS)))
+$(foreach SRCFILE,$(BEC_SRCS),$(eval $(call DEPEND_SRC,$(SRCFILE),$(OBJDIR),BEC_OBJS)))
+$(foreach SRCFILE,$(BECKY_SRCS),$(eval $(call DEPEND_SRC,$(SRCFILE),$(OBJDIR),BECKY_OBJS)))
 $(foreach SRCFILE,$(FLASH_SRCS),$(eval $(call DEPEND_SRC,$(SRCFILE),$(OBJDIR),FLASH_OBJS)))
+$(foreach SRCFILE,$(PCI_SRCS),$(eval $(call DEPEND_SRC,$(SRCFILE),$(OBJDIR),PCI_OBJS)))
 
-OBJS := $(sort $(CTRL_OBJS) $(FLASH_OBJS))
+OBJS := $(sort $(BEC_OBJS) $(BECKY_OBJS) $(FLASH_OBJS) $(PCI_OBJS))
 
-$(CTRL_OBJS): $(CTRL_HDRS)
+$(BEC_OBJS): $(BEC_HDRS)
+$(BECKY_OBJS): $(BECKY_HDRS)
 $(FLASH_OBJS): $(FLASH_HDRS)
+$(PCI_OBJS): $(PCI_HDRS)
 
 $(OBJS): Makefile | $(OBJDIR)
 	@echo Building $@
 	$(QUIET)$(CC) $(CFLAGS) -c $(filter %.c,$^) -Wa,-a,-ad >$(@:.o=.lst) -o $@
 
-$(BEC_PROG): $(CTRL_OBJS)
-	@echo Building $@
-	$(QUIET)$(CC) $^ $(LDFLAGS_CTRL) -o $@
-
+$(BEC_PROG): $(BEC_OBJS)
+$(BECKY_PROG): $(BECKY_OBJS)
 $(FLASH_PROG): $(FLASH_OBJS)
-	@echo Building $@
-	$(QUIET)$(CC) $^ $(LDFLAGS_FLASH) -o $@
+$(PCI_PROG): $(PCI_OBJS)
+$(BEC_TOOL): $(BEC_OBJS)
 
-$(BEC_TOOL): $(CTRL_OBJS)
+$(BEC_PROG) $(BECKY_PROG) $(FLASH_PROG) $(PCI_PROG) $(BEC_TOOL):
 	@echo Building $@
-	$(QUIET)$(CC) $^ $(LDFLAGS_CTRL) -o $@
+	$(QUIET)$(CC) $^ $(LDFLAGS) -o $@
 
 $(OBJDIR):
 	mkdir -p $@
@@ -134,4 +141,4 @@ clean clean-all:
 
 FLINT_FILE=flexelint.lnt
 flint:
-	flexelint -v -w3 -I/opt/amiga/m68k-amigaos/ndk-include -I/opt/amiga/m68k-amigaos/sys-include -I/opt/amiga/m68k-amigaos/clib2/include flexelint.lnt $(CTRL_SRCS)
+	flexelint -v -w3 -I/opt/amiga/m68k-amigaos/ndk-include -I/opt/amiga/m68k-amigaos/sys-include -I/opt/amiga/m68k-amigaos/clib2/include flexelint.lnt $(BEC_SRCS)

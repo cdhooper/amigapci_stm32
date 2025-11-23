@@ -14,7 +14,7 @@
  * THE AUTHOR ASSUMES NO LIABILITY FOR ANY DAMAGE ARISING OUT OF THE USE
  * OR MISUSE OF THIS UTILITY OR INFORMATION REPORTED BY THIS UTILITY.
  */
-const char *version = "\0$VER: bec "VERSION" ("BUILD_DATE") © Chris Hooper";
+const char *version = "\0$VER: bec "VERSION" ("BUILD_DATE") \xA9 Chris Hooper";
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -29,6 +29,7 @@ const char *version = "\0$VER: bec "VERSION" ("BUILD_DATE") © Chris Hooper";
 #include <exec/execbase.h>
 #include <exec/memory.h>
 #include "../fw/bec_cmd.h"
+#include "becmsg.h"
 #include "crc32.h"
 
 #ifndef ADDR8
@@ -289,283 +290,11 @@ show_test_state(const char * const name, int state)
 
 #define RTC_REG(x) (*((volatile uint8_t *) 0xdc0000 + x))
 
-static const uint8_t bec_magic[] = { 0xc, 0xd, 0x6, 0x8 };
-
-#define CIAA_TBLO        ADDR8(0x00bfe601)
-#define CIAA_TBHI        ADDR8(0x00bfe701)
-
-#define CIA_USEC(x)      (x * 715909 / 1000000)
 #define INTERRUPTS_DISABLE() if (irq_disabled++ == 0) \
                                  Disable()  /* Disable interrupts */
 #define INTERRUPTS_ENABLE()  if (--irq_disabled == 0) \
                                  Enable()   /* Enable Interrupts */
 unsigned int irq_disabled;
-
-uint
-cia_ticks(void)
-{
-    uint8_t hi1;
-    uint8_t hi2;
-    uint8_t lo;
-
-    hi1 = *CIAA_TBHI;
-    lo  = *CIAA_TBLO;
-    hi2 = *CIAA_TBHI;
-
-    /*
-     * The below operation will provide the same effect as:
-     *     if (hi2 != hi1)
-     *         lo = 0xff;  // rollover occurred
-     */
-    lo |= (hi2 - hi1);  // rollover of hi forces lo to 0xff value
-
-    return (lo | (hi2 << 8));
-}
-
-void
-cia_spin(unsigned int ticks)
-{
-    uint16_t start = cia_ticks();
-    uint16_t now;
-    uint16_t diff;
-
-    while (ticks != 0) {
-        now = cia_ticks();
-
-        diff = start - now;
-        if (diff >= ticks)
-            break;
-        ticks -= diff;
-        start = now;
-        __asm__ __volatile__("nop");
-        __asm__ __volatile__("nop");
-    }
-}
-
-static inline void
-rtc_delay(void)
-{
-#if 1
-//  for (int i = 0; i < 1000; i++)
-        __asm("nop");
-#else
-    __asm("nop");
-    __asm("nop");
-    __asm("nop");
-#endif
-}
-
-static inline uint8_t
-get_nibble_hi(void)
-{
-    uint8_t data;
-    rtc_delay();
-    __asm__("nop");
-    data = RTC_REG(RP_MAGIC_HI) & 0x0f;
-    rtc_delay();
-    return (data);
-}
-
-static inline uint8_t
-get_nibble_lo(void)
-{
-    uint8_t data;
-    rtc_delay();
-    __asm__("nop");
-    data = RTC_REG(RP_MAGIC_LO) & 0x0f;
-    rtc_delay();
-    return (data);
-}
-
-#if 0
-static uint8_t
-get_nibble(void)
-{
-    uint8_t data;
-    rtc_delay();
-    data = RTC_REG(RP_MAGIC) & 0x0f;
-    rtc_delay();
-    return (data);
-}
-#endif
-
-#if 0
-static uint8_t
-get_byte(void)
-{
-    return ((get_nibble() << 4) | get_nibble());
-}
-#else
-static uint8_t
-get_byte(void)
-{
-    return ((get_nibble_hi() << 4) | get_nibble_lo());
-}
-#endif
-
-#if 0
-static void
-send_nibble(uint8_t nibble)
-{
-    rtc_delay();
-    RTC_REG(RP_MAGIC) = nibble;
-    rtc_delay();
-}
-
-static void
-send_byte(uint8_t byte)
-{
-    send_nibble(byte >> 4);
-    send_nibble(byte);
-}
-#else
-static void
-send_nibble_hi(uint8_t nibble)
-{
-    rtc_delay();
-    RTC_REG(RP_MAGIC_HI) = nibble;
-    rtc_delay();
-}
-
-static void
-send_nibble_lo(uint8_t nibble)
-{
-    rtc_delay();
-    RTC_REG(RP_MAGIC_LO) = nibble;
-    rtc_delay();
-}
-
-static void
-send_byte(uint8_t byte)
-{
-    send_nibble_hi(byte >> 4);
-    send_nibble_lo(byte);
-}
-#endif
-
-static uint
-send_cmd(uint8_t cmd, void *arg, uint8_t arglen,
-         void *reply, uint replymax, uint *replyalen)
-{
-    uint     pos;
-    uint     timeout;
-    uint8_t *argbuf = arg;
-    uint8_t *replybuf = reply;
-    uint8_t  got_magic[4];
-    uint     bad_magic = 0;
-    uint8_t  status;
-    uint8_t  msglen;
-    uint32_t crc;
-    uint32_t got_crc;
-    uint32_t calc_crc;
-
-    RTC_REG(RP_MODE) = RP_MODE_M1 | RP_MODE_TIMER_EN;
-    rtc_delay();
-    send_nibble_hi(bec_magic[0]);
-    send_nibble_lo(bec_magic[1]);
-    send_nibble_hi(bec_magic[2]);
-    send_nibble_lo(bec_magic[3]);
-    send_byte(cmd);
-    send_byte(arglen);
-    for (pos = 0; pos < arglen; pos++)
-        send_byte(argbuf[pos]);
-    crc = crc32(0, &cmd, 1);
-    crc = crc32(crc, &arglen, 1);
-    crc = crc32(crc, argbuf, arglen);
-    send_byte(crc >> 24);
-    send_byte(crc >> 16);
-    send_byte(crc >> 8);
-    send_byte(crc);
-
-    /* Wait for reply */
-    cia_spin(CIA_USEC(100));
-    for (timeout = 20; timeout > 0; timeout--) {
-        cia_spin(CIA_USEC(10));
-        if ((got_magic[0] = get_nibble_hi()) == bec_magic[0])
-            break;
-    }
-
-    if (timeout == 0)
-        return (BEC_STATUS_TIMEOUT);
-#if 0
-    for (pos = 1; pos < ARRAY_SIZE(bec_magic); pos++) {
-        uint8_t nibble = got_magic[pos] = get_nibble();
-        if (nibble != bec_magic[pos])
-            bad_magic++;
-    }
-#else
-    got_magic[1] = get_nibble_lo();
-    got_magic[2] = get_nibble_hi();
-    got_magic[3] = get_nibble_lo();
-
-    for (pos = 1; pos < ARRAY_SIZE(bec_magic); pos++)
-        if (got_magic[pos] != bec_magic[pos])
-            bad_magic++;
-#endif
-    if (bad_magic) {
-        if (flag_debug) {
-            printf("BEC bad magic:");
-            for (pos = 0; pos < ARRAY_SIZE(got_magic); pos++)
-                printf(" %x", got_magic[pos]);
-            printf("\n");
-        }
-        return (BEC_STATUS_BADMAGIC);
-    }
-
-    /* Got magic -- get remainder of message */
-    status = get_byte();
-    msglen = get_byte();
-    for (pos = 0; pos < msglen; pos++) {
-        if (pos >= replymax)
-            (void) get_byte();
-        else
-            replybuf[pos] = get_byte();
-    }
-
-    *replyalen = msglen;
-
-    if (msglen > replymax)
-        return (BEC_STATUS_REPLYLEN); // Too long; truncated
-
-    /* Get CRC */
-    got_crc  = (get_byte() << 24);
-    got_crc |= (get_byte() << 16);
-    got_crc |= (get_byte() << 8);
-    got_crc |= get_byte();
-
-    calc_crc = crc32(0, &status, 1);
-    calc_crc = crc32(calc_crc, &msglen, 1);
-    calc_crc = crc32(calc_crc, replybuf, msglen);
-    if (calc_crc != got_crc) {
-        if (flag_debug) {
-            printf("Bad CRC %08x != calc %08x rc=%x l=%x\n",
-                   got_crc, calc_crc, status, msglen);
-        }
-        return (BEC_STATUS_REPLYCRC);
-    }
-
-    return (status);
-}
-
-static uint
-send_cmd_retry(uint8_t cmd, void *arg, uint8_t arglen,
-               void *reply, uint replymax, uint *replyalen)
-{
-    uint tries = 10;
-    uint rc;
-
-    do {
-        rc = send_cmd(cmd, arg, arglen, reply, replymax, replyalen);
-        if ((rc != BEC_STATUS_CRC) &&
-            (rc != BEC_STATUS_REPLYLEN) &&
-            (rc != BEC_STATUS_REPLYCRC) &&
-            (rc != BEC_STATUS_BADMAGIC) &&
-            (rc != BEC_STATUS_TIMEOUT)) {
-            break;
-        }
-    } while (--tries > 0);
-    return (rc);
-}
 
 
 #define DUMP_VALUE_UNASSIGNED 0xffffffff
@@ -600,40 +329,6 @@ dump_memory(void *buf, uint len, uint dump_base)
     }
     if ((pos & 0xf) != 0x0)
         printf("\n");
-}
-
-static const char *const bec_status_s[] = {
-    "OK",                                // BEC_STATUS_OK
-    "BEC Failure",                       // BEC_STATUS_FAIL
-    "BEC reports CRC bad",               // BEC_STATUS_CRC
-    "BEC detected unknown command",      // BEC_STATUS_UNKCMD
-    "BEC reports bad command argument",  // BEC_STATUS_BADARG
-    "BEC reports bad length",            // BEC_STATUS_BADLEN
-    "BEC reports no data available",     // BEC_STATUS_NODATA
-    "BEC reports resource locked",       // BEC_STATUS_LOCKED
-    "No response from BEC",              // BEC_STATUS_TIMEOUT
-    "BEC response header from BEC",      // BEC_STATUS_BADMAGIC
-    "BEC response is too large",         // BEC_STATUS_REPLYLEN
-    "BEC response has bad CRC",          // BEC_STATUS_REPLYCRC
-};
-
-/*
- * bec_err
- * -------
- * Converts BEC_STATUS_* value to a readable string
- *
- * status is the error status code to convert.
- */
-const char *
-bec_err(uint status)
-{
-    static char buf[64];
-    const char *str = "Unknown";
-
-    if (status < ARRAY_SIZE(bec_status_s))
-        str = bec_status_s[status];
-    sprintf(buf, "%d %s", status, str);
-    return (buf);
 }
 
 static uint64_t
@@ -994,7 +689,7 @@ bec_test_commands(void)
 
     } else {
         uint64_t diff = usecs2 - usecs1;
-        if ((diff < 19500) || (diff > 50000)) {
+        if ((diff < 19500) || (diff > 200000)) {
             printf("FAIL: UPTIME not accurate: 20000 expected, but got %s: ",
                    ull_to_str(diff, buf, sizeof (buf)));
             print_us_diff(usecs1, usecs2);

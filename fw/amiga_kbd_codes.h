@@ -25,7 +25,7 @@
 #define AS_MINUS       (0x0b)  // '_' and '-'
 #define AS_EQUAL       (0x0c)  // '+' and '='
 #define AS_BACKSLASH   (0x0d)  // '|' and '\'
-#define AS_KP0         (0x0f)  // Keypad '0'
+#define AS_KP_0        (0x0f)  // Keypad '0'
 #define AS_Q           (0x10)  // 'Q' and 'q'
 #define AS_W           (0x11)  // 'W' and 'w'
 #define AS_E           (0x12)  // 'E' and 'e'
@@ -38,9 +38,9 @@
 #define AS_P           (0x19)  // 'P' and 'p'
 #define AS_LBRACKET    (0x1a)  // '{' and '['
 #define AS_RBRACKET    (0x1b)  // '}' and ']'
-#define AS_KP1         (0x1d)  // Keypad '1'
-#define AS_KP2         (0x1e)  // Keypad '2'
-#define AS_KP3         (0x1f)  // Keypad '3'
+#define AS_KP_1        (0x1d)  // Keypad '1'
+#define AS_KP_2        (0x1e)  // Keypad '2'
+#define AS_KP_3        (0x1f)  // Keypad '3'
 #define AS_A           (0x20)  // 'A' and 'a'
 #define AS_S           (0x21)  // 'S' and 's'
 #define AS_D           (0x22)  // 'D' and 'd'
@@ -52,11 +52,11 @@
 #define AS_L           (0x28)  // 'L' and 'l'
 #define AS_SEMICOLON   (0x29)  // ';' and ':'
 #define AS_APOSTROPHE  (0x2a)  // ''' and '"'
-#define AS_UNLABELED1  (0x2b)  // Key next to Return
-#define AS_KP4         (0x2d)  // Keypad '4'
-#define AS_KP5         (0x2e)  // Keypad '5'
-#define AS_KP6         (0x2f)  // Keypad '6'
-#define AS_UNLABELED2  (0x30)  // Key next to Left Shift
+#define AS_EXTRA1      (0x2b)  // Key next to Return
+#define AS_KP_4        (0x2d)  // Keypad '4'
+#define AS_KP_5        (0x2e)  // Keypad '5'
+#define AS_KP_6        (0x2f)  // Keypad '6'
+#define AS_EXTRA2      (0x30)  // Key next to Left Shift
 #define AS_Z           (0x31)  // 'Z' and 'z'
 #define AS_X           (0x32)  // 'X' and 'x'
 #define AS_C           (0x33)  // 'C' and 'c'
@@ -67,21 +67,21 @@
 #define AS_COMMA       (0x38)  // '<' and ','
 #define AS_DOT         (0x39)  // '>' and '.'
 #define AS_SLASH       (0x3a)  // '>' and '/'
-#define AS_KPDOT       (0x3c)  // Keypad '.'
-#define AS_KP7         (0x3d)  // Keypad '7'
-#define AS_KP8         (0x3e)  // Keypad '8'
-#define AS_KP9         (0x3f)  // Keypad '9'
+#define AS_KP_DOT      (0x3c)  // Keypad '.'
+#define AS_KP_7        (0x3d)  // Keypad '7'
+#define AS_KP_8        (0x3e)  // Keypad '8'
+#define AS_KP_9        (0x3f)  // Keypad '9'
 #define AS_SPACE       (0x40)  // Space
 #define AS_BACKSPACE   (0x41)  // Backspace
 #define AS_TAB         (0x42)  // Tab
-#define AS_KPENTER     (0x43)  // Keypad Enter
-#define AS_RETURN      (0x44)  // Carriage Return
+#define AS_KP_ENTER    (0x43)  // Keypad Enter
+#define AS_ENTER       (0x44)  // Enter
 #define AS_ESC         (0x45)  // ESC
 #define AS_DELETE      (0x46)  // Delete
 #define AS_INSERT      (0x47)  // Insert       (not on classic keyboards)
 #define AS_PAGEUP      (0x48)  // Page Up      (not on classic keyboards)
 #define AS_PAGEDOWN    (0x49)  // Page Down    (not on classic keyboards)
-#define AS_KPMINUS     (0x4a)  // Keypad '-'
+#define AS_KP_MINUS    (0x4a)  // Keypad '-'
 #define AS_F11         (0x4b)  // F11          (not on classic keyboards)
 #define AS_UP          (0x4c)  // Cursor Up
 #define AS_DOWN        (0x4d)  // Cursor Down
@@ -99,9 +99,9 @@
 #define AS_F10         (0x59)  // F10
 #define AS_KP_LPAREN   (0x5a)  // Keypad '('
 #define AS_KP_RPAREN   (0x5b)  // Keypad ')'
-#define AS_KPSLASH     (0x5c)  // Keypad '/'
-#define AS_KPASTERISK  (0x5d)  // Keypad '*'
-#define AS_KPPLUS      (0x5e)  // Keypad '+'
+#define AS_KP_DIV      (0x5c)  // Keypad '/'
+#define AS_KP_MUL      (0x5d)  // Keypad '*'
+#define AS_KP_PLUS     (0x5e)  // Keypad '+'
 #define AS_HELP        (0x5f)  // Help
 #define AS_LEFTSHIFT   (0x60)  // Left Shift
 #define AS_RIGHTSHIFT  (0x61)  // Right Shift

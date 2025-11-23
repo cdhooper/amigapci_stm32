@@ -7,6 +7,8 @@ tinyusb/
 objs
 bec
 apciflash
+pci
+becky
 .*.sw?
 .cscope*
 cscope.out
