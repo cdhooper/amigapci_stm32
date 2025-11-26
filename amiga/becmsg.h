@@ -12,10 +12,10 @@
 #ifndef _BECMSG_H
 #define _BECMSG_H
 
-uint send_cmd(uint8_t cmd, void *arg, uint8_t arglen,
+uint send_cmd(uint8_t cmd, void *arg, uint16_t arglen,
               void *reply, uint replymax, uint *replyalen);
 
-uint send_cmd_retry(uint8_t cmd, void *arg, uint8_t arglen,
+uint send_cmd_retry(uint8_t cmd, void *arg, uint16_t arglen,
                     void *reply, uint replymax, uint *replyalen);
 
 const char *bec_err(uint status);

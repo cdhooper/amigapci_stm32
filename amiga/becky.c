@@ -1,7 +1,7 @@
 /*
  * becky
  * -----
- * Utility to manipulate AmigaPCI keyboard mapping tables stored in BEC
+ * Utility to manipulate AmigaHIDI keyboard mapping tables stored in BEC
  * (the Board Environment Controller).
  *
  * Copyright 2025 Chris Hooper. This program and source may be used
@@ -21,22 +21,27 @@ const char *version = "\0$VER: becky "VERSION" ("BUILD_DATE") \xA9 Chris Hooper"
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <ctype.h>
 #include <string.h>
 #include <fcntl.h>
 #include <assert.h>
 #include <libraries/keymap.h>
+#include <libraries/asl.h>
 #include <exec/types.h>
 #include <exec/memory.h>
 #include <clib/dos_protos.h>
 #include <inline/timer.h>
 #include <inline/exec.h>
 #include <inline/dos.h>
+#include <inline/asl.h>
 #include <inline/diskfont.h>
 #include <inline/gadtools.h>
 #include <libraries/gadtools.h>
 #include "amiga_kbd_codes.h"
 #include "hid_kbd_codes.h"
+#include "becmsg.h"
+#include "bec_cmd.h"
 
 /*
  * Define compile-time assert. This macro relies on gcc's built-in
@@ -49,13 +54,26 @@ const char *version = "\0$VER: becky "VERSION" ("BUILD_DATE") \xA9 Chris Hooper"
 #define ARRAY_SIZE(x) ((sizeof (x) / sizeof ((x)[0])))
 
 uint flag_debug = 0;
-uint is_northamerican = 1;  // Default to North American style keyboard
+static uint is_northamerican = 1;  // Default to North American style keyboard
+
+static uint amiga_keyboard_left;
+static uint amiga_keyboard_top;
+static uint hid_keyboard_left;
+static uint hid_keyboard_top;
+
+static uint win_width  = 500;
+static uint win_height = 220;
+static uint kbd_width = 400;
+static uint kbd_height = 100;
 
 typedef struct {
     uint8_t  shaded;
     uint16_t x;
     uint16_t y;
 } keysize_t;
+
+#define NUM_SCANCODES 256
+static uint8_t hid_scancode_to_amiga[NUM_SCANCODES][4];
 
 /* 1u 1.25u 1.5u 2u 2.25u 9u */
 #define U      191
@@ -215,18 +233,16 @@ typedef struct {
     SHORT y_max;
 } key_bbox_t;
 
-static key_bbox_t amiga_key_bbox[ARRAY_SIZE(amiga_keypos)];
-static keysize_t  amiga_keysize[ARRAY_SIZE(amiga_keywidths)];
 
 #define AKB_MIN_X   5000
 #define AKB_MIN_Y   5000
 #define AKB_MAX_X  45500
 #define AKB_MAX_Y  15800
 
-#define PCKB_MIN_X  5000
-#define PCKB_MIN_Y  5000
-#define PCKB_MAX_X 44500
-#define PCKB_MAX_Y 15800
+#define HIDKB_MIN_X  5000
+#define HIDKB_MIN_Y  5000
+#define HIDKB_MAX_X 44500
+#define HIDKB_MAX_Y 15800
 
 // 1u    Alphanumeric keys (A, B, C, etc.), number keys, function keys
 // 1.25u Ctrl, Alt, GUI (Windows/Command) keys (bottom row)
@@ -249,7 +265,7 @@ static keysize_t  amiga_keysize[ARRAY_SIZE(amiga_keywidths)];
 //       46.4       Right shift
 //      113.2       Spacebar
 
-static const keysize_t pc_keywidths[] = {
+static const keysize_t hid_keywidths[] = {
     { PLAIN,  1 * U,     1 * U, },  //  0: Standard key ('1' key)
     { SHADED, 1 * U,     1 * U, },  //  1: Standard shaded key (ESC key)
     { SHADED, 1.25 * U,  1 * U, },  //  2: Modifier key (Ctrl, Meta, Alt, Fn)
@@ -266,7 +282,7 @@ static const keysize_t pc_keywidths[] = {
     { SHADED, 1.75 * U,  1 * U, },  // 13: Capslock
 };
 
-static const keypos_t pc_keypos[] = {
+static const keypos_t hid_keypos[] = {
     { HS_ESC,         1,  5086,  5050, "ESC" },
     { HS_F1,          1,  8895,  5050, "F1" },
     { HS_F2,          1, 10800,  5050, "F2" },
@@ -345,8 +361,8 @@ static const keypos_t pc_keypos[] = {
     { HS_J,           0, 19849, 11727, C('J') },
     { HS_K,           0, 21754, 11727, C('K') },
     { HS_L,           0, 23659, 11727, C('L') },
-    { ';',            0, 25564, 11727, C(';') },
-    { '\'',           0, 27469, 11727, C('\'') },
+    { HS_SEMICOLON,   0, 25564, 11727, C(';') },
+    { HS_APOSTROPHE,  0, 27469, 11727, C('\'') },
     { HS_ENTER,      12, 30517, 11727, "<_/" },  // Enter
 
     { HS_KP_4,        0, 41280, 11727, C('4') },
@@ -361,9 +377,9 @@ static const keypos_t pc_keypos[] = {
     { HS_B,           0, 16991, 13632, C('B') },
     { HS_N,           0, 18896, 13632, C('N') },
     { HS_M,           0, 20801, 13632, C('M') },
-    { ',',            0, 22706, 13632, C(',') },
-    { '.',            0, 24611, 13632, C('.') },
-    { '/',            0, 26516, 13632, C('/') },
+    { HS_COMMA,       0, 22706, 13632, C(',') },
+    { HS_DOT,         0, 24611, 13632, C('.') },
+    { HS_SLASH,       0, 26516, 13632, C('/') },
     { HS_RSHIFT,      7, 30087, 13632, "Shift" },
     { HS_UP,          0, 36518, 13632, C('^') },
     { HS_KP_1,        0, 41280, 13632, C('1') },
@@ -387,8 +403,14 @@ static const keypos_t pc_keypos[] = {
     { HS_KP_DOT,      0, 45090, 15537, C('.') },
 };
 
-static key_bbox_t pc_key_bbox[ARRAY_SIZE(pc_keypos)];
-static keysize_t  pc_keysize[ARRAY_SIZE(amiga_keywidths)];
+static key_bbox_t amiga_key_bbox[ARRAY_SIZE(amiga_keypos)];
+static key_bbox_t hid_key_bbox[ARRAY_SIZE(hid_keypos)];
+static keysize_t  amiga_keysize[ARRAY_SIZE(amiga_keywidths)];
+static keysize_t  hid_keysize[ARRAY_SIZE(amiga_keywidths)];
+static uint8_t    amiga_scancode_to_capnum[256];
+static uint8_t    hid_scancode_to_capnum[256];
+static uint8_t    amiga_key_mapped[ARRAY_SIZE(amiga_keypos)];
+static uint8_t    hid_key_mapped[ARRAY_SIZE(hid_keypos)];
 
 static const char cmd_options[] =
     "usage: bec <options>\n"
@@ -424,6 +446,40 @@ long_to_short(const char *ptr, const long_to_short_t *ltos, uint ltos_count)
     return (ptr);
 }
 
+static char *
+strcasestr(const char *haystack, const char *needle)
+{
+    char ch;
+    char sc;
+    size_t len;
+
+    if ((ch = *needle++) != 0) {
+        ch = tolower((unsigned char) ch);
+        len = strlen(needle);
+        do {
+            do {
+                if ((sc = *haystack++) == 0)
+                    return (NULL);
+            } while ((char)tolower((unsigned char) sc) != ch);
+        } while (strncasecmp(haystack, needle, len) != 0);
+        haystack--;
+    }
+    return ((char *) haystack);
+}
+
+static void __attribute__((format(__printf__, 1, 2)))
+err_printf(const char *fmt, ...)
+{
+    char buf[128];
+    va_list args;
+    va_start(args, fmt);
+    (void) vsnprintf(buf, sizeof (buf) - 1, fmt, args);
+    va_end(args);
+    buf[sizeof (buf) - 1] = '\0';
+    printf("%s", buf);
+}
+
+
 #include <proto/intuition.h>
 #include <proto/graphics.h>
 #include <classes/window.h>
@@ -435,6 +491,7 @@ struct IntuitionBase *IntuitionBase = NULL;
 struct GfxBase       *GfxBase       = NULL;
 struct Library       *DiskfontBase  = NULL;
 struct Library       *GadToolsBase  = NULL;
+struct Library       *AslBase       = NULL;
 extern struct ExecBase *DOSBase;
 extern struct ExecBase *SysBase;
 struct Window *window = NULL;
@@ -447,19 +504,26 @@ OpenAmigaLibraries(void)
     /* Use version 39 for 3.x compatibility */
     IntuitionBase = (struct IntuitionBase *)
         OpenLibrary("intuition.library", 37L);
-
     if (IntuitionBase == NULL) {
-        fprintf(stderr, "Failed to open intuition.library\\n");
+        err_printf("Failed to open %s\n", "intuition.library");
         return (FALSE);
     }
+
     GfxBase = (struct GfxBase *) OpenLibrary("graphics.library", 37L);
     if (GfxBase == NULL) {
-        fprintf(stderr, "Failed to open graphics.library\\n");
+        err_printf("Failed to open %s\n", "graphics.library");
         return (FALSE);
     }
+
     GadToolsBase = OpenLibrary("gadtools.library", 37L);
     if (GadToolsBase == NULL) {
-        fprintf(stderr, "Failed to open gadtools.library\\n");
+        err_printf("Failed to open %s\n", "gadtools.library");
+        return (FALSE);
+    }
+
+    AslBase = OpenLibrary("asl.library", 37L);
+    if (AslBase == NULL) {
+        err_printf("Failed to open %s\n", "asl.library");
         return (FALSE);
     }
     return (TRUE);
@@ -479,14 +543,13 @@ CloseAmigaLibraries(void)
     }
     if (GadToolsBase) {
         CloseLibrary(GadToolsBase);
-        GfxBase = NULL;
+        GadToolsBase = NULL;
+    }
+    if (AslBase) {
+        CloseLibrary(AslBase);
+        AslBase = NULL;
     }
 }
-
-static uint win_width  = 500;
-static uint win_height = 220;
-static uint kbd_width = 400;
-static uint kbd_height = 100;
 
 /* Function to open the window */
 static struct Window *
@@ -522,42 +585,51 @@ OpenAWindow(void)
                   WFLG_SIZEGADGET | WFLG_ACTIVATE | WFLG_REPORTMOUSE |
 //                WFLG_GIMMEZEROZERO |
                   WFLG_NOCAREREFRESH,
-        WA_Title,       (ULONG) "BecKy Control Window",
-        WA_ScreenTitle, (ULONG) "BecKy Control Window",
+        WA_Title,       (ULONG) "Becky Key Mapping Tool",
+        WA_ScreenTitle, (ULONG) "Becky Key Mapping Tool",
         WA_NewLookMenus, TRUE,
         TAG_DONE));
 }
 
 static const struct NewMenu becky_menu[] = { // name key flags mutex userdata
-    { NM_TITLE, "File",            NULL, 0,  0, NULL },
-    {  NM_ITEM, "About",           NULL, 0,  0, NULL },
-    {  NM_ITEM, NM_BARLABEL,       NULL, 0,  0, NULL }, // Separator bar
-    {  NM_ITEM, "Load",            "O",  0,  0, NULL },
-    {  NM_ITEM, "Save",            "S",  0,  0, NULL },
-    {  NM_ITEM, NM_BARLABEL,       NULL, 0,  0, NULL }, // Separator bar
-    {  NM_ITEM, "Quit",            "Q",  0,  0, NULL },
-    { NM_TITLE, "BEC",             NULL, 0,  0, NULL },
-    {  NM_ITEM, "Load from BEC",   NULL, 0,  0, NULL },
-    {  NM_ITEM, "Save to BEC",     NULL, 0,  0, NULL },
-    { NM_TITLE, "Mode",            NULL, 0,  0, NULL },
-#if 1
-    {  NM_ITEM, "Live keys",       NULL, CHECKIT | MENUTOGGLE, 0, NULL },
-    {  NM_ITEM, NM_BARLABEL,       NULL, 0,  0, NULL }, // Separator bar
-    {  NM_ITEM, "Amiga scancode",  NULL, CHECKIT | MENUTOGGLE, ~4, NULL },
-    {  NM_ITEM, "HID scancode",    NULL, CHECKIT | MENUTOGGLE, ~8, NULL },
-#endif
-    {   NM_END, NULL,              NULL, 0,  0, NULL }  // End of menu
+    { NM_TITLE, "File",             NULL, 0,  0, NULL },
+    {  NM_ITEM, "About",            NULL, 0,  0, NULL },
+    {  NM_ITEM, NM_BARLABEL,        NULL, 0,  0, NULL }, // Separator bar
+    {  NM_ITEM, "Load",             "L",  0,  0, NULL },
+    {  NM_ITEM, "Save",             "S",  0,  0, NULL },
+    {  NM_ITEM, NM_BARLABEL,        NULL, 0,  0, NULL }, // Separator bar
+    {  NM_ITEM, "Quit",             "Q",  0,  0, NULL },
+    { NM_TITLE, "BEC",              NULL, 0,  0, NULL },
+    {  NM_ITEM, "Load from BEC",    NULL, 0,  0, NULL },
+    {  NM_ITEM, "Save to BEC",      NULL, 0,  0, NULL },
+    { NM_TITLE, "Mode",             NULL, 0,  0, NULL },
+    {  NM_ITEM, "Live keys",        NULL, CHECKIT | MENUTOGGLE, 0, NULL },
+    {  NM_ITEM, NM_BARLABEL,        NULL, 0,  0, NULL }, // Separator bar
+    {  NM_ITEM, "Amiga scancode",   NULL, CHECKIT | MENUTOGGLE, 0x0f ^ 4, NULL },
+    {  NM_ITEM, "HID scancode",     NULL, CHECKIT | MENUTOGGLE, 0x0f ^ 8, NULL },
+    {  NM_ITEM, NM_BARLABEL,        NULL, 0,  0, NULL }, // Separator bar
+    {  NM_ITEM, "Map Amiga to HID", NULL, CHECKIT | MENUTOGGLE,
+                                                             0xf0 ^ 0x20, NULL },
+    {  NM_ITEM, "Map HID to Amiga", NULL, CHECKIT | MENUTOGGLE,
+                                                             0xf0 ^ 0x40, NULL },
+    {   NM_END, NULL,               NULL, 0,  0, NULL }  // End of menu
 };
-#define ITEMNUM_AMIGA_SCANCODE (SHIFTMENU(2) | SHIFTITEM(2))
-#define ITEMNUM_HID_SCANCODE   (SHIFTMENU(2) | SHIFTITEM(3))
+#define ITEMNUM_AMIGA_SCANCODE    (SHIFTMENU(2) | SHIFTITEM(2))
+#define ITEMNUM_HID_SCANCODE      (SHIFTMENU(2) | SHIFTITEM(3))
+#define ITEMNUM_AMIGA_TO_HID      (SHIFTMENU(2) | SHIFTITEM(5))
+#define ITEMNUM_HID_TO_AMIGA      (SHIFTMENU(2) | SHIFTITEM(6))
+#define MENU_INDEX_LIVE_KEYS      11
 #define MENU_INDEX_AMIGA_SCANCODE 13
 #define MENU_INDEX_HID_SCANCODE   14
+#define MENU_INDEX_AMIGA_TO_HID   16
+#define MENU_INDEX_HID_TO_AMIGA   17
 // STATIC_ASSERT(ARRAY_SIZE(becky_menu) == 16);
 
 static struct Menu *menus = NULL;
-static APTR *visual_info;
-static uint8_t rawkey_mode = 0;
-static uint8_t capture_hid_scancodes = 1;
+static APTR        *visual_info;
+static uint8_t      rawkey_mode = 1;
+static uint8_t      capture_hid_scancodes = 1;
+static uint8_t      map_hid_to_amiga = 0;
 
 static void
 create_menu(void)
@@ -565,28 +637,28 @@ create_menu(void)
     struct NewMenu *menu;
     menu = AllocVec(sizeof (becky_menu), MEMF_PUBLIC);
     if (menu == NULL) {
-        printf("Failed to allocate memory\n");
+        err_printf("AllocVec failed\n");
         return;
     }
     memcpy(menu, becky_menu, sizeof (becky_menu));
-#if 1
-    if (menu[MENU_INDEX_HID_SCANCODE].nm_MutualExclude == ~8) {
+    if (menu[MENU_INDEX_HID_SCANCODE].nm_MutualExclude == (0xf ^ 8)) {
+        /* Add checkmark to "Live keys" menu item */
+        if (rawkey_mode)
+            menu[MENU_INDEX_LIVE_KEYS].nm_Flags |= CHECKED;
         /* Add checkmark to "Amiga scancode" or "HID scancode" menu item */
-#if 1
         if (capture_hid_scancodes == 0)
             menu[MENU_INDEX_AMIGA_SCANCODE].nm_Flags |= CHECKED;
         else
             menu[MENU_INDEX_HID_SCANCODE].nm_Flags |= CHECKED;
-#endif
-        printf("%x %x %x %x\n",
-               menu[11].nm_Flags,
-               menu[12].nm_Flags,
-               menu[MENU_INDEX_AMIGA_SCANCODE].nm_Flags,
-               menu[MENU_INDEX_HID_SCANCODE].nm_Flags);
+
+        /* Add checkmark to "Amiga to HID" or "HID to Amiga" menu item */
+        if (map_hid_to_amiga == 0)
+            menu[MENU_INDEX_AMIGA_TO_HID].nm_Flags |= CHECKED;
+        else
+            menu[MENU_INDEX_HID_TO_AMIGA].nm_Flags |= CHECKED;
     } else {
-        printf("Bug: becky_menu changed\n");
+        err_printf("Bug: becky_menu changed\n");
     }
-#endif
 
     visual_info = GetVisualInfo(window->WScreen, TAG_END);
     if (visual_info != NULL) {
@@ -596,27 +668,6 @@ create_menu(void)
             SetMenuStrip(window, menus);
         }
     }
-#if 0
-    /* The following doesn't work */
-    becky_menu[11].nm_Flags |= CHECKED;
-    ResetMenuStrip(window, menus);
-#endif
-#if 0
-    /* This one works */
-    struct MenuItem *item;
-    ClearMenuStrip(window);
-    for (uint x_menu = 0; x_menu <= 5; x_menu++) {
-        for (uint x_item = 0; x_item <= 5; x_item++) {
-            item = ItemAddress(menus, SHIFTMENU(x_menu) | SHIFTITEM(x_item));
-            if (item != NULL) {
-//              item->Flags |= CHECKED;
-                printf("found %x %x %x,%x\n",
-                       item, item->ItemFill, x_menu, x_item);
-            }
-        }
-    }
-    ResetMenuStrip(window, menus);
-#endif
 }
 
 static void
@@ -646,10 +697,10 @@ scale_key_dimensions(void)
         amiga_keysize[cur].shaded = amiga_keywidths[cur].shaded;
     }
 
-    for (cur = 0; cur < ARRAY_SIZE(pc_keywidths); cur++) {
-        pc_keysize[cur].x = pc_keywidths[cur].x * mul_x / div_x;
-        pc_keysize[cur].y = pc_keywidths[cur].y * mul_y / div_y;
-        pc_keysize[cur].shaded = pc_keywidths[cur].shaded;
+    for (cur = 0; cur < ARRAY_SIZE(hid_keywidths); cur++) {
+        hid_keysize[cur].x = hid_keywidths[cur].x * mul_x / div_x;
+        hid_keysize[cur].y = hid_keywidths[cur].y * mul_y / div_y;
+        hid_keysize[cur].shaded = hid_keywidths[cur].shaded;
     }
 
     /*
@@ -715,48 +766,83 @@ box_enterkey_america(struct RastPort *rp, SHORT xpos, SHORT ypos,
     Draw(rp, xpos - wx, ymin);
 }
 
-struct TextFont *keycap_font = NULL;
+static struct TextFont *keycap_font = NULL;
 
 /* Pen colors */
 static BYTE pen_cap_white;             // White key cap
 static BYTE pen_cap_shaded;            // Shaded key cap
 static BYTE pen_cap_pressed;           // Pressed key cap
 static BYTE pen_cap_text;              // Keycap text
+static BYTE pen_cap_text_pressed;      // Keycap text when pressed
 static BYTE pen_cap_outline_lo;        // Normal outline around cap
 static BYTE pen_cap_outline_hi;        // Highlighted outline around cap
 static BYTE pen_keyboard_background;   // Keyboard case color
+static BYTE pen_status_fg;             // Black
+static BYTE pen_status_bg;             // White
 
 static void
 select_pens(void)
 {
-    if (1) {
-        /*
-         * Four colors available. Workbench default:
-         *    0 = Gray
-         *    1 = White
-         *    2 = Black
-         *    3 = Light Blue
-         */
-        pen_cap_white  = 2;           // White
-        pen_cap_shaded = 0;           // Background color
-        pen_cap_pressed = 3;          // Blue
-        pen_cap_text   = 1;           // Black
-        pen_cap_outline_lo = 1;       // Black
-        pen_cap_outline_hi = 3;       // Blue
-        pen_keyboard_background = 0;  // Background color
-    } else {
-        /*
-         * Eight colors available. Workbench default:
-         *    0 = Gray
-         *    1 = White
-         *    2 = Black
-         *    3 = Blue
-         *    4 = Red
-         *    5 = Green
-         *    6 = Dark Blue
-         *    7 = Orange
-         */
-        pen_keyboard_background = 5;  // Background color
+    switch (rp->BitMap->Depth) {
+        case 1:
+            /* Two colors available:
+             *    0 = Black
+             *    1 = White
+             */
+            pen_cap_white           = 0;  // White
+            pen_cap_shaded          = 0;  // White
+            pen_cap_pressed         = 1;  // Black
+            pen_cap_text            = 1;  // Black
+            pen_cap_text_pressed    = 0;  // White
+            pen_cap_outline_lo      = 0;  // White
+            pen_cap_outline_hi      = 1;  // Black
+            pen_keyboard_background = 1;  // Background color
+            pen_status_fg           = 1;  // Black
+            pen_status_bg           = 0;  // White
+            break;
+        case 0:
+        case 2:
+            /*
+             * Four colors available. Workbench default:
+             *    0 = Gray
+             *    1 = White
+             *    2 = Black
+             *    3 = Light Blue
+             */
+            pen_cap_white           = 2;  // White
+            pen_cap_shaded          = 0;  // Background color
+            pen_cap_pressed         = 3;  // Blue
+            pen_cap_text            = 1;  // Black
+            pen_cap_text_pressed    = 1;  // Black
+            pen_cap_outline_lo      = 1;  // Black
+            pen_cap_outline_hi      = 3;  // Blue
+            pen_keyboard_background = 0;  // Background color
+            pen_status_fg           = 1;  // Black
+            pen_status_bg           = 2;  // White
+            break;
+        default:
+            /*
+             * Eight or more colors available. Workbench default:
+             *    0 = Gray
+             *    1 = Black
+             *    2 = White
+             *    3 = Blue
+             *    4 = Red
+             *    5 = Green
+             *    6 = Dark Blue
+             *    7 = Orange
+             */
+            pen_cap_white           = 2;  // White
+            pen_cap_shaded          = 0;  // Background color
+            pen_cap_pressed         = 3;  // Blue
+            pen_cap_text            = 1;  // Black
+            pen_cap_text_pressed    = 1;  // Black
+            pen_cap_outline_lo      = 1;  // Black
+            pen_cap_outline_hi      = 4;  // Red
+            pen_keyboard_background = 6;  // Dark Blue
+            pen_status_fg           = 1;  // Black
+            pen_status_bg           = 2;  // White
+            break;
     }
 }
 
@@ -777,7 +863,7 @@ open_font(void)
     if (keycap_font) {
         SetFont(rp, keycap_font); // Set the new font
     } else {
-        fprintf(stderr, "Could not open topaz.font 8; using default\n");
+        err_printf("Could not open topaz.font 8; using default\n");
     }
 }
 
@@ -819,10 +905,34 @@ center_text(struct RastPort *rp, SHORT pos_x, SHORT pos_y, SHORT max_x,
     Text(rp, str, len);
 }
 
-static uint amiga_keyboard_left;
-static uint amiga_keyboard_top;
-static uint pc_keyboard_left;
-static uint pc_keyboard_top;
+static void __attribute__((format(__printf__, 1, 2)))
+gui_printf(const char *fmt, ...)
+{
+    static SHORT width_last;
+    SHORT pos_x = window->BorderLeft + 4;
+    SHORT pos_y = hid_keyboard_top - 4;
+    SHORT width;
+    uint len;
+    char buf[80];
+    va_list args;
+    va_start(args, fmt);
+    (void) vsnprintf(buf, sizeof (buf) - 1, fmt, args);
+    va_end(args);
+    buf[sizeof (buf) - 1] = '\0';
+    len = strlen(buf);
+    if (len == 0)
+        return;
+    SetAPen(rp, pen_status_fg);
+    SetBPen(rp, pen_status_bg);
+    Move(rp, pos_x, pos_y);
+    Text(rp, buf, len);
+    width = TextLength(rp, buf, len);
+    if (width_last > width) {
+        SetAPen(rp, 0);
+        RectFill(rp, pos_x + width, pos_y - 7, pos_x + width_last, pos_y + 1);
+    }
+    width_last = width;
+}
 
 static void
 draw_amiga_key(uint cur, uint pressed)
@@ -830,9 +940,15 @@ draw_amiga_key(uint cur, uint pressed)
     const keypos_t *ke = &amiga_keypos[cur];
     uint8_t scancode = amiga_keypos[cur].scancode;
     uint ktype = amiga_keypos[cur].type;
+    uint pos_x;
+    uint pos_y;
     uint ke_x = ke->x;
     uint ke_y = ke->y;
+    uint wx = amiga_keysize[ktype].x;
+    uint wy = amiga_keysize[ktype].y;
     uint shaded;
+    uint keycap_fg_pen;
+    uint keycap_bg_pen;
 
     if (is_northamerican && (scancode == AS_LEFTSHIFT)) {
         ke_x += 1905 / 2;  // Increase width of North American left shift
@@ -841,35 +957,41 @@ draw_amiga_key(uint cur, uint pressed)
         ke_y += 1905 / 2;  // Fixup center for tall keys
     }
 
-    uint pos_x = (ke_x  - AKB_MIN_X) * kbd_width / AKB_MAX_X + amiga_keyboard_left;
-    uint pos_y = (ke_y - AKB_MIN_Y) * kbd_height / AKB_MAX_Y + amiga_keyboard_top;
-    uint wx = amiga_keysize[ktype].x;
-    uint wy = amiga_keysize[ktype].y;
-    uint keycap_pen;
+    pos_x = (ke_x  - AKB_MIN_X) * kbd_width / AKB_MAX_X + amiga_keyboard_left;
+    pos_y = (ke_y - AKB_MIN_Y) * kbd_height / AKB_MAX_Y + amiga_keyboard_top;
 
-    if (pressed)
+    if (amiga_keysize[amiga_keypos[cur].type].shaded == 0xff)
+        return;  // Key not present in this keymap
+
+    if (pressed) {
+        shaded = 3;
+    } else if (!amiga_key_mapped[cur]) {
         shaded = 2;
-    else
+    } else {
         shaded = amiga_keysize[amiga_keypos[cur].type].shaded;
+    }
 
     switch (shaded) {
         default:
-        case 0:
-            keycap_pen = pen_cap_white;
+        case 0:  // Normal white key
+            keycap_fg_pen = pressed ? pen_cap_text_pressed : pen_cap_text;
+            keycap_bg_pen = pen_cap_white;
             break;
-        case 1:
-            keycap_pen = pen_cap_shaded;
+        case 1:  // Normal shaded key
+            keycap_fg_pen = pressed ? pen_cap_text_pressed : pen_cap_text;
+            keycap_bg_pen = pen_cap_shaded;
             break;
-        case 2:
-            keycap_pen = pen_cap_pressed;
+        case 2:  // Key that has not been mapped (Black)
+            keycap_fg_pen = pen_cap_white;
+            keycap_bg_pen = pressed ? pen_cap_text_pressed : pen_cap_text;
             break;
-        case 0xff:
-            return;  // Key not present in this keymap
+        case 3:  // Key that has been pressed (Blue)
+            keycap_fg_pen = pen_cap_text;
+            keycap_bg_pen = pen_cap_pressed;
+            break;
     }
-    if (shaded == 0xff)
-        return;  // Key not present in this keymap
 
-    SetAPen(rp, keycap_pen);
+    SetAPen(rp, keycap_bg_pen);
     if (scancode == AS_ENTER) {
         /* Special rendering for non-rectangular Enter */
         if (is_northamerican && (ktype == 12)) {
@@ -889,24 +1011,13 @@ draw_amiga_key(uint cur, uint pressed)
             SetAPen(rp, pen_cap_outline_lo);
             box_enterkey_euro(rp, pos_x, pos_y, wx, wy);
         }
-        SetAPen(rp, pen_cap_text);
-        SetBPen(rp, keycap_pen);
+        SetAPen(rp, keycap_fg_pen);
+        SetBPen(rp, keycap_bg_pen);
         center_text(rp, pos_x, pos_y, wx * 2, amiga_keypos[cur].name);
     } else {
         RectFill(rp, pos_x - wx, pos_y - wy, pos_x + wx, pos_y + wy);
-        SetAPen(rp, pen_cap_text);
-        SetBPen(rp, keycap_pen);
-#if 0
-        int i;
-        for (i = pos_y - wy; i < pos_y + wy; i += 2) {
-            Move(rp, pos_x, i);
-            Draw(rp, pos_x, i);
-        }
-        for (i = pos_x - wx; i < pos_x + wx; i += 2) {
-            Move(rp, i, pos_y);
-            Draw(rp, i, pos_y);
-        }
-#endif
+        SetAPen(rp, keycap_fg_pen);
+        SetBPen(rp, keycap_bg_pen);
         center_text(rp, pos_x, pos_y, wx * 2, amiga_keypos[cur].name);
         SetAPen(rp, pen_cap_outline_lo);
         box(rp, pos_x - wx, pos_y - wy, pos_x + wx, pos_y + wy);
@@ -918,50 +1029,62 @@ draw_amiga_key(uint cur, uint pressed)
 }
 
 static void
-draw_pc_key(uint cur, uint pressed)
+draw_hid_key(uint cur, uint pressed)
 {
-    const keypos_t *ke = &pc_keypos[cur];
-    uint shaded = pc_keysize[pc_keypos[cur].type].shaded;
+    const keypos_t *ke = &hid_keypos[cur];
+    uint shaded = hid_keysize[hid_keypos[cur].type].shaded;
 
-    uint pos_x = (ke->x - PCKB_MIN_X) * kbd_width / PCKB_MAX_X + pc_keyboard_left;
-    uint pos_y = (ke->y - PCKB_MIN_Y) * kbd_height / PCKB_MAX_Y +
-                 pc_keyboard_top + pc_keysize[0].y * 2;
-    uint ktype = pc_keypos[cur].type;
-    uint wx = pc_keysize[ktype].x;
-    uint wy = pc_keysize[ktype].y;
-    uint keycap_pen;
+    uint pos_x = (ke->x - HIDKB_MIN_X) * kbd_width / HIDKB_MAX_X + hid_keyboard_left;
+    uint pos_y = (ke->y - HIDKB_MIN_Y) * kbd_height / HIDKB_MAX_Y +
+                 hid_keyboard_top + hid_keysize[0].y * 2;
+    uint ktype = hid_keypos[cur].type;
+    uint wx = hid_keysize[ktype].x;
+    uint wy = hid_keysize[ktype].y;
+    uint keycap_fg_pen;
+    uint keycap_bg_pen;
 
-    if (pressed)
+    if (hid_keysize[hid_keypos[cur].type].shaded == 0xff)
+        return;  // Key not present in this keymap
+
+    if (pressed) {
+        shaded = 3;
+    } else if (!hid_key_mapped[cur]) {
         shaded = 2;
-    else
-        shaded = pc_keysize[pc_keypos[cur].type].shaded;
+    } else {
+        shaded = hid_keysize[hid_keypos[cur].type].shaded;
+    }
 
     switch (shaded) {
         default:
-        case 0:
-            keycap_pen = pen_cap_white;
+        case 0:  // Normal white key
+            keycap_fg_pen = pressed ? pen_cap_text_pressed : pen_cap_text;
+            keycap_bg_pen = pen_cap_white;
             break;
-        case 1:
-            keycap_pen = pen_cap_shaded;
+        case 1:  // Normal shaded key
+            keycap_fg_pen = pressed ? pen_cap_text_pressed : pen_cap_text;
+            keycap_bg_pen = pen_cap_shaded;
             break;
-        case 2:
-            keycap_pen = pen_cap_pressed;
+        case 2:  // Key that has not been mapped (Black)
+            keycap_fg_pen = pen_cap_white;
+            keycap_bg_pen = pressed ? pen_cap_text_pressed : pen_cap_text;
             break;
-        case 0xff:
-            return;  // Key not present in this keymap
+        case 3:  // Key that has been pressed (Blue)
+            keycap_fg_pen = pen_cap_text;
+            keycap_bg_pen = pen_cap_pressed;
+            break;
     }
 
-    SetAPen(rp, keycap_pen);
+    SetAPen(rp, keycap_bg_pen);
     RectFill(rp, pos_x - wx, pos_y - wy, pos_x + wx, pos_y + wy);
-    SetAPen(rp, pen_cap_text);
-    SetBPen(rp, keycap_pen);
-    center_text(rp, pos_x, pos_y, wx * 2, pc_keypos[cur].name);
+    SetAPen(rp, keycap_fg_pen);
+    SetBPen(rp, keycap_bg_pen);
+    center_text(rp, pos_x, pos_y, wx * 2, hid_keypos[cur].name);
     SetAPen(rp, pen_cap_outline_lo);
     box(rp, pos_x - wx, pos_y - wy, pos_x + wx, pos_y + wy);
-    pc_key_bbox[cur].x_min = pos_x - wx;
-    pc_key_bbox[cur].y_min = pos_y - wy;
-    pc_key_bbox[cur].x_max = pos_x + wx;
-    pc_key_bbox[cur].y_max = pos_y + wy;
+    hid_key_bbox[cur].x_min = pos_x - wx;
+    hid_key_bbox[cur].y_min = pos_y - wy;
+    hid_key_bbox[cur].x_max = pos_x + wx;
+    hid_key_bbox[cur].y_max = pos_y + wy;
 }
 
 static BOOL
@@ -981,7 +1104,7 @@ draw_win(void)
     uint draw_kbd_height = kbd_height * 18 / 20;
     uint win_left = window->BorderLeft;
     uint win_right = win_width;
-    pc_keyboard_top = win_height - kbd_height + window->BorderBottom;
+    hid_keyboard_top = win_height - kbd_height + window->BorderBottom;
 
     SetAPen(rp, pen_keyboard_background);
     RectFill(rp, win_left, window->BorderTop,
@@ -989,17 +1112,18 @@ draw_win(void)
 
     /* Empty area between keyboards */
     SetAPen(rp, 0);
-    RectFill(rp, win_left, window->BorderTop + draw_kbd_height, win_right, pc_keyboard_top);
-    /* Draw PC keyboard case */
+    RectFill(rp, win_left, window->BorderTop + draw_kbd_height,
+             win_right, hid_keyboard_top);
+    /* Draw HID keyboard case */
     SetAPen(rp, pen_keyboard_background);
-    RectFill(rp, win_left, pc_keyboard_top,
+    RectFill(rp, win_left, hid_keyboard_top,
              win_right, win_height - window->BorderBottom);
 
     SetAPen(rp, pen_cap_white);
     box(rp, win_left, window->BorderTop,
         win_right, window->BorderTop + draw_kbd_height);
     SetAPen(rp, pen_cap_white);
-    box(rp, win_left, pc_keyboard_top,
+    box(rp, win_left, hid_keyboard_top,
         win_right, win_height - window->BorderBottom);
 
     /* Draw Amiga keyboard */
@@ -1009,11 +1133,11 @@ draw_win(void)
     for (cur = 0; cur < ARRAY_SIZE(amiga_keypos); cur++)
         draw_amiga_key(cur, 0);
 
-    /* Draw PC keyboard */
-    pc_keyboard_left = window->BorderLeft + pc_keysize[0].x + 4;
+    /* Draw HID keyboard */
+    hid_keyboard_left = window->BorderLeft + hid_keysize[0].x + 4;
 
-    for (cur = 0; cur < ARRAY_SIZE(pc_keypos); cur++)
-        draw_pc_key(cur, 0);
+    for (cur = 0; cur < ARRAY_SIZE(hid_keypos); cur++)
+        draw_hid_key(cur, 0);
 
     return (TRUE);
 }
@@ -1045,13 +1169,81 @@ draw_amiga_key_box(uint cur, uint do_mark)
 }
 
 static void
-draw_pc_key_box(uint cur, uint do_mark)
+draw_hid_key_box(uint cur, uint do_mark)
 {
     SetAPen(rp, do_mark ? pen_cap_outline_hi : pen_cap_outline_lo);
-    box(rp, pc_key_bbox[cur].x_min,
-            pc_key_bbox[cur].y_min,
-            pc_key_bbox[cur].x_max,
-            pc_key_bbox[cur].y_max);
+    box(rp, hid_key_bbox[cur].x_min,
+            hid_key_bbox[cur].y_min,
+            hid_key_bbox[cur].x_max,
+            hid_key_bbox[cur].y_max);
+}
+
+static void
+enter_leave_amiga_key(uint pos, uint do_mark)
+{
+    uint8_t amiga_scancode = amiga_keypos[pos].scancode;
+    uint8_t match_scancode;
+    char    printbuf[80];
+    char   *printbufptr = printbuf;
+    uint    cur;
+    uint    map;
+    uint8_t hid_cur;
+
+    draw_amiga_key_box(pos, do_mark);
+    for (cur = 0; cur < ARRAY_SIZE(hid_scancode_to_amiga); cur++) {
+        for (map = 0; map < ARRAY_SIZE(hid_scancode_to_amiga[0]); map++) {
+            match_scancode = hid_scancode_to_amiga[cur][map];
+            if (match_scancode == 0xff)
+                break;  // End of list
+            if ((match_scancode == 0) && (map > 0))
+                continue;
+            if (amiga_scancode == match_scancode) {
+                if (do_mark) {
+                    sprintf(printbufptr, " %02x", cur);
+                    printbufptr += strlen(printbufptr);
+                }
+                hid_cur = hid_scancode_to_capnum[cur];
+                if (hid_cur != 0xff)
+                    draw_hid_key_box(hid_cur, do_mark);
+                break;
+            }
+        }
+    }
+    if (do_mark) {
+        *printbufptr = '\0';
+        gui_printf("Amiga %02x <-%s", amiga_scancode, printbuf);
+    }
+}
+
+static void
+enter_leave_hid_key(uint pos, uint do_mark)
+{
+    uint8_t hid_scancode = hid_keypos[pos].scancode;
+    uint8_t amiga_scancode;
+    uint    amigakey;
+    uint    map;
+    char    printbuf[80];
+    char   *printbufptr = printbuf;
+
+    draw_hid_key_box(pos, do_mark);
+    for (map = 0; map < ARRAY_SIZE(hid_scancode_to_amiga[0]); map++) {
+        amiga_scancode = hid_scancode_to_amiga[hid_scancode][map];
+        if (amiga_scancode == 0xff)
+            break;  // End of list
+        if ((amiga_scancode == 0) && (map > 0))
+            continue;
+        if (do_mark) {
+            sprintf(printbufptr, " %02x", amiga_scancode);
+            printbufptr += strlen(printbufptr);
+        }
+        amigakey = amiga_scancode_to_capnum[amiga_scancode];
+        if (amigakey != 0xff)
+            draw_amiga_key_box(amigakey, do_mark);
+    }
+    if (do_mark) {
+        *printbufptr = '\0';
+        gui_printf("HID %02x ->%s", hid_scancode, printbuf);
+    }
 }
 
 static void
@@ -1089,30 +1281,30 @@ mouse_move(SHORT x, SHORT y)
         if ((last_cur == cur) && last_was_amiga)
             return;  // Still in the same box
 
-        if ((last_cur != 0xff) && (last_cur != cur)) {
+        if (last_cur != 0xff) {
             /* Redraw original bounding box */
             if (last_was_amiga)
-                draw_amiga_key_box(last_cur, 0);
+                enter_leave_amiga_key(last_cur, 0);
             else
-                draw_pc_key_box(last_cur, 0);
+                enter_leave_hid_key(last_cur, 0);
         }
         /* Draw new highlight bounding box */
-        draw_amiga_key_box(cur, 1);
+        enter_leave_amiga_key(cur, 1);
         last_cur = cur;
         last_was_amiga = 1;
         return;
     }
 
-    for (cur = 0; cur < ARRAY_SIZE(pc_key_bbox); cur++) {
-        if (pc_key_bbox[cur].y_max < y)
+    for (cur = 0; cur < ARRAY_SIZE(hid_key_bbox); cur++) {
+        if (hid_key_bbox[cur].y_max < y)
             continue;
-        if (pc_key_bbox[cur].y_min > y)
+        if (hid_key_bbox[cur].y_min > y)
             break;  // Not found
-        if (pc_key_bbox[cur].x_max < x)
+        if (hid_key_bbox[cur].x_max < x)
             continue;
-        if (pc_key_bbox[cur].x_min > x) {
-            if ((pc_keypos[cur].scancode == HS_KP_PLUS) ||
-                (pc_keypos[cur].scancode == HS_KP_ENTER))
+        if (hid_key_bbox[cur].x_min > x) {
+            if ((hid_keypos[cur].scancode == HS_KP_PLUS) ||
+                (hid_keypos[cur].scancode == HS_KP_ENTER))
                 continue;  // Key spans multiple rows
             break;  // Not found
         }
@@ -1121,15 +1313,15 @@ mouse_move(SHORT x, SHORT y)
         if ((last_cur == cur) && !last_was_amiga)
             return;  // Still in the same box
 
-        if ((last_cur != 0xff) && (last_cur != cur)) {
+        if (last_cur != 0xff) {
             /* Redraw original bounding box */
             if (last_was_amiga)
-                draw_amiga_key_box(last_cur, 0);
+                enter_leave_amiga_key(last_cur, 0);
             else
-                draw_pc_key_box(last_cur, 0);
+                enter_leave_hid_key(last_cur, 0);
         }
         /* Draw new highlight bounding box */
-        draw_pc_key_box(cur, 1);
+        enter_leave_hid_key(cur, 1);
         last_cur = cur;
         last_was_amiga = 0;
         return;
@@ -1141,9 +1333,9 @@ mouse_move(SHORT x, SHORT y)
     if (last_cur != 0xff) {
         /* Redraw original bounding box */
         if (last_was_amiga)
-            draw_amiga_key_box(last_cur, 0);
+            enter_leave_amiga_key(last_cur, 0);
         else
-            draw_pc_key_box(last_cur, 0);
+            enter_leave_hid_key(last_cur, 0);
         last_cur = 0xff;
     }
 }
@@ -1190,6 +1382,384 @@ amiga_rawkey(uint8_t code)
     }
 }
 
+static void
+unmap_all_keycaps(void)
+{
+    uint cap;
+    memset(amiga_key_mapped, 0, sizeof (amiga_key_mapped));
+    memset(hid_key_mapped, 0, sizeof (hid_key_mapped));
+    for (cap = 0; cap < ARRAY_SIZE(amiga_keypos); cap++)
+        draw_amiga_key(cap, 0);
+    for (cap = 0; cap < ARRAY_SIZE(hid_keypos); cap++)
+        draw_hid_key(cap, 0);
+}
+
+static void
+get_bec_keymap(void)
+{
+    bec_keymap_t  req;
+    bec_keymap_t *reply;
+    uint          rc;
+    uint          pos;
+    uint          maxpos;
+    uint          cur;
+    uint          rlen;
+    uint          key;
+    uint          maxkeys;
+    uint8_t       replybuf[256];
+    uint8_t      *data;
+    req.bkm_which = BKM_WHICH_KEYMAP;
+    req.bkm_start = 0;
+    req.bkm_len   = 0;
+    req.bkm_count = 128;
+
+    for (cur = 0; cur < 256; ) {
+        req.bkm_start = cur;
+        rc = send_cmd_retry(BEC_CMD_GET_MAP, &req, sizeof (req),
+                            replybuf, sizeof (replybuf), &rlen);
+        if (rc != 0) {
+            gui_printf("BEC get map fail: %s", bec_err(rc));
+            return;
+        }
+        if (rlen < sizeof (*reply)) {
+            gui_printf("Got bad map reply from BEC: %u", rlen);
+            return;
+        }
+        rlen -= sizeof (bec_keymap_t *);
+        if (rlen == 0) {
+            gui_printf("BEC map ended early: missing %u and higher", cur);
+            return;
+        }
+        reply = (bec_keymap_t *) replybuf;
+        data = (void *) (reply + 1);
+        maxkeys = reply->bkm_len;
+        if (maxkeys > ARRAY_SIZE(hid_scancode_to_amiga[256]))
+            maxkeys = ARRAY_SIZE(hid_scancode_to_amiga[256]);
+        maxpos = reply->bkm_count;
+        if (maxpos > NUM_SCANCODES - cur)
+            maxpos = NUM_SCANCODES - cur;
+        gui_printf("Got %u ents at %u from BEC",
+                   reply->bkm_count, reply->bkm_start);
+        for (pos = 0; pos < maxpos; pos++) {
+            uint cap;
+            for (key = 0; key < maxkeys; key++) {
+                cap = amiga_scancode_to_capnum[*data];
+                hid_scancode_to_amiga[cur][key] = *data;
+                if (amiga_key_mapped[cap] == 0) {
+                    amiga_key_mapped[cap] = 1;
+                    draw_amiga_key(cap, 0);
+                }
+                data++;
+            }
+            if (maxkeys < reply->bkm_len) {
+                /* BEC per-key map is smaller than STM32 map */
+                data += reply->bkm_len - maxkeys;
+            } else if (maxkeys > reply->bkm_len) {
+                /* BEC per-key map is larger than STM32 map */
+                memset(&hid_scancode_to_amiga[cur][key], 0,
+                       maxkeys - reply->bkm_len);
+            }
+            cap = hid_scancode_to_capnum[cur];
+            if (hid_key_mapped[cap] == 0) {
+                hid_key_mapped[cap] = 1;
+                draw_hid_key(cap, 0);
+            }
+            cur++;
+        }
+    }
+    gui_printf("Done loading keymap from BEC");
+}
+
+static void
+save_bec_keymap(void)
+{
+    bec_keymap_t *req;
+    uint          rc;
+    uint          pos;
+    uint          maxpos = 60;
+    uint          cur;
+    uint          rlen;
+    uint          key;
+    uint          maxkeys = 4;
+    uint8_t       sendbuf[256];
+    uint8_t      *data;
+    uint          sendlen;
+
+    req = (void *)sendbuf;
+    if (maxpos > (sizeof (sendbuf) - sizeof (*req) - 10) / 4)
+        maxpos = (sizeof (sendbuf) - sizeof (*req) - 10);
+
+    for (cur = 0; cur < 256; ) {
+        data = (void *) (req + 1);
+        if (maxpos > 256 - cur)
+            maxpos = 256 - cur;
+        req->bkm_which = BKM_WHICH_KEYMAP;
+        req->bkm_start = cur;
+        req->bkm_len   = maxkeys;
+        req->bkm_count = maxpos;
+        for (pos = 0; pos < maxpos; pos++) {
+            for (key = 0; key < maxkeys; key++)
+                *(data++) = hid_scancode_to_amiga[cur][key];
+            cur++;
+        }
+        sendlen = (uintptr_t) data - (uintptr_t) sendbuf;
+        rc = send_cmd(BEC_CMD_SET_MAP, sendbuf, sendlen, NULL, 0, &rlen);
+        if (rc != 0) {
+            gui_printf("BEC set map fail: %s", bec_err(rc));
+            return;
+        }
+        gui_printf("Sent %u ents at %u to BEC",
+                   req->bkm_count, req->bkm_start);
+    }
+    gui_printf("Done saving keymap to BEC");
+}
+
+static void
+load_keymap_from_file(void)
+{
+    char                 *kptr;
+    char                 *ptr;
+    FILE                 *fp;
+    struct FileRequester *req;
+    char   linebuf[300];
+    char   full_path[300];
+    uint   line;
+    uint   err_count = 0;
+    req = AllocAslRequestTags(ASL_FileRequest,
+                              ASLFR_Window,        (ULONG)window,
+                              ASLFR_TitleText,     (ULONG)"Load File...",
+                              ASLFR_PositiveText,  (ULONG)"Load",
+                              ASLFR_InitialFile,   (ULONG)"bec_keymap.txt",
+//                            ASLFR_InitialDrawer, (ULONG)"RAM:",
+                              TAG_DONE);
+    if (req == NULL)
+        return;
+
+    if (AslRequestTags(req, TAG_DONE) == 0) {
+        /* User Canceled */
+        return;
+    }
+    strcpy(full_path, req->fr_Drawer);
+    AddPart(full_path, req->rf_File, sizeof (full_path));
+    FreeAslRequest(req);
+
+    /* Open file for Load... */
+    fp = fopen(full_path, "r");
+    if (fp == NULL) {
+        gui_printf("Failed to open %s", full_path);
+        return;
+    }
+    unmap_all_keycaps();
+
+    line = 0;
+    while (fgets(linebuf, sizeof (linebuf) - 1, fp) != NULL) {
+        linebuf[sizeof (linebuf) - 1] = '\0';
+        line++;
+        if ((ptr = strchr(linebuf, '#')) != NULL)
+            *ptr = '\0';
+        if ((ptr = strchr(linebuf, '\n')) != NULL)
+            *ptr = '\0';
+        if ((ptr = strcasestr(linebuf, "MAP")) != NULL) {
+            kptr = strcasestr(ptr + 3, "KEY");
+            if (kptr != NULL) {
+                int  pos = 0;
+                uint hid_code;
+                uint amiga_code;
+                uint sc_count = 0;
+                uint hcap;
+                uint acap;
+                kptr += 3;
+                if ((sscanf(kptr, "%x%n", &hid_code, &pos) != 1) ||
+                    ((kptr[pos] != ' ') && (kptr[pos] != '\0')) ||
+                    (hid_code > 0xff)) {
+                    err_printf("%u: Invalid HID scancode \"%.*s\":\n%s\n",
+                               line, pos, kptr, linebuf);
+load_parse_error:
+                    if (err_count++ > 8) {
+                        err_printf("Too many errors; giving up\n");
+                        break;
+                    }
+                    continue;
+                }
+
+                ptr = strcasestr(kptr + pos, " TO ");
+                if (ptr == NULL) {
+                    err_printf("%u: missing \"TO\" in MAP KEY command:\n:%s\n",
+                               line, linebuf);
+                    goto load_parse_error;
+                }
+                kptr = ptr + 4;
+                amiga_code = 0xff;
+                while (sc_count < 5) {
+                    if ((sscanf(kptr, "%x%n", &amiga_code, &pos) != 1) ||
+                        ((kptr[pos] != ' ') && (kptr[pos] != '\0')) ||
+                        (amiga_code > 0xff)) {
+                        ptr = kptr;
+                        while (*ptr == ' ')
+                            ptr++;
+                        if (*ptr == '\0')
+                            break;  // End of linej
+
+                        err_printf("%u: Invalid Amiga scancode \"%.*s\":\n%s\n",
+                                   line, pos, kptr, linebuf);
+                        goto load_parse_error;
+                    }
+                    if (sc_count == 4) {
+                        err_printf("%u: too many Amiga scancodes at %x:\n%s\n",
+                                   line, amiga_code, linebuf);
+                        goto load_parse_error;
+                    }
+                    hid_scancode_to_amiga[hid_code][sc_count] = amiga_code;
+                    acap = amiga_scancode_to_capnum[amiga_code];
+                    if (amiga_key_mapped[acap] == 0) {
+                        amiga_key_mapped[acap] = 1;
+                        draw_amiga_key(acap, 0);
+                    }
+                    sc_count++;
+                    kptr += pos;
+                }
+                hcap = hid_scancode_to_capnum[hid_code];
+                if (hid_key_mapped[hcap] == 0) {
+                    hid_key_mapped[hcap] = 1;
+                    draw_hid_key(hcap, 0);
+                }
+            }
+        }
+    }
+#if 0
+    /* Do the Fn key for completeness */
+    hid_key_mapped[cap] = 0;
+    draw_hid_key(0, 0);
+#endif
+    fclose(fp);
+    gui_printf("Read keymap from %s", full_path);
+    // XXX: open file
+}
+
+static void
+save_keymap_to_file(void)
+{
+    FILE                 *fp;
+    struct FileRequester *req;
+    struct tm            *timeinfo;
+    time_t now;
+    char   full_path[300];
+    uint   cur;
+    uint   map;
+    req = AllocAslRequestTags(ASL_FileRequest,
+                              ASLFR_Window,        (ULONG)window,
+                              ASLFR_TitleText,     (ULONG)"Save File As...",
+                              ASLFR_PositiveText,  (ULONG)"Save",
+                              ASLFR_InitialFile,   (ULONG)"bec_keymap.txt",
+                              ASLFR_DoSaveMode,    TRUE,
+//                            ASLFR_InitialDrawer, (ULONG)"RAM:",
+                              TAG_DONE);
+    if (req == NULL)
+        return;
+
+    if (AslRequestTags(req, TAG_DONE) == 0) {
+        /* User Canceled */
+        return;
+    }
+    strcpy(full_path, req->fr_Drawer);
+    AddPart(full_path, req->rf_File, sizeof (full_path));
+    FreeAslRequest(req);
+
+    /* Open file for Save... */
+    fp = fopen(full_path, "w");
+    if (fp == NULL) {
+        gui_printf("Failed to open %s", full_path);
+        return;
+    }
+    time(&now);
+    timeinfo = localtime(&now);
+    fprintf(fp, "#\n"
+                "# BEC HID keymap by Becky %s\n"
+                "# %s\n"
+                "#\n", VERSION, asctime(timeinfo));
+    for (cur = 0; cur < ARRAY_SIZE(hid_scancode_to_amiga); cur++) {
+        uint  printed = 0;
+        char  amiga_buf[32];
+        char *amiga_buf_ptr = amiga_buf;
+
+        for (map = 0; map < ARRAY_SIZE(hid_scancode_to_amiga[0]); map++) {
+            uint8_t amiga_scancode = hid_scancode_to_amiga[cur][map];
+            if (amiga_scancode == 0xff)
+                break;  // End of list
+            if ((amiga_scancode == 0) && (map > 0))
+                continue;
+            if (printed++ == 0)
+                fprintf(fp, "MAP KEY %02x TO", cur);
+            fprintf(fp, " %02x", amiga_scancode);
+
+            uint cap = amiga_scancode_to_capnum[amiga_scancode];
+            if (cap != 0xff) {
+                char *name = amiga_keypos[cap].name;
+                char buf[8];
+                if ((uintptr_t) name < 0x100) {
+                    /* Single character */
+                    buf[0] = (uintptr_t) name;
+                    buf[1] = '\0';
+                    name = buf;
+                }
+                sprintf(amiga_buf_ptr, " \"%s\"", name);
+                amiga_buf_ptr += strlen(amiga_buf_ptr);
+            }
+        }
+        if (printed) {
+            uint cap = hid_scancode_to_capnum[cur];
+            fprintf(fp, "  #");
+            if (cap != 0xff) {
+                char *name = hid_keypos[cap].name;
+                char hidkey_buf[8];
+                if ((uintptr_t) name < 0x100) {
+                    /* Single character */
+                    hidkey_buf[0] = (uintptr_t) name;
+                    hidkey_buf[1] = '\0';
+                    name = hidkey_buf;
+                }
+                fprintf(fp, " \"%s\"", name);
+            }
+            *amiga_buf_ptr = '\0';
+            fprintf(fp, " ->%s\n", amiga_buf);
+        }
+    }
+    fclose(fp);
+}
+
+#if 0
+static void
+showdatestamp(struct DateStamp *ds, uint usec)
+{
+    struct DateTime  dtime;
+    char             datebuf[32];
+    char             timebuf[32];
+
+    dtime.dat_Stamp.ds_Days   = ds->ds_Days;
+    dtime.dat_Stamp.ds_Minute = ds->ds_Minute;
+    dtime.dat_Stamp.ds_Tick   = ds->ds_Tick;
+    dtime.dat_Format          = FORMAT_DOS;
+    dtime.dat_Flags           = 0x0;
+    dtime.dat_StrDay          = NULL;
+    dtime.dat_StrDate         = datebuf;
+    dtime.dat_StrTime         = timebuf;
+    DateToStr(&dtime);
+    printf("%s %s.%06u\n", datebuf, timebuf, usec);
+}
+
+static void
+showsystime(uint sec, uint usec)
+{
+    struct DateStamp ds;
+    uint min  = sec / 60;
+    uint day  = min / (24 * 60);
+
+    ds.ds_Days   = day;
+    ds.ds_Minute = min % (24 * 60);
+    ds.ds_Tick   = (sec % 60) * TICKS_PER_SECOND;
+    showdatestamp(&ds, usec);
+}
+#endif
 
 static void
 handle_win(void)
@@ -1217,13 +1787,17 @@ handle_win(void)
                     USHORT menu_item = icode;
                     for (cnt = 0; (menu_item != MENUNULL) && (cnt < 10); cnt++) {
                         /*
-                         * Menu number is in the high word, and
-                         * item / subitem is in the low word.
+                         *    Menu number is bits 0..4
+                         *    Item number is bits 5..10
+                         * Subitem number is bits 11..15
                          */
                         ULONG menu_num = MENUNUM(menu_item);
                         ULONG item_num = ITEMNUM(menu_item);
                         // ULONG subitem_num = SUBITEMNUM(menu_item);
-                        printf("menunum=%x itemnum=%x\n", menu_num, item_num);
+#if 0
+                        printf("item=%x menu=%x item=%x\n",
+                               menu_item, menu_num, item_num);
+#endif
                         switch (menu_num) {
                             case 0:
                                 switch (item_num) {
@@ -1231,10 +1805,10 @@ handle_win(void)
                                         printf("Menu: About\n");
                                         break;
                                     case 2:
-                                        printf("Menu: Load file\n");
+                                        load_keymap_from_file();
                                         break;
                                     case 3:
-                                        printf("Menu: Save file\n");
+                                        save_keymap_to_file();
                                         break;
                                     case 5:
                                         done = TRUE;
@@ -1242,13 +1816,15 @@ handle_win(void)
                                 }
                                 break;
                             case 1:
-                                printf("BEC\n");
                                 switch (item_num) {
                                     case 0:
-                                        printf("Menu: Load from BEC\n");
+                                        gui_printf("Loading from BEC");
+                                        unmap_all_keycaps();
+                                        get_bec_keymap();
                                         break;
                                     case 1:
-                                        printf("Menu: Save to BEC\n");
+                                        gui_printf("Saving to BEC");
+                                        save_bec_keymap();
                                         break;
                                 }
                                 break;
@@ -1256,6 +1832,7 @@ handle_win(void)
                                 struct MenuItem *item =
                                             ItemAddress(menus, menu_item);
                                 uint checked = 0;
+                                ULONG whichitem;
                                 if ((item != NULL) && (item->Flags & CHECKED))
                                     checked = 1;
 
@@ -1263,7 +1840,7 @@ handle_win(void)
                                     case 0:
                                         rawkey_mode = checked;
                                         break;
-                                    case 2:
+                                    case ITEMNUM(ITEMNUM_AMIGA_SCANCODE):
                                         if (checked) {
                                             capture_hid_scancodes = 0;
                                         } else {
@@ -1272,16 +1849,20 @@ handle_win(void)
                                              * Need to force selection of
                                              * HID scancodes
                                              */
-                                            item = ItemAddress(menus,
-                                                       ITEMNUM_HID_SCANCODE);
+                                            whichitem = ITEMNUM_HID_SCANCODE;
+set_menu_checked:
+                                            item = ItemAddress(menus, whichitem);
                                             if (item != NULL) {
                                                 ClearMenuStrip(window);
                                                 item->Flags |= CHECKED;
                                                 ResetMenuStrip(window, menus);
+                                            } else {
+                                                err_printf("menu item %x NULL\n",
+                                                           whichitem);
                                             }
                                         }
                                         break;
-                                    case 3:
+                                    case ITEMNUM(ITEMNUM_HID_SCANCODE):
                                         if (checked) {
                                             capture_hid_scancodes = 1;
                                         } else {
@@ -1290,13 +1871,34 @@ handle_win(void)
                                              * Need to force selection of
                                              * Amiga scancodes
                                              */
-                                            item = ItemAddress(menus,
-                                                       ITEMNUM_AMIGA_SCANCODE);
-                                            if (item != NULL) {
-                                                ClearMenuStrip(window);
-                                                item->Flags |= CHECKED;
-                                                ResetMenuStrip(window, menus);
-                                            }
+                                            whichitem = ITEMNUM_AMIGA_SCANCODE;
+                                            goto set_menu_checked;
+                                        }
+                                        break;
+                                    case ITEMNUM(ITEMNUM_AMIGA_TO_HID):
+                                        if (checked) {
+                                            map_hid_to_amiga = 0;
+                                        } else {
+                                            map_hid_to_amiga = 1;
+                                            /*
+                                             * Need to force selection of
+                                             * Map HID to Amiga
+                                             */
+                                            whichitem = ITEMNUM_HID_TO_AMIGA;
+                                            goto set_menu_checked;
+                                        }
+                                        break;
+                                    case ITEMNUM(ITEMNUM_HID_TO_AMIGA):
+                                        if (checked) {
+                                            map_hid_to_amiga = 1;
+                                        } else {
+                                            map_hid_to_amiga = 0;
+                                            /*
+                                             * Need to force selection of
+                                             * Map Amiga to HID
+                                             */
+                                            whichitem = ITEMNUM_AMIGA_TO_HID;
+                                            goto set_menu_checked;
                                         }
                                         break;
                                 }
@@ -1319,7 +1921,6 @@ handle_win(void)
                     mouse_move(window->GZZMouseX, window->GZZMouseY);
                     break;
                 case IDCMP_MOUSEBUTTONS:
-                    printf("mouse button\n");
                     if (icode == SELECTDOWN) {
                         printf("Left mouse button clicked in window\n");
                     }
@@ -1337,7 +1938,7 @@ handle_win(void)
                             done = TRUE;
                             break;
                         default:
-                            printf("rawkey %x\n", icode);
+                            gui_printf("Amiga %02x", icode);
                             break;
                     }
                     break;
@@ -1352,9 +1953,36 @@ handle_win(void)
     }
 }
 
+static void
+generate_scancode_to_capnum(void)
+{
+    uint cap;
+    memset(amiga_scancode_to_capnum, 0xff, sizeof (amiga_scancode_to_capnum));
+    memset(hid_scancode_to_capnum, 0xff, sizeof (hid_scancode_to_capnum));
+
+    for (cap = 0; cap < ARRAY_SIZE(amiga_keypos); cap++) {
+        uint8_t scancode = amiga_keypos[cap].scancode;
+        if (scancode == AS_ENTER) {
+            if ((!is_northamerican && (amiga_keypos[cap].type == 12)) ||
+                (is_northamerican && (amiga_keypos[cap].type == 13)))
+                continue;
+        }
+        amiga_scancode_to_capnum[amiga_keypos[cap].scancode] = cap;
+    }
+
+    for (cap = 0; cap < ARRAY_SIZE(hid_keypos); cap++)
+        hid_scancode_to_capnum[hid_keypos[cap].scancode] = cap;
+
+#if 0
+    memset(amiga_key_mapped, 1, sizeof (amiga_key_mapped));
+    memset(hid_key_mapped, 1, sizeof (hid_key_mapped));
+#endif
+}
+
 int
 main(int argc, char *argv[])
 {
+    generate_scancode_to_capnum();
     if (argc > 0) {
         /* Started by AmigaOS CLI */
         int arg;
@@ -1375,13 +2003,13 @@ main(int argc, char *argv[])
                             is_northamerican = 0;
                             break;
                         default:
-                            printf("Unknown argument %s\n", ptr);
+                            err_printf("Unknown argument %s\n", ptr);
                             usage();
                             exit(1);
                     }
                 }
             } else {
-                printf("Error: unknown argument %s\n", ptr);
+                err_printf("Error: unknown argument %s\n", ptr);
                 usage();
                 exit(1);
             }
@@ -1394,21 +2022,20 @@ main(int argc, char *argv[])
 
     if (OpenAmigaLibraries()) {
         window = OpenAWindow();
-        select_pens();
         if (window != NULL) {
             rp = window->RPort;
+            select_pens();
             open_font();
             create_menu();
-#if 1
             if (draw_win()) {
+                get_bec_keymap();
                 handle_win();
             }
-#endif
             close_menu();
             CloseWindow(window);
             close_font();
         } else {
-            fprintf(stderr, "Failed to open window.\\n");
+            err_printf("Failed to open window.\\n");
         }
     }
     CloseAmigaLibraries();

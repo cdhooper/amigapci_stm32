@@ -17,14 +17,14 @@
  * emulation. It provides a way for AmigaOS programs to interact with the
  * board management STM32 processor.
  *
- * An unused RP5C01 register (mode 9 register 9) is used as a FIFO for
- * message passing.  All messages and replies always begin with a magic
+ * Two unused RP5C01 register (mode 9 register 0 and 1) are used as a FIFO
+ * for message passing. All messages and replies always begin with a magic
  * sequence and end with a 4-byte CRC.
  *
  * Message sequence (all data is in nibbles, high nibble first)
  *     Magic   0xc 0xd 0x6 0x8
  *     Command X X               Upper 2 bits are command options
- *     Length  X X               Payload length doesn't include header or CRC
+ *     Length  X X X X           Payload length doesn't include header or CRC
  *     Payload [ X X * ]         Even number of nibbles in optional payload
  *     CRC     X X X X X X X X   32-bit in big endian format (includes Cmd+Len)
  */
@@ -58,7 +58,7 @@
 #define BEC_STATUS_REPLYCRC  0x0b  // Response message has bad CRC
 #define BEC_STATUS_CRC       0x0c  // CRC failure
 
-#define BEC_MSG_HDR_LEN 4  // Number of bytes in Magic + cmd + length
+#define BEC_MSG_HDR_LEN 5  // Number of bytes in Magic + cmd + length
 #define BEC_MSG_CRC_LEN 4  // Number of bytes in CRC
 
 typedef struct {
@@ -79,11 +79,12 @@ typedef struct {
     uint8_t  bkm_count;            // Count of entries (0 = no entries)
 } bec_keymap_t;
 
-#define BKM_WHICH_KEYMAP       0x01
-#define BKM_WHICH_MODKEYMAP    0x02
-#define BKM_WHICH_BUTTONMAP    0x03
-#define BKM_WHICH_SCROLLMAP    0x04
-#define BKM_WHICH_JBUTTONMAP   0x05
-#define BKM_WHICH_JDIRECTMAP   0x06
+#define BKM_WHICH_KEYMAP          0x01
+#define BKM_WHICH_MODKEYMAP       0x02
+#define BKM_WHICH_BUTTONMAP       0x03
+#define BKM_WHICH_SCROLLMAP       0x04
+#define BKM_WHICH_JBUTTONMAP      0x05
+#define BKM_WHICH_JDIRECTMAP      0x06
+#define BKM_WHICH_DEFAULT_KEYMAP  0x07
 
 #endif  /* _BEC_CMD_H */

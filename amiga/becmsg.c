@@ -227,7 +227,7 @@ send_byte(uint8_t byte)
 }
 
 uint
-send_cmd(uint8_t cmd, void *arg, uint8_t arglen,
+send_cmd(uint8_t cmd, void *arg, uint16_t arglen,
          void *reply, uint replymax, uint *replyalen)
 {
     uint     pos;
@@ -237,7 +237,7 @@ send_cmd(uint8_t cmd, void *arg, uint8_t arglen,
     uint8_t  got_magic[4];
     uint     bad_magic = 0;
     uint8_t  status;
-    uint8_t  msglen;
+    uint16_t msglen;
     uint32_t crc;
     uint32_t got_crc;
     uint32_t calc_crc;
@@ -250,11 +250,12 @@ send_cmd(uint8_t cmd, void *arg, uint8_t arglen,
     send_nibble_hi(bec_magic[2]);
     send_nibble_lo(bec_magic[3]);
     send_byte(cmd);
+    send_byte(arglen >> 8);
     send_byte(arglen);
     for (pos = 0; pos < arglen; pos++)
         send_byte(argbuf[pos]);
     crc = crc32(0, &cmd, 1);
-    crc = crc32(crc, &arglen, 1);
+    crc = crc32(crc, &arglen, 2);
     crc = crc32(crc, argbuf, arglen);
     send_byte(crc >> 24);
     send_byte(crc >> 16);
@@ -291,7 +292,8 @@ send_cmd(uint8_t cmd, void *arg, uint8_t arglen,
 
     /* Got magic -- get remainder of message */
     status = get_byte();
-    msglen = get_byte();
+    msglen = (uint16_t) get_byte() << 8;
+    msglen |= get_byte();
     for (pos = 0; pos < msglen; pos++) {
         if (pos >= replymax)
             (void) get_byte();
@@ -312,7 +314,7 @@ send_cmd(uint8_t cmd, void *arg, uint8_t arglen,
     Permit();
 
     calc_crc = crc32(0, &status, 1);
-    calc_crc = crc32(calc_crc, &msglen, 1);
+    calc_crc = crc32(calc_crc, &msglen, 2);
     calc_crc = crc32(calc_crc, replybuf, msglen);
     if (calc_crc != got_crc) {
         if (flag_debug) {
@@ -326,7 +328,7 @@ send_cmd(uint8_t cmd, void *arg, uint8_t arglen,
 }
 
 uint
-send_cmd_retry(uint8_t cmd, void *arg, uint8_t arglen,
+send_cmd_retry(uint8_t cmd, void *arg, uint16_t arglen,
                void *reply, uint replymax, uint *replyalen)
 {
     uint tries = 10;

@@ -193,31 +193,6 @@ srand32(uint32_t seed)
     rand_seed = seed;
 }
 
-void
-local_memcpy(void *dst, void *src, size_t len)
-{
-    uint32_t *dst32 = dst;
-    uint32_t *src32 = src;
-
-    if ((uintptr_t) dst | (uintptr_t) src | len) {
-        /* fast mode */
-        uint xlen = len >> 2;
-        len -= (xlen << 2);
-        while (xlen > 0) {
-            *(dst32++) = *(src32++);
-            xlen--;
-        }
-    }
-    if (len > 0) {
-        uint8_t *dst8 = (uint8_t *) dst32;
-        uint8_t *src8 = (uint8_t *) src32;
-        while (len > 0) {
-            *(dst8++) = *(src8++);
-            len--;
-        }
-    }
-}
-
 static void
 print_us_diff(uint64_t start, uint64_t end)
 {

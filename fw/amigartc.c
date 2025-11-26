@@ -14,10 +14,10 @@
 
 #include <string.h>
 #include "printf.h"
+#include "main.h"
 #include "amigartc.h"
 #include "bec_cmd.h"
 #include "crc32.h"
-#include "main.h"
 #include "config.h"
 #include "gpio.h"
 #include "uart.h"
@@ -25,6 +25,7 @@
 #include "rtc.h"
 #include "timer.h"
 #include "cmdline.h"
+#include "msg.h"
 #include "power.h"
 #include "utils.h"
 #include "version.h"
@@ -40,12 +41,11 @@
 #define DPRINTF(x...) do { } while (0)
 #endif
 
+#define RP_MAGIC_HI 0
+#define RP_MAGIC_LO 1
+
 /* Enable capture of RP5C01 accesses in interrupt handler */
 #define INTERRUPT_CAPTURE_RP5C01
-
-#define SWAP16(x)   __builtin_bswap16(x)
-#define SWAP32(x)   __builtin_bswap32(x)
-#define SWAP64(x)   __builtin_bswap64(x)
 
 #define likely(x)   __builtin_expect((x), 1)
 #define unlikely(x) __builtin_expect((x), 0)
@@ -79,24 +79,17 @@ static const uint8_t rtc_mask[4][0x10] = {
       0xf, 0xf, 0xf, 0xf, 0xf, 0xf, 0x0, 0x0 },
 };
 
-static const uint8_t testpatt_reply[] = {
-    0xaa, 0x55, 0xcc, 0x33,
-    0xee, 0x11, 0xff, 0x00,
-    0x01, 0x02, 0x04, 0x08,
-    0x10, 0x20, 0x40, 0x80,
-    0xfe, 0xfd, 0xfb, 0xf7,
-    0xef, 0xdf, 0xbf, 0x7f,
-};
-
 static const uint8_t bec_magic[] = { 0xc, 0xd, 0x6, 0x8 };
 
-static uint8_t  bec_msg_inbuf[280];
-static uint8_t  bec_msg_outbuf[280];
+uint8_t         bec_msg_inbuf[280];
+uint8_t         bec_msg_outbuf[280];
+uint            bec_msg_out_max;    // Message length in nibbles
+uint            bec_msg_out;        // Current send position in nibbles
 static uint     bec_msg_in;         // Current receive position in nibbles
-static uint     bec_msg_out;        // Current send position in nibbles
-static uint     bec_msg_out_max;    // Message length in nibbles
 static uint64_t bec_msg_in_timeout;
-static uint64_t bec_msg_out_timeout;
+uint64_t        bec_msg_out_timeout;
+char            bec_errormsg_delayed[80];  // Error message for slow path
+
 
 /*
  * RP5C01 registers (each register is 4 bits)
@@ -318,8 +311,6 @@ exti0_isr(void)
                     break;
                 }
 
-#define RP_MAGIC_HI 0
-#define RP_MAGIC_LO 1
             if ((rtc_cur_bank == 1) && (addr == RP_MAGIC_LO) &&
                 (bec_msg_out != 0)) {
                 bec_msg_out += 2;
@@ -383,6 +374,18 @@ exti0_isr(void)
                         }
                         bec_msg_inbuf[bec_msg_in / 2] |= data;
                         bec_msg_in += 2;
+                        if (bec_msg_in / 2 >=
+                            (BEC_MSG_HDR_LEN + BEC_MSG_CRC_LEN)) {
+                            uint expected = BEC_MSG_HDR_LEN +
+                                            BEC_MSG_CRC_LEN +
+                                            ((bec_msg_inbuf[3] << 8) |
+                                             bec_msg_inbuf[4]);
+                            if ((bec_msg_in / 2 >= expected) &&
+                                msg_process_fast()) {
+                                bec_msg_in = 0;
+                                bec_msg_in_timeout = 0;
+                            }
+                        }
                     }
                     break;
                 case 0x0d:  // MODE register
@@ -717,143 +720,14 @@ amigartc_print(void)
            !!rtc_timer_en);
 }
 
-static void
-bec_reply(uint rstatus, uint rlen, const void *data_p)
-{
-    uint32_t crc;
-    const uint8_t *data = (const uint8_t *)data_p;
-    bec_msg_out = 0;
-    bec_msg_outbuf[0] = (bec_magic[0] << 4) | bec_magic[1];
-    bec_msg_outbuf[1] = (bec_magic[2] << 4) | bec_magic[3];
-    bec_msg_outbuf[2] = rstatus;
-    bec_msg_outbuf[3] = rlen;
-    if (rlen > 0)
-        memcpy(&bec_msg_outbuf[4], data, rlen);
-
-    /* CRC includes cmd + length + data */
-    crc = crc32(0, bec_msg_outbuf + 2, rlen + BEC_MSG_HDR_LEN - 2);
-    crc = SWAP32(crc);
-    memcpy(&bec_msg_outbuf[4 + rlen], &crc, BEC_MSG_CRC_LEN);
-    bec_msg_out_max = (rlen + BEC_MSG_HDR_LEN + BEC_MSG_CRC_LEN) * 2;
-
-    bec_msg_out_timeout = timer_tick_plus_msec(1000);
-
-    /* Kick off reply by pre-loading first response byte */
-    rtc_data[1][RP_MAGIC_HI] = bec_msg_outbuf[0] >> 4;
-    rtc_data[1][RP_MAGIC_LO] = bec_msg_outbuf[0] & 0xf;
-    bec_msg_out = 1;
-#if 0
-    {
-        uint pos;
-        printf("R");
-        for (pos = 0; pos < bec_msg_out_max / 2; pos++)
-            printf(" %02x", bec_msg_outbuf[pos]);
-        printf("\n");
-    }
-#endif
-}
-
-static void
-bec_msg_process(void)
-{
-    uint cmd    = bec_msg_inbuf[2];
-    uint msglen = bec_msg_inbuf[3];
-    uint pos;
-    uint32_t crc_expect;
-    uint32_t crc_calc;
-
-    memcpy(&crc_expect, bec_msg_inbuf + BEC_MSG_HDR_LEN + msglen,
-           sizeof (crc_expect));
-    crc_calc = crc32(0, &bec_msg_inbuf[2], BEC_MSG_HDR_LEN - 2 + msglen);
-    crc_calc = SWAP32(crc_calc);
-    if (crc_expect != crc_calc) {
-        bec_reply(BEC_STATUS_CRC, 0, NULL);
-        printf("cmd=%02x l=%02x CRC %08lx != calc %08lx\n",
-               cmd, msglen, crc_expect, crc_calc);
-        return;
-    }
-    switch (cmd) {
-        case BEC_CMD_NULL:
-            /* No reply */
-            break;
-        case BEC_CMD_NOP:
-            bec_reply(BEC_STATUS_OK, 0, NULL);
-            break;
-        case BEC_CMD_ID: {
-            bec_id_t reply;
-            uint temp[3];
-            memset(&reply, 0, sizeof (reply));
-            sscanf(version_str + 8, "%u.%u%n", &temp[0], &temp[1], &pos);
-            reply.bid_version[0] = SWAP16(temp[0]);
-            reply.bid_version[1] = SWAP16(temp[1]);
-            if (pos == 0)
-                pos = 18;
-            else
-                pos += 8 + 7;
-            sscanf(version_str + pos, "%04u-%02u-%02u",
-                   &temp[0], &temp[1], &temp[2]);
-            reply.bid_date[0] = temp[0] / 100;
-            reply.bid_date[1] = temp[0] % 100;
-            reply.bid_date[2] = temp[1];
-            reply.bid_date[3] = temp[2];
-            pos += 11;
-            sscanf(version_str + pos, "%02u:%02u:%02u",
-                   &temp[0], &temp[1], &temp[2]);
-            reply.bid_time[0] = temp[0];
-            reply.bid_time[1] = temp[1];
-            reply.bid_time[2] = temp[2];
-            reply.bid_time[3] = 0;
-            strcpy(reply.bid_serial, (const char *)cpu_serial_str);
-            reply.bid_rev      = SWAP16(0x0001);     // Protocol version 0.1
-            reply.bid_features = SWAP16(0x0000);     // Features
-            strcpy(reply.bid_name, config.name);
-            bec_reply(BEC_STATUS_OK, sizeof (reply), &reply);
-            break;
-        }
-        case BEC_CMD_UPTIME: {
-            uint64_t now = timer_tick_get();
-            uint64_t usec = timer_tick_to_usec(now);
-            usec = SWAP64(usec);  // Big endian format
-            bec_reply(BEC_STATUS_OK, sizeof (usec), &usec);
-            break;
-        }
-        case BEC_CMD_TESTPATT:
-            bec_reply(BEC_STATUS_OK, sizeof (testpatt_reply), &testpatt_reply);
-            break;
-        case BEC_CMD_LOOPBACK:
-            bec_reply(cmd, msglen, bec_msg_inbuf + BEC_MSG_HDR_LEN);
-            break;
-        case BEC_CMD_CONS_OUTPUT: {
-            /* Output from STM32 */
-            uint8_t *buf;
-            uint16_t len;
-            uint     maxlen = bec_msg_inbuf[BEC_MSG_HDR_LEN];
-            len = ami_get_output(&buf, maxlen);
-            bec_reply(BEC_STATUS_OK, len, buf);
-            break;
-        }
-        case BEC_CMD_CONS_INPUT: {
-            /* Keystroke input to STM32 */
-            for (pos = 0; pos < msglen; pos++)
-                ami_rb_put(bec_msg_inbuf[BEC_MSG_HDR_LEN + pos]);
-            bec_reply(BEC_STATUS_OK, 0, NULL);
-            break;
-        }
-        default:
-            bec_reply(BEC_STATUS_UNKCMD, 0, NULL);
-            break;
-    }
-#if 0
-    printf("cmd=%02x len=%02x", cmd, msglen);
-    for (pos = 0; pos < msglen; pos++)
-        printf(" %02x", bec_msg_inbuf[4 + pos]);
-    printf("\n");
-#endif
-}
-
 void
 amigartc_poll(void)
 {
+    if (bec_errormsg_delayed[0] != '\0') {
+        puts(bec_errormsg_delayed);
+        bec_errormsg_delayed[0] = '\0';
+    }
+
     if (rtc_touched && rtc_timer_en) {
         rtc_touched = 0;
 
@@ -862,6 +736,7 @@ amigartc_poll(void)
             amigartc_copy_time_rp5c01_to_stm32();
             amigartc_print();
         } else {
+            /* Discard RP5C01 time, which was possibly corrupted by power loss */
             rtc_touched = 0;
         }
     }
@@ -873,11 +748,13 @@ amigartc_poll(void)
             amigartc_copy_ram_rp5c01_to_stm32();
             printf("RP->STM32 RAM\n");
         } else {
+            /* Discard RP5C01 ram, which was possibly corrupted by power loss */
             rtc_ram_touched = 0;
         }
     }
     if (bec_msg_in >= (BEC_MSG_HDR_LEN + BEC_MSG_CRC_LEN) * 2) {
-        uint expected = BEC_MSG_HDR_LEN + BEC_MSG_CRC_LEN + bec_msg_inbuf[3];
+        uint expected = BEC_MSG_HDR_LEN + BEC_MSG_CRC_LEN +
+                        ((bec_msg_inbuf[3] << 8) | bec_msg_inbuf[4]);
 #if 0
 {
 // XXX: CDH debug
@@ -894,9 +771,9 @@ amigartc_poll(void)
 }
 #endif
         if (bec_msg_in >= expected * 2) {
-            bec_msg_process();
-            bec_msg_in_timeout = 0;
+            msg_process_slow();
             bec_msg_in = 0;
+            bec_msg_in_timeout = 0;
         } else if (bec_msg_in_timeout == 0) {
             bec_msg_in_timeout = timer_tick_plus_msec(1000);
         } else if (timer_tick_has_elapsed(bec_msg_in_timeout)) {
@@ -916,28 +793,6 @@ amigartc_poll(void)
                (bec_msg_out - 1) / 2, bec_msg_out_max / 2);
         bec_msg_out = 0;
     }
-}
-
-static void
-msg_init(void)
-{
-#if 0
-    /* Map PA4 to EXTI4 */
-    exti_select_source(EXTI4, GPIOA);
-    exti_set_trigger(EXTI4, EXTI_TRIGGER_FALLING);
-    exti_enable_request(EXTI4);
-    exti_reset_request(EXTI4);
-    nvic_set_priority(NVIC_EXTI4_IRQ, 0x10);
-    nvic_enable_irq(NVIC_EXTI4_IRQ);
-#endif
-#if 0
-    exti_select_source(EXTI5, GPIOA);
-    exti_set_trigger(EXTI5, EXTI_TRIGGER_FALLING);
-    exti_enable_request(EXTI5);
-    exti_reset_request(EXTI5);
-    nvic_set_priority(NVIC_EXTI9_5_IRQ, 0x10);
-    nvic_enable_irq(NVIC_EXTI9_5_IRQ);
-#endif
 }
 
 #if 0
@@ -978,6 +833,18 @@ printf("(5)");
     }
 }
 #endif
+
+/*
+ * amigartc_reply_pending() will kick off a message reply by pre-loading
+ *                          the first response byte.
+ */
+void
+amigartc_reply_pending(void)
+{
+    rtc_data[1][RP_MAGIC_HI] = bec_msg_outbuf[0] >> 4;
+    rtc_data[1][RP_MAGIC_LO] = bec_msg_outbuf[0] & 0xf;
+    bec_msg_out = 1;
+}
 
 /*
  * amigartc_reset() resets runtime state of the Amiga RTC when the Amiga is
@@ -1022,21 +889,23 @@ amigartc_init(void)
     exti_enable_request(EXTI0);
     exti_reset_request(EXTI0);
 
-// EXTI line 17 is connected to the RTC Alarm event
-// EXTI line 21 is connected to the RTC Tamper and TimeStamp events
-// EXTI line 22 is connected to the RTC Wakeup event
-#if 0
-    exti_set_trigger(EXTI7, EXTI_TRIGGER_RISING);   // ALARM
-    exti_enable_request(EXTI7);
-    exti_reset_request(EXTI7);
-#endif
-//  exti_set_trigger(EXTI21, EXTI_TRIGGER_RISING);
-//  exti_enable_request(EXTI21);
-//  exti_reset_request(EXTI21);
-
-    exti_set_trigger(EXTI22, EXTI_TRIGGER_RISING);  // WKUP
+    /* Wakeup */
+    exti_set_trigger(EXTI22, EXTI_TRIGGER_RISING);
     exti_enable_request(EXTI22);
     exti_reset_request(EXTI22);
+
+    /*
+     * EXTI line 0 is connected to GPIO PB0 (_RTCEN) by the above code
+     * EXTI line 17 is connected to the RTC Alarm event
+     * EXTI line 21 is connected to the RTC Tamper and TimeStamp events
+     * EXTI line 22 is connected to the RTC Wakeup event
+     *
+     * The EXIT 0 (PB0) interrupt is used to handle incoming reads or writes
+     * of the emulated RP5C01. This interrupt is handled by exti0_isr().
+     *
+     * The EXTI 22 (RTC wakeup event) is used to update the RP5C01 emulated
+     * registers. This interrupt triggers interrupts to handler rtc_wkup_isr().
+     */
 
     msg_init();
 #ifdef INTERRUPT_CAPTURE_RP5C01
