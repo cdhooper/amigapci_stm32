@@ -34,6 +34,7 @@ void keyboard_put_macro(uint32_t macro, uint is_pressed);  // Queue Amiga macro
 void keyboard_usb_input(usb_keyboard_report_t *report);  // USB keyboard input
 void keyboard_usb_input_mm(uint16_t *ch, uint count);    // USB multimedia input
 void keyboard_term(void);  // ASCII terminal input to Amiga
+void keyboard_get_defaults(uint start, uint count, uint8_t *buf);
 void keyboard_set_defaults(void);
 uint keyboard_reset_warning(void);
 void keyboard_poll(void);

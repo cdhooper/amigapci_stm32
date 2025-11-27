@@ -7,6 +7,7 @@
 #include "amigartc.h"
 #include "config.h"
 #include "crc32.h"
+#include "keyboard.h"
 #include "printf.h"
 #include "timer.h"
 #include "uart.h"
@@ -190,6 +191,19 @@ msg_process_slow(void)
                     msg_reply(BEC_STATUS_OK, sizeof (*req), req,
                               count * req->bkm_len, &config.keymap[start]);
                     break;
+                case BKM_WHICH_DEFAULT_KEYMAP: {
+                    /* Don't send past the end */
+                    uint8_t buf[64];
+                    if (count > ARRAY_SIZE(config.keymap) - start)
+                        count = ARRAY_SIZE(config.keymap) - start;
+                    if (count > ARRAY_SIZE(buf))
+                        count = ARRAY_SIZE(buf);
+                    req->bkm_len   = 1;
+                    req->bkm_count = count;
+                    keyboard_get_defaults(start, count, buf);
+                    msg_reply(BEC_STATUS_OK, sizeof (*req), req, count, buf);
+                    break;
+                }
                 default:
                     msg_reply(BEC_STATUS_BADARG, 0, NULL, 0, NULL);
                     break;

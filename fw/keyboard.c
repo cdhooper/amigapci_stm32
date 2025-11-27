@@ -748,6 +748,16 @@ keyboard_terminal_put(uint ascii, uint conv)
     }
 }
 
+/*
+ * keyboard_get_defaults() returns default HID-to-Amiga key mappings.
+ */
+void
+keyboard_get_defaults(uint start, uint count, uint8_t *buf)
+{
+    while (count-- > 0)
+        *(buf++) = scancode_to_amiga[start++].sa_amiga;
+}
+
 void
 keyboard_set_defaults(void)
 {
