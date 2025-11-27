@@ -54,7 +54,7 @@ const char *version = "\0$VER: becky "VERSION" ("BUILD_DATE") \xA9 Chris Hooper"
 #define ARRAY_SIZE(x) ((sizeof (x) / sizeof ((x)[0])))
 
 uint        flag_debug = 0;
-static uint is_northamerican = 1;  // 1 = North American style keyboard
+static uint is_ansi_layout = 1;  // 1=ANSI (North America), 0=ISO (Europe)
 
 static uint amiga_keyboard_left;
 static uint amiga_keyboard_top;
@@ -86,12 +86,12 @@ static const keysize_t amiga_keywidths[] = {
     { SHADED, 1.5 * U,   1 * U },  //  3: Tilde and backtick key
     { SHADED, 1.5 * U,   1 * U },  //  4: Del and Help keys
     { SHADED, 2.1 * U,   1 * U },  //  5: Tab key
-    { SHADED, 1.75 * U,  1 * U },  //  6: Left shift (wider for North America)
+    { SHADED, 1.75 * U,  1 * U },  //  6: Left shift (wider for ANSI layout)
     { SHADED, 2.9  * U,  1 * U },  //  7: Right shift
     { SHADED, 1 * U,   2.1 * U },  //  8: Keypad enter key
     { PLAIN,  9.5  * U,  1 * U },  //  9: Spacebar
     { PLAIN,  2 * U,     1 * U },  // 10: Keypad 0
-    { PLAIN,  1 * U,     1 * U },  // 11: Extra keys (not North American)
+    { PLAIN,  1 * U,     1 * U },  // 11: Extra keys (ISO layout)
     { SHADED, 1.6 * U,   2 * U },  // 12: Enter key
 };
 
@@ -257,15 +257,14 @@ static const keysize_t hid_keywidths[] = {
     { SHADED, 1.25 * U,  1 * U },  //  2: Modifier key (Ctrl, Meta, Alt, Fn)
     { SHADED, 2 * U,     1 * U },  //  3: Backspace
     { SHADED, 1.5 * U,   1 * U },  //  4: Del and Help keys
-    { SHADED, 1.46 * U,  1 * U },  //  5: Tab key
-    { SHADED, 2.25 * U,  1 * U },  //  6: Left shift
-    { SHADED, 2.75 * U,  1 * U },  //  7: Right shift
+    { SHADED, 1.50 * U,  1 * U },  //  5: Tab key
+    { SHADED, 2.30 * U,  1 * U },  //  6: Left shift
+    { SHADED, 2.80 * U,  1 * U },  //  7: Right shift
     { SHADED, 1 * U,   2.2 * U },  //  8: Keypad enter key
     { PLAIN,  6.6 * U,   1 * U },  //  9: Spacebar
     { PLAIN,  2 * U,     1 * U },  // 10: Keypad 0
-    { PLAIN,  1 * U,     1 * U },  // 11: Extra keys (not North American)
-    { SHADED, 2.25 * U,  1 * U },  // 12: Enter key
-    { SHADED, 1.75 * U,  1 * U },  // 13: Capslock
+    { SHADED, 1.80 * U,  1 * U },  // 11: Capslock
+    { SHADED, 2.30 * U,  1 * U },  // 12: Enter key
 };
 
 static const keypos_t hid_keypos[] = {
@@ -337,7 +336,7 @@ static const keypos_t hid_keypos[] = {
 
     { HS_KP_PLUS,     8, 46995, 10775, C('+') },
 
-    { HS_CAPSLOCK,   13,  5800, 11727, "Caps" },
+    { HS_CAPSLOCK,   11,  5800, 11727, "Caps" },
     { HS_A,           0,  8419, 11727, C('A') },
     { HS_S,           0, 10324, 11727, C('S') },
     { HS_D,           0, 12229, 11727, C('D') },
@@ -355,7 +354,7 @@ static const keypos_t hid_keypos[] = {
     { HS_KP_5,        0, 43184, 11727, C('5') },
     { HS_KP_6,        0, 45090, 11727, C('6') },
 
-    { HS_LSHIFT,     12,  6276, 13632, "Shift" },
+    { HS_LSHIFT,      6,  6276, 13632, "Shift" },
     { HS_Z,           0,  9371, 13632, C('Z') },
     { HS_X,           0, 11276, 13632, C('X') },
     { HS_C,           0, 13181, 13632, C('C') },
@@ -400,9 +399,11 @@ static uint8_t    hid_key_mapped[ARRAY_SIZE(hid_keypos)];
 
 static const char cmd_options[] =
     "usage: bec <options>\n"
-    "   amiga        start by capturing Amiga scancodes (-a)\n"
+    "   amiga        default to capture Amiga scancodes (-a)\n"
     "   debug        show debug output (-d)\n"
-    "   euro         handle Euro style keyboard (-e)\n"
+    "   mapamiga     Amiga key mapping mode (-m)\n"
+    "   maphid       HID key mapping mode (-h)\n"
+    "   iso          present ISO style keyboard (-i)\n"
     "";
 
 typedef struct {
@@ -412,7 +413,9 @@ typedef struct {
 static const long_to_short_t long_to_short_main[] = {
     { "-a", "amiga" },
     { "-d", "debug" },
-    { "-e", "euro" },
+    { "-m", "mapamiga" },
+    { "-h", "maphid" },
+    { "-i", "iso" },
 };
 
 static void
@@ -519,21 +522,21 @@ OpenAmigaLibraries(void)
 static void
 CloseAmigaLibraries(void)
 {
-    if (IntuitionBase != NULL) {
-        CloseLibrary((struct Library *)IntuitionBase);
-        IntuitionBase = NULL;
-    }
-    if (GfxBase) {
-        CloseLibrary((struct Library *)GfxBase);
-        GfxBase = NULL;
+    if (AslBase) {
+        CloseLibrary(AslBase);
+        AslBase = NULL;
     }
     if (GadToolsBase) {
         CloseLibrary(GadToolsBase);
         GadToolsBase = NULL;
     }
-    if (AslBase) {
-        CloseLibrary(AslBase);
-        AslBase = NULL;
+    if (GfxBase) {
+        CloseLibrary((struct Library *)GfxBase);
+        GfxBase = NULL;
+    }
+    if (IntuitionBase != NULL) {
+        CloseLibrary((struct Library *)IntuitionBase);
+        IntuitionBase = NULL;
     }
 }
 
@@ -600,13 +603,14 @@ static const struct NewMenu becky_menu[] = { // name key flags mutex userdata
     {  NM_ITEM, "Live keys",        NULL, CHECKIT | MENUTOGGLE,
                                                              0x38 ^ 0x20, NULL },
     {  NM_ITEM, NM_BARLABEL,        NULL, 0,  0, NULL }, // Separator bar
-    {  NM_ITEM, "US layout",        NULL, CHECKIT | MENUTOGGLE, 0, NULL },
+    {  NM_ITEM, "ANSI layout",      NULL, CHECKIT | MENUTOGGLE, 0, NULL },
     { NM_TITLE, "Key",              NULL, 0,  0, NULL },
 //  {  NM_ITEM, "Custom mapping",   NULL, 0,  0, NULL },
     {  NM_ITEM, "Remove mapping",   NULL, 0,  0, NULL },
     {  NM_ITEM, "Redraw keys",      NULL, 0,  0, NULL },
     {   NM_END, NULL,               NULL, 0,  0, NULL }  // End of menu
 };
+static struct NewMenu *menu;
 // Remove mappings
 //      If Amiga key selected, will remove all HID references to that key
 //      If HID key selected, will remove all Amiga keys referenced by that key
@@ -640,7 +644,7 @@ static const struct NewMenu becky_menu[] = { // name key flags mutex userdata
 #define MENU_MODE_AMIGA_TO_HID     3
 #define MENU_MODE_HID_TO_AMIGA     4
 #define MENU_MODE_LIVE_KEYS        5
-#define MENU_MODE_US_LAYOUT        7
+#define MENU_MODE_ANSI_LAYOUT      7
 
 // #define MENU_KEY_CUSTOM_MAPPING    0
 #define MENU_KEY_REMOVE_MAPPINGS   0
@@ -660,12 +664,11 @@ static const struct NewMenu becky_menu[] = { // name key flags mutex userdata
 static struct Menu *menus = NULL;
 static APTR        *visual_info;
 static uint8_t      capture_hid_scancodes = 1;
-static uint8_t      map_hid_to_amiga = 2;
+static uint8_t      map_hid_to_amiga;
 
 static void
 create_menu(void)
 {
-    struct NewMenu *menu;
     menu = AllocVec(sizeof (becky_menu), MEMF_PUBLIC);
     if (menu == NULL) {
         err_printf("AllocVec failed\n");
@@ -691,19 +694,33 @@ create_menu(void)
         else
             menu[MENU_INDEX_MODE + MENU_MODE_LIVE_KEYS].nm_Flags |= CHECKED;
 
-        /* Add checkmark to "US Layout" menu item */
-        if (is_northamerican)
-            menu[MENU_INDEX_MODE + MENU_MODE_US_LAYOUT].nm_Flags |= CHECKED;
+        /* Add checkmark to "ANSI Layout" menu item */
+        if (is_ansi_layout)
+            menu[MENU_INDEX_MODE + MENU_MODE_ANSI_LAYOUT].nm_Flags |= CHECKED;
     } else {
         err_printf("Bug: becky_menu changed\n");
     }
 
-    visual_info = GetVisualInfo(window->WScreen, TAG_END);
+    visual_info = GetVisualInfoA(window->WScreen, TAG_END);
+
     if (visual_info != NULL) {
-        menus = CreateMenus(menu, TAG_END);
-        if (menus != NULL) {
-            LayoutMenus(menus, visual_info, GTMN_NewLookMenus, TRUE, TAG_END);
-            SetMenuStrip(window, menus);
+        menus = CreateMenus(menu,
+                            GTMN_FullMenu, TRUE,
+                            TAG_END);
+        if (menus == NULL) {
+            err_printf("CreateMenus failed\n");
+        } else {
+            if (LayoutMenus(menus, visual_info, GTMN_NewLookMenus, TRUE, TAG_END) == FALSE) {
+                err_printf("LayoutMenus failed\n");
+                FreeMenus(menus);
+                menus = NULL;
+                return;
+            }
+            if (SetMenuStrip(window, menus) == FALSE) {
+                err_printf("SetMenuStrip failed\n");
+                FreeMenus(menus);
+                menus = NULL;
+            }
         }
     }
 }
@@ -712,11 +729,13 @@ static void
 close_menu(void)
 {
     if (menus != NULL) {
+        ClearMenuStrip(window);
         FreeMenus(menus);
         menus = NULL;
     }
     if (visual_info != NULL)
         FreeVisualInfo(visual_info);
+    FreeVec(menu);
 }
 
 static void
@@ -744,11 +763,11 @@ scale_key_dimensions(void)
     }
 
     /*
-     * For North American keyboards, need to remove Extra1 and Extra2
+     * For ANSI (North American) keyboards, need to remove Extra1 and Extra2
      * and make left shift key wider. Rendered will need to deal with
      * non-square Return key.
      */
-    if (is_northamerican) {
+    if (is_ansi_layout) {
         amiga_keysize[11].shaded = 0xff;    // Extra keys = invisible
         amiga_keysize[6].x += 1 * U * mul_x / div_x;  // Left shitt
     }
@@ -768,8 +787,8 @@ static SHORT amiga_enter_wxlower;
 static SHORT amiga_enter_ymid;
 
 static void
-box_enterkey_euro(struct RastPort *rp, SHORT xpos, SHORT ypos,
-                  SHORT wx, SHORT wy)
+box_enterkey_iso(struct RastPort *rp, SHORT xpos, SHORT ypos,
+                 SHORT wx, SHORT wy)
 {
     SHORT ymin  = ypos - wy;
     SHORT ymax  = ypos + wy;
@@ -787,8 +806,8 @@ box_enterkey_euro(struct RastPort *rp, SHORT xpos, SHORT ypos,
 }
 
 static void
-box_enterkey_america(struct RastPort *rp, SHORT xpos, SHORT ypos,
-                     SHORT wx, SHORT wy)
+box_enterkey_ansi(struct RastPort *rp, SHORT xpos, SHORT ypos,
+                  SHORT wx, SHORT wy)
 {
     SHORT ymin  = ypos - wy;
     SHORT ymax  = ypos + wy;
@@ -884,15 +903,15 @@ select_pens(void)
     }
 }
 
+struct TextAttr font_attr = {
+    "topaz.font",
+    8,
+    FS_NORMAL,
+    FPF_ROMFONT
+};
 static void
 open_font(void)
 {
-    struct TextAttr font_attr = {
-        "topaz.font",
-        8,
-        FS_NORMAL,
-        FPF_ROMFONT
-    };
     DiskfontBase = OpenLibrary("diskfont.library", 0);
     if (DiskfontBase == NULL)
         return;
@@ -903,6 +922,8 @@ open_font(void)
     } else {
         err_printf("Could not open topaz.font 8; using default\n");
     }
+    CloseLibrary(DiskfontBase);
+    DiskfontBase = NULL;
 }
 
 static void
@@ -910,10 +931,6 @@ close_font(void)
 {
     if (keycap_font != NULL)
         CloseFont(keycap_font);
-    if (DiskfontBase != NULL) {
-        CloseLibrary(DiskfontBase);
-        DiskfontBase = NULL;
-    }
 }
 
 static void
@@ -972,6 +989,34 @@ gui_printf(const char *fmt, ...)
     width_last = width;
 }
 
+static uint8_t set_line2 = 0;
+static void __attribute__((format(__printf__, 1, 2)))
+gui_printf2(const char *fmt, ...)
+{
+    static SHORT width_last;
+    SHORT pos_x = window->BorderLeft + 4;
+    SHORT pos_y = hid_keyboard_top - 14;
+    SHORT width;
+    uint len;
+    char buf[80];
+    va_list args;
+    va_start(args, fmt);
+    (void) vsnprintf(buf, sizeof (buf) - 1, fmt, args);
+    va_end(args);
+    buf[sizeof (buf) - 1] = '\0';
+    len = strlen(buf);
+    SetAPen(rp, pen_status_fg);
+    SetBPen(rp, pen_status_bg);
+    Move(rp, pos_x, pos_y);
+    Text(rp, buf, len);
+    width = TextLength(rp, buf, len);
+    if (width_last > width) {
+        SetAPen(rp, 0);
+        RectFill(rp, pos_x + width, pos_y - 7, pos_x + width_last, pos_y + 1);
+    }
+    width_last = width;
+}
+
 static void
 draw_amiga_key(uint cur, uint pressed)
 {
@@ -992,8 +1037,8 @@ draw_amiga_key(uint cur, uint pressed)
         err_printf("bug: draw_amiga_key(%u,%u)\n", cur, pressed);
         return;
     }
-    if (is_northamerican && (scancode == AS_LEFTSHIFT)) {
-        ke_x += 1905 / 2;  // Increase width of North American left shift
+    if (is_ansi_layout && (scancode == AS_LEFTSHIFT)) {
+        ke_x += 1905 / 2;  // Increase width of ANSI left shift
     }
     if (amiga_keywidths[ktype].y > 1 * U) {
         ke_y += 1905 / 2;  // Fixup center for tall keys
@@ -1037,14 +1082,14 @@ draw_amiga_key(uint cur, uint pressed)
     if (scancode == AS_ENTER) {
         /* Special rendering for non-rectangular Enter */
         int text_off = 0;
-        if (is_northamerican) {
+        if (is_ansi_layout) {
             amiga_enter_ymid = pos_y + wy * 10 / 100;
             amiga_enter_wxlower = wx * 205 / 100;
             RectFill(rp, pos_x - wx, pos_y - wy, pos_x + wx, pos_y + wy);
             RectFill(rp, pos_x - amiga_enter_wxlower, amiga_enter_ymid,
                      pos_x, pos_y + wy);
             SetAPen(rp, pen_cap_outline_lo);
-            box_enterkey_america(rp, pos_x, pos_y, wx, wy);
+            box_enterkey_ansi(rp, pos_x, pos_y, wx, wy);
         } else {
             amiga_enter_ymid = pos_y - wy * 18 / 100;
             amiga_enter_wxlower = wx * 65 / 100;
@@ -1052,7 +1097,7 @@ draw_amiga_key(uint cur, uint pressed)
             RectFill(rp, pos_x - amiga_enter_wxlower, amiga_enter_ymid,
                      pos_x + wx, pos_y + wy);
             SetAPen(rp, pen_cap_outline_lo);
-            box_enterkey_euro(rp, pos_x, pos_y, wx, wy);
+            box_enterkey_iso(rp, pos_x, pos_y, wx, wy);
             text_off = 2;
         }
         SetAPen(rp, keycap_fg_pen);
@@ -1156,6 +1201,11 @@ draw_win(void)
     uint win_right = win_width;
     hid_keyboard_top = win_height - kbd_height + window->BorderBottom;
 
+    /* Default drawing mode */
+    SetDrMd(rp, JAM2);
+    SetBPen(rp, pen_keyboard_background);
+
+    /* Draw Amiga keyboard case */
     SetAPen(rp, pen_keyboard_background);
     RectFill(rp, win_left, window->BorderTop,
              win_right, window->BorderTop + draw_kbd_height);
@@ -1203,12 +1253,12 @@ draw_amiga_key_box(uint cur, uint do_mark)
         uint wx = amiga_keysize[ktype].x;
         uint wy = amiga_keysize[ktype].y;
 
-        if (is_northamerican) {
-            box_enterkey_america(rp, amiga_key_bbox[cur].x_min + wx,
+        if (is_ansi_layout) {
+            box_enterkey_ansi(rp, amiga_key_bbox[cur].x_min + wx,
                               amiga_key_bbox[cur].y_min + wy, wx, wy);
         } else {
-            box_enterkey_euro(rp, amiga_key_bbox[cur].x_min + wx,
-                              amiga_key_bbox[cur].y_min + wy, wx, wy);
+            box_enterkey_iso(rp, amiga_key_bbox[cur].x_min + wx,
+                             amiga_key_bbox[cur].y_min + wy, wx, wy);
         }
     } else {
         box(rp, amiga_key_bbox[cur].x_min,
@@ -1855,7 +1905,7 @@ load_keymap_from_bec(uint which)
 
     for (cur = 0; cur < 256; ) {
         req.bkm_start = cur;
-        rc = send_cmd_retry(BEC_CMD_GET_MAP, &req, sizeof (req),
+        rc = send_cmd(BEC_CMD_GET_MAP, &req, sizeof (req),
                             replybuf, sizeof (replybuf), &rlen);
         if (rc != 0) {
             gui_printf("BEC get map fail: %s", bec_err(rc));
@@ -2279,6 +2329,10 @@ handle_win(void)
                     break;
                 case IDCMP_MENUPICK: {
                     int cnt;
+                    if (set_line2) {
+                        set_line2 = 0;
+                        gui_printf2("");
+                    }
                     USHORT menu_item = icode;
                     for (cnt = 0; (menu_item != MENUNULL) && (cnt < 10); cnt++) {
                         /*
@@ -2414,8 +2468,8 @@ set_menu_checked:
                                             goto set_menu_checked;
                                         }
                                         break;
-                                    case MENU_MODE_US_LAYOUT:
-                                        is_northamerican = checked;
+                                    case MENU_MODE_ANSI_LAYOUT:
+                                        is_ansi_layout = checked;
                                         draw_win();
                                         break;
                                 }
@@ -2504,6 +2558,9 @@ generate_scancode_to_capnum(void)
 int
 main(int argc, char *argv[])
 {
+    uint8_t flag_mapamiga = 0;
+    uint8_t flag_maphid = 0;
+
     generate_scancode_to_capnum();
     if (argc > 0) {
         /* Started by AmigaOS CLI */
@@ -2521,8 +2578,14 @@ main(int argc, char *argv[])
                         case 'd':  // debug
                             flag_debug++;
                             break;
-                        case 'e':  // euro
-                            is_northamerican = 0;
+                        case 'h':  // maphid
+                            flag_maphid = 1;
+                            break;
+                        case 'i':  // iso
+                            is_ansi_layout = 0;
+                            break;
+                        case 'm':  // mapamiga
+                            flag_mapamiga = 1;
                             break;
                         default:
                             err_printf("Unknown argument %s\n", ptr);
@@ -2541,6 +2604,12 @@ main(int argc, char *argv[])
         struct WBStartup *wbs = (struct WBStartup *) argv;
         (void) wbs;
     }
+    if (flag_maphid)
+        map_hid_to_amiga = 1;
+    else if (flag_mapamiga)
+        map_hid_to_amiga = 0;
+    else
+        map_hid_to_amiga = 2;
 
     if (OpenAmigaLibraries()) {
         window = OpenAWindow();
@@ -2550,13 +2619,16 @@ main(int argc, char *argv[])
             open_font();
             create_menu();
             if (draw_win()) {
+                if (!flag_maphid && !flag_mapamiga) {
+                    set_line2 = 1;
+                    gui_printf2("Select Mode / Map HID to Amiga to remap keys.");
+                }
                 load_keymap_from_bec(0);
-                gui_printf("Select Mode / Map HID to Amiga to remap keys.");
                 handle_win();
             }
             close_menu();
-            CloseWindow(window);
             close_font();
+            CloseWindow(window);
         } else {
             err_printf("Failed to open window.\\n");
         }
