@@ -42,6 +42,7 @@
 #define BEC_CMD_GET          0x0a  // Get config value
 #define BEC_CMD_SET_MAP      0x0b  // Set map (keyboard, mouse, etc, macros)
 #define BEC_CMD_GET_MAP      0x0c  // Get map (keyboard, mouse, etc, macros)
+#define BEC_CMD_POLL_INPUT   0x0d  // Capture input (such as keystrokes)
 
 /* Status codes returned by AmigaPCI STM32 */
 #define BEC_STATUS_OK        0x00  // Success
@@ -61,6 +62,10 @@
 #define BEC_MSG_HDR_LEN 5  // Number of bytes in Magic + cmd + length
 #define BEC_MSG_CRC_LEN 4  // Number of bytes in CRC
 
+/*
+ * The below structure is a response to the following command:
+ *    BEC_CMD_ID
+ */
 typedef struct {
     uint16_t bid_version[2];       // BEC firmware version    (major-minor)
     uint8_t  bid_date[4];          // BEC firmware build date (cc-yy-mm-dd)
@@ -72,6 +77,11 @@ typedef struct {
     uint8_t  bid_unused[32];       // Unused space
 } bec_id_t;
 
+/*
+ * The below structure is used for request / response of the following commands:
+ *    BEC_CMD_GET_MAP
+ *    BEC_CMD_SET_MAP
+ */
 typedef struct {
     uint8_t  bkm_which;            // Which keymap (see BKM_WHICH_*)
     uint8_t  bkm_start;            // First entry number
@@ -79,12 +89,30 @@ typedef struct {
     uint8_t  bkm_count;            // Count of entries (0 = no entries)
 } bec_keymap_t;
 
-#define BKM_WHICH_KEYMAP          0x01
+#define BKM_WHICH_KEYMAP          0x01  // Scancode mapping table
 #define BKM_WHICH_MODKEYMAP       0x02
-#define BKM_WHICH_BUTTONMAP       0x03
-#define BKM_WHICH_SCROLLMAP       0x04
-#define BKM_WHICH_JBUTTONMAP      0x05
-#define BKM_WHICH_JDIRECTMAP      0x06
-#define BKM_WHICH_DEFAULT_KEYMAP  0x07
+#define BKM_WHICH_BUTTONMAP       0x03  // Mouse button map
+#define BKM_WHICH_SCROLLMAP       0x04  // Mouse scroll wheel map
+#define BKM_WHICH_JBUTTONMAP      0x05  // Joystick button map
+#define BKM_WHICH_JDIRECTMAP      0x06  // Joystick direction map
+#define BKM_WHICH_DEFAULT_KEYMAP  0x07  // Default scancode mapping table
+
+/*
+ * The below structure is used for the following command:
+ *    BEC_CMD_POLL_INPUT
+ *
+ * The reply includes a buffer of value pairs which immediately follow
+ * the reply structure. The first of each pair is the scancode, and
+ * the second is 0 for key down and 1 for key up.
+ */
+typedef struct {
+    uint8_t  bkm_source;           // Which input to poll
+    uint8_t  bkm_count;            // Count of value pairs
+    uint16_t bkm_timeout;          // Timeout in milliseconds
+} bec_poll_t;
+
+#define BKM_SOURCE_NONE           0x00  // Disable polling
+#define BKM_SOURCE_HID_SCANCODE   0x01  // Lightly processed HID scancodes
+#define BKM_SOURCE_AMIGA_SCANCODE 0x02  // Key scancodes to be sent to Amiga
 
 #endif  /* _BEC_CMD_H */

@@ -166,7 +166,18 @@ mouse_action(int off_x, int off_y, int off_wheel, int off_pan, uint32_t buttons)
 
     mouse_x += off_x;
     mouse_y += off_y;
-    if ((off_x != 0) || (off_y != 0))
+
+    /* Limit how far behind the mouse can get */
+    if (mouse_x > 20)
+        mouse_x = 20;
+    if (mouse_x < -20)
+        mouse_x = -20;
+    if (mouse_y > 20)
+        mouse_y = 20;
+    if (mouse_y < -20)
+        mouse_y = -20;
+
+    if ((mouse_x != 0) || (mouse_y != 0))
         change = 1;  // Mouse moved
 
     /* Up/down wheel */

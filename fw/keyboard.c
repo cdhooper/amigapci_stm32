@@ -11,6 +11,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <string.h>
 #include "main.h"
 #include "config.h"
 #include "printf.h"
@@ -23,6 +24,7 @@
 #include "usb.h"
 #include "gpio.h"
 #include "mouse.h"
+#include "hid_kbd_codes.h"
 #include <libopencm3/stm32/gpio.h>
 #include "amiga_kbd_codes.h"
 
@@ -33,16 +35,26 @@
 #define DPRINTF(x...) do { } while (0)
 #endif
 
+#define KEYCAP_DOWN 0x0000
+#define KEYCAP_UP   0x0100
+#define KEYCAP_MM   0x0200
+
 /* Keyboard-to-Amiga ring buffer */
 static uint    ak_rb_producer;
 static uint    ak_rb_consumer;
 static uint8_t ak_rb[64];
 static volatile uint8_t ak_ctrl_amiga_amiga;
 
-uint8_t amiga_keyboard_sent_wake;
-uint8_t amiga_keyboard_has_sync;
-uint8_t amiga_keyboard_lost_sync;
-uint8_t keyboard_raw_mode;   // Send USB keystrokes through unaltered
+uint8_t  amiga_keyboard_sent_wake;
+uint8_t  amiga_keyboard_has_sync;
+uint8_t  amiga_keyboard_lost_sync;
+
+/* Keyboard scancode capture globals */
+uint8_t         keyboard_cap_src;      // Capture source (0 = None, 1 = HID)
+uint64_t        keyboard_cap_timeout;  // Capture timeout
+static uint8_t  keyboard_cap_prod;
+static uint8_t  keyboard_cap_cons;
+static uint16_t keyboard_cap_buf[64];
 
 /* sa_flags values */
 #define SAF_ADD_SHIFT 0x01
@@ -684,7 +696,7 @@ CC_ASSERT_ARRAY_SIZE(scancode_to_ascii_ext, 256);
 static const struct {
     uint16_t sc_mmusb;
     uint8_t  sc_usb;
-} scancode_mm_to_usb[] = {
+} scancode_mm_to_hid_kbd[] = {
     {  0xb5, 0xeb },  // OSC Scan Next Track       -> Media Next Song
     {  0xb6, 0xea },  // OSC Scan Previous Track   -> Media Previous Song
     {  0xb7, 0xe9 },  // OSC Stop                  -> Media Stop CD
@@ -713,6 +725,20 @@ find_key_in_report(usb_keyboard_report_t *report, uint8_t keycode)
             report->keycode[i] = 0;  // Remove as it was seen again
             return (true);
         }
+
+    return (false);
+}
+
+static inline bool
+find_key_in_buf(uint8_t keycode, uint8_t *buf, uint buflen)
+{
+    uint i;
+    for (i = 0; i < buflen; i++) {
+        if (buf[i] == keycode) {
+            buf[i] = 0;  // Remove as it was seen again
+            return (true);
+        }
+    }
 
     return (false);
 }
@@ -798,15 +824,38 @@ convert_scancode_to_amiga(uint8_t keycode, uint8_t modifier,
 
 static uint last_key_report_modifier;
 
+static uint8_t
+capture_scancode(uint16_t keycode)
+{
+    uint next;
+    if (keyboard_cap_src == 0)
+        return (keycode);
+    if (timer_tick_has_elapsed(keyboard_cap_timeout)) {
+        keyboard_cap_src = 0;
+        return (keycode);
+    }
+
+    /* Add captured input to buffer */
+    next = keyboard_cap_prod + 1;
+    if (next >= ARRAY_SIZE(keyboard_cap_buf))
+        next = 0;
+    if (next == keyboard_cap_cons)
+        return (0);  // No space
+    keyboard_cap_buf[keyboard_cap_prod] = keycode;
+    keyboard_cap_prod = next;
+    return (0);
+}
+
 static uint32_t
 convert_mm_scancode_to_amiga(uint keycode)
 {
     uint pos;
     uint8_t code_usb;
     uint8_t amiga_modifier;
-    for (pos = 0; pos < ARRAY_SIZE(scancode_mm_to_usb); pos++) {
-        if (scancode_mm_to_usb[pos].sc_mmusb == keycode) {
-            code_usb = scancode_mm_to_usb[pos].sc_usb;
+
+    for (pos = 0; pos < ARRAY_SIZE(scancode_mm_to_hid_kbd); pos++) {
+        if (scancode_mm_to_hid_kbd[pos].sc_mmusb == keycode) {
+            code_usb = scancode_mm_to_hid_kbd[pos].sc_usb;
             dprintf(DF_USB_KEYBOARD, "<=%02x>", code_usb);
             return (convert_scancode_to_amiga(code_usb,
                                     last_key_report_modifier, &amiga_modifier));
@@ -979,39 +1028,37 @@ keyboard_put_amiga(uint8_t code)
 {
     uint new_prod;
 
-    if (!keyboard_raw_mode) {
-        switch (code) {
-            case AS_CTRL:
-                ak_ctrl_amiga_amiga |= BIT(0);
-                break;
-            case AS_CTRL | 0x80:
-                ak_ctrl_amiga_amiga &= ~BIT(0);
-                break;
-            case AS_LEFTAMIGA:
-                ak_ctrl_amiga_amiga |= BIT(1);
-                break;
-            case AS_LEFTAMIGA | 0x80:
-                ak_ctrl_amiga_amiga &= ~BIT(1);
-                break;
-            case AS_RIGHTAMIGA:
-                ak_ctrl_amiga_amiga |= BIT(2);
-                break;
-            case AS_RIGHTAMIGA | 0x80:
-                ak_ctrl_amiga_amiga &= ~BIT(2);
-                break;
-            case AS_LEFTALT:
-                ak_ctrl_amiga_amiga |= BIT(3);
-                break;
-            case AS_LEFTALT | 0x80:
-                ak_ctrl_amiga_amiga &= ~BIT(3);
-                break;
-            case AS_RIGHTALT:
-                ak_ctrl_amiga_amiga |= BIT(4);
-                break;
-            case AS_RIGHTALT | 0x80:
-                ak_ctrl_amiga_amiga &= ~BIT(4);
-                break;
-        }
+    switch (code) {
+        case AS_CTRL:
+            ak_ctrl_amiga_amiga |= BIT(0);
+            break;
+        case AS_CTRL | 0x80:
+            ak_ctrl_amiga_amiga &= ~BIT(0);
+            break;
+        case AS_LEFTAMIGA:
+            ak_ctrl_amiga_amiga |= BIT(1);
+            break;
+        case AS_LEFTAMIGA | 0x80:
+            ak_ctrl_amiga_amiga &= ~BIT(1);
+            break;
+        case AS_RIGHTAMIGA:
+            ak_ctrl_amiga_amiga |= BIT(2);
+            break;
+        case AS_RIGHTAMIGA | 0x80:
+            ak_ctrl_amiga_amiga &= ~BIT(2);
+            break;
+        case AS_LEFTALT:
+            ak_ctrl_amiga_amiga |= BIT(3);
+            break;
+        case AS_LEFTALT | 0x80:
+            ak_ctrl_amiga_amiga &= ~BIT(3);
+            break;
+        case AS_RIGHTALT:
+            ak_ctrl_amiga_amiga |= BIT(4);
+            break;
+        case AS_RIGHTALT | 0x80:
+            ak_ctrl_amiga_amiga &= ~BIT(4);
+            break;
     }
 
     dprintf(DF_USB_KEYBOARD, "[%02x]", code);
@@ -1179,80 +1226,24 @@ keyboard_handle_magic(uint8_t keycode, uint modifier)
     }
 }
 
-/* Handle input from USB keyboard */
-void
-keyboard_usb_input(usb_keyboard_report_t *report)
+static void
+keyboard_hid_to_amiga(uint8_t *prev_keys, uint8_t *cur_keys, uint buflen,
+                      uint modifier)
 {
-    static usb_keyboard_report_t prev_report;
-    static uint8_t capslock;
-    uint modifier = report->modifier;
-    uint pmodifier = prev_report.modifier;
-    uint mod_diff;
     uint cur;
     uint ascii;
-    uint32_t mouse_buttons_old = mouse_buttons_add;
+    static uint8_t capslock;
 
-    if (config.flags & CF_KEYBOARD_SWAPALT) {
-        /*
-         * Swap Alt keys and Amiga keys
-         *    Bit 0 Left Ctrl
-         *    Bit 1 Left Shift
-         *    Bit 2 Left Alt
-         *    Bit 3 Left Amiga
-         *    Bit 4 Right Control
-         *    Bit 5 Right Shift
-         *    Bit 6 Right Alt
-         *    Bit 7 Right Amiga
-         */
-        modifier = (modifier & 0x33) |        // Ctrl and Shift
-                   ((modifier & 0x44) << 1) | // Alt -> Amiga
-                   ((modifier & 0x88) >> 1);  // Amiga -> Alt
-        report->modifier = modifier;
-    }
-    mod_diff = modifier ^ pmodifier;
-
-    last_key_report_modifier = modifier;
-
-    if ((mod_diff != 0) & !usb_keyboard_terminal && !keyboard_raw_mode) {
-        uint bit;
-        dprintf(DF_USB_KEYBOARD, ">M %02X<", modifier);
-        for (bit = 0; bit < 8; bit++) {
-            if (mod_diff & BIT(bit)) {
-                uint32_t tcode = config.modkeymap[bit];
-                for (; tcode != 0; tcode >>= 8) {
-                    uint8_t code = (uint8_t) tcode;
-                    if (code != AS_NONE) {
-                        if (modifier & BIT(bit)) {
-                            if (code & 0x80) {
-                                /* Button press or macro expansion */
-                                mouse_buttons_add |= BIT(code & 31);
-                            } else {
-                                keyboard_put_amiga(code);         // pressed
-                            }
-                        } else {
-                            if (code & 0x80) {
-                                /* Button press or macro expansion */
-                                mouse_buttons_add &= ~BIT(code & 31);
-                            } else {
-                                keyboard_put_amiga(code | 0x80);  // released
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    for (cur = 0; cur < ARRAY_SIZE(report->keycode); cur++) {
-        uint8_t keycode = report->keycode[cur];
-        if (report->keycode[cur]) {
-            if (find_key_in_report(&prev_report, report->keycode[cur])) {
+    /* Handle key press */
+    for (cur = 0; cur < buflen; cur++) {
+        uint8_t keycode = cur_keys[cur];
+        if (keycode != 0x00) {
+            if (find_key_in_buf(keycode, prev_keys, buflen)) {
                 /* Current key is being held */
             } else {
                 /* New keypress */
                 keyboard_handle_magic(keycode, modifier);
-                if (keyboard_raw_mode) {
-                    keyboard_put_amiga(keycode);
-                } else if (usb_keyboard_terminal) {
+                if (usb_keyboard_terminal) {
                     uint16_t conv = scancode_to_ascii_ext[keycode];
                     if ((conv >> 8) == 0) {
                         /* Simple ASCII (shift and control are not applied) */
@@ -1288,7 +1279,8 @@ keyboard_usb_input(usb_keyboard_report_t *report)
                     uint32_t tcode;
 
                     dprintf(DF_USB_KEYBOARD, ">%02x<", keycode);
-                    tcode = convert_scancode_to_amiga(keycode, modifier,
+                    tcode = capture_scancode(keycode | KEYCAP_DOWN);
+                    tcode = convert_scancode_to_amiga(tcode, modifier,
                                                       &amiga_modifier);
                     for (; tcode != 0; tcode >>= 8) {
                         uint8_t code = tcode & 0xff;
@@ -1311,17 +1303,17 @@ keyboard_usb_input(usb_keyboard_report_t *report)
     }
 
     /*
-     * XXX: Any keys which were not found above are left marked in
-     *      the prev_report array. For the Amiga, these should be
-     *      treated as key up events.
+     * Handle key release
+     *
+     * Any keys which were not found above are left marked in the
+     * prev_keys array. For the Amiga, these should be treated as
+     * key up events.
      */
-    for (cur = 0; cur < ARRAY_SIZE(prev_report.keycode); cur++) {
-        uint8_t keycode = prev_report.keycode[cur];
-        if (keycode != 0) {
+    for (cur = 0; cur < buflen; cur++) {
+        uint8_t keycode = prev_keys[cur];
+        if (keycode != 0x00) {
             /* Key released */
-            if (keyboard_raw_mode) {
-                ; // Send nothing for key up while in raw mode
-            } else if (usb_keyboard_terminal) {
+            if (usb_keyboard_terminal) {
                 uint16_t conv = scancode_to_ascii_ext[keycode];
                 if ((conv >> 8) == 0) {
                     /* Simple ASCII (shift is not applied) */
@@ -1344,7 +1336,8 @@ keyboard_usb_input(usb_keyboard_report_t *report)
                 /* Convert to Amiga keypress */
                 uint8_t amiga_modifier;
                 uint32_t tcode;
-                tcode = convert_scancode_to_amiga(keycode, modifier,
+                tcode = capture_scancode(keycode | KEYCAP_UP);
+                tcode = convert_scancode_to_amiga(tcode, modifier,
                                                   &amiga_modifier);
                 for (; tcode != 0; tcode >>= 8) {
                     uint8_t code = (uint8_t) tcode;
@@ -1366,10 +1359,67 @@ keyboard_usb_input(usb_keyboard_report_t *report)
             }
         }
     }
+
+    memcpy(prev_keys, cur_keys, buflen);
+}
+
+/*
+ * keyboard_convert_mod_keys_to_hid_codes() does the intermediate step
+ *     of converting all modifier keys (shift, control, etc) into their
+ *     USB HID scancode versions. These scancodes can then have the same
+ *     key mapping conversions applied to them as the normal USB HID
+ *     scancodes.
+ */
+static void
+keyboard_convert_mod_keys_to_hid_codes(uint8_t modifiers, uint8_t *mods)
+{
+    uint bit;
+    static const uint8_t mod_codes[] = {
+        HS_LCTRL, HS_LSHIFT, HS_LALT, HS_LMETA,
+        HS_RCTRL, HS_RSHIFT, HS_RALT, HS_RMETA
+    };
+
+    for (bit = 0; bit < 7; bit++)
+        mods[bit] = (modifiers & BIT(bit)) ? mod_codes[bit] : HS_NONE;
+}
+
+/*
+ * keyboard_usb_input() takes raw input from a USB HID keyboard, converts
+ *                      it, and queues mapped scancodes to the Amiga.
+ */
+void
+keyboard_usb_input(usb_keyboard_report_t *report)
+{
+    static uint8_t prev_keys[6];
+    static uint8_t prev_mods[8];
+    uint8_t        cur_mods[8];
+    uint8_t        modifier = report->modifier;
+    uint32_t mouse_buttons_old = mouse_buttons_add;
+
+    if (config.flags & CF_KEYBOARD_SWAPALT) {
+        /*
+         * Swap Alt keys and Amiga keys
+         *    Bit 0 Left Ctrl
+         *    Bit 1 Left Shift
+         *    Bit 2 Left Alt
+         *    Bit 3 Left Amiga
+         *    Bit 4 Right Control
+         *    Bit 5 Right Shift
+         *    Bit 6 Right Alt
+         *    Bit 7 Right Amiga
+         */
+        modifier = (modifier & 0x33) |        // Ctrl and Shift
+                   ((modifier & 0x44) << 1) | // Alt -> Amiga
+                   ((modifier & 0x88) >> 1);  // Amiga -> Alt
+    }
+    keyboard_convert_mod_keys_to_hid_codes(modifier, cur_mods);
+
+    keyboard_hid_to_amiga(prev_mods, cur_mods, sizeof (cur_mods), modifier);
+    keyboard_hid_to_amiga(prev_keys, report->keycode, sizeof (report->keycode),
+                          modifier);
+
     if (mouse_buttons_old != mouse_buttons_add)
         mouse_action(0, 0, 0, 0, 0);  // Inject button / macro expansion change
-
-    prev_report = *report;
 }
 
 /* Handle multimedia input from USB keyboard */
@@ -1394,7 +1444,8 @@ keyboard_usb_input_mm(uint16_t *ch, uint count)
                 break;
         if (pos == count) {
             /* Key down */
-            tcode = convert_mm_scancode_to_amiga(ch[cur]);
+            tcode = capture_scancode(ch[cur] | KEYCAP_DOWN | KEYCAP_MM);
+            tcode = convert_mm_scancode_to_amiga(tcode);
             dprintf(DF_USB_KEYBOARD, " MKEYDOWN %lx ", tcode);
             for (; tcode != 0; tcode >>= 8) {
                 uint8_t code = (uint8_t) tcode;
@@ -1417,7 +1468,8 @@ keyboard_usb_input_mm(uint16_t *ch, uint count)
                 break;
         if (pos == count) {
             /* Key up */
-            tcode = convert_mm_scancode_to_amiga(last[cur]);
+            tcode = capture_scancode(last[cur] | KEYCAP_UP | KEYCAP_MM);
+            tcode = convert_mm_scancode_to_amiga(tcode);
             dprintf(DF_USB_KEYBOARD, " MKEYUP %lx ", tcode);
             for (; tcode != 0; tcode >>= 8) {
                 uint8_t code = (uint8_t) tcode;
@@ -1724,6 +1776,26 @@ handle_code:
         keyboard_put_amiga(AS_CTRL | 0x80);
     if (adding_shift)
         keyboard_put_amiga(AS_LEFTSHIFT | 0x80);
+}
+
+uint
+keyboard_get_capture(uint maxcount, uint16_t *buf)
+{
+    uint count;
+    if (keyboard_cap_prod == keyboard_cap_cons) {
+        return (0);  // No data
+    } else if (keyboard_cap_prod > keyboard_cap_cons) {
+        count = keyboard_cap_prod - keyboard_cap_cons;
+    } else {
+        count = ARRAY_SIZE(keyboard_cap_buf) - keyboard_cap_cons;
+    }
+    if (count > maxcount)
+        count = maxcount;
+    memcpy(buf, &keyboard_cap_buf[keyboard_cap_cons], count * 2);
+    keyboard_cap_cons += count;
+    if (keyboard_cap_cons >= ARRAY_SIZE(keyboard_cap_buf))
+        keyboard_cap_cons = 0;
+    return (count);
 }
 
 static uint

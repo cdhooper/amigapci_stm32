@@ -5,6 +5,7 @@
 #include "main.h"
 #include "msg.h"
 #include "amigartc.h"
+#include "keyboard.h"
 #include "config.h"
 #include "crc32.h"
 #include "keyboard.h"
@@ -205,6 +206,7 @@ msg_process_slow(void)
                     break;
                 }
                 default:
+bad_arg:
                     msg_reply(BEC_STATUS_BADARG, 0, NULL, 0, NULL);
                     break;
             }
@@ -236,9 +238,36 @@ msg_process_slow(void)
                     msg_reply(BEC_STATUS_OK, 0, NULL, 0, NULL);
                     break;
                 default:
-                    msg_reply(BEC_STATUS_BADARG, 0, NULL, 0, NULL);
-                    break;
+                    goto bad_arg;
             }
+            break;
+        }
+        case BEC_CMD_POLL_INPUT: {
+            bec_poll_t *req = (void *) &bec_msg_inbuf[BEC_MSG_HDR_LEN];
+            uint16_t repbuf[32];
+            uint count;
+            switch (req->bkm_source) {
+                case BKM_SOURCE_NONE:
+                case BKM_SOURCE_HID_SCANCODE:
+                    break;
+                default:
+                    goto bad_arg;
+            }
+            if (req->bkm_timeout) {
+                uint16_t timeout = SWAP16(req->bkm_timeout);
+                keyboard_cap_timeout = timer_tick_plus_msec(timeout);
+                keyboard_cap_src     = req->bkm_source;
+            } else {
+                keyboard_cap_timeout = 0;
+                keyboard_cap_src     = 0;
+                req->bkm_count = 0;
+            }
+            count = req->bkm_count;
+            if (count > ARRAY_SIZE(repbuf))
+                count = ARRAY_SIZE(repbuf);
+            count = keyboard_get_capture(count, repbuf);
+            req->bkm_count = count;
+            msg_reply(BEC_STATUS_OK, sizeof (*req), req, count * 2, repbuf);
             break;
         }
         default:

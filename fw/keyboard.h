@@ -21,8 +21,6 @@
 #define KEYBOARD_MODIFIER_RIGHTALT   BIT(6)  // Right Alt
 #define KEYBOARD_MODIFIER_RIGHTMETA  BIT(7)  // Right Meta
 
-extern const uint8_t keycode2ascii[128][2];
-
 typedef struct {
     uint8_t modifier;   // Keyboard modifier (KEYBOARD_MODIFIER_* masks)
     uint8_t reserved;   // Reserved for OEM use, always set to 0
@@ -37,13 +35,16 @@ void keyboard_term(void);  // ASCII terminal input to Amiga
 void keyboard_get_defaults(uint start, uint count, uint8_t *buf);
 void keyboard_set_defaults(void);
 uint keyboard_reset_warning(void);
+uint keyboard_get_capture(uint maxcount, uint16_t *buf);
 void keyboard_poll(void);
 void keyboard_init(void);
 
-extern uint8_t amiga_keyboard_sent_wake;
-extern uint8_t amiga_keyboard_has_sync;
-extern uint8_t amiga_keyboard_lost_sync;
-extern uint8_t keyboard_raw_mode;
+extern uint8_t  amiga_keyboard_sent_wake;
+extern uint8_t  amiga_keyboard_has_sync;
+extern uint8_t  amiga_keyboard_lost_sync;
+extern uint8_t  keyboard_raw_mode;
+extern uint8_t  keyboard_cap_src;
+extern uint64_t keyboard_cap_timeout;
 
 /* Newmouse keycodes */
 #define NM_WHEEL_UP       (0x7A)
