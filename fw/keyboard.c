@@ -1379,7 +1379,7 @@ keyboard_convert_mod_keys_to_hid_codes(uint8_t modifiers, uint8_t *mods)
         HS_RCTRL, HS_RSHIFT, HS_RALT, HS_RMETA
     };
 
-    for (bit = 0; bit < 7; bit++)
+    for (bit = 0; bit < 8; bit++)
         mods[bit] = (modifiers & BIT(bit)) ? mod_codes[bit] : HS_NONE;
 }
 

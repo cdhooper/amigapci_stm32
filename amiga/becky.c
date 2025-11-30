@@ -406,6 +406,7 @@ static const char cmd_options[] =
     "   esc          disable ESC key for program exit (-e)\n"
     "   mapamiga     Amiga key mapping mode (-m)\n"
     "   maphid       HID key mapping mode (-h)\n"
+    "   mapped       Live keys plus mapped keys (-p)\n"
     "   iso          present ISO style keyboard (-i)\n"
     "";
 
@@ -417,9 +418,10 @@ static const long_to_short_t long_to_short_main[] = {
     { "-a", "amiga" },
     { "-d", "debug" },
     { "-e", "esc" },
-    { "-m", "mapamiga" },
     { "-h", "maphid" },
     { "-i", "iso" },
+    { "-m", "mapamiga" },
+    { "-p", "mapped" },
 };
 
 static void
@@ -589,36 +591,38 @@ printf("wh=%u\n", win_height);
 }
 
 static const struct NewMenu becky_menu[] = { // name key flags mutex userdata
-    { NM_TITLE, "File",             NULL, 0,  0, NULL },
-    {  NM_ITEM, "Load from file",   "L",  0,  0, NULL },
-    {  NM_ITEM, "Save to file",     "S",  0,  0, NULL },
-    {  NM_ITEM, NM_BARLABEL,        NULL, 0,  0, NULL }, // Separator bar
-    {  NM_ITEM, "About...",         "?",  0,  0, NULL },
-    {  NM_ITEM, NM_BARLABEL,        NULL, 0,  0, NULL }, // Separator bar
-    {  NM_ITEM, "Quit",             "Q",  0,  0, NULL },
-    { NM_TITLE, "BEC",              NULL, 0,  0, NULL },
-    {  NM_ITEM, "Load from BEC",    NULL, 0,  0, NULL },
-    {  NM_ITEM, "Save to BEC",      NULL, 0,  0, NULL },
-    {  NM_ITEM, "Load defaults",    NULL, 0,  0, NULL },
-    { NM_TITLE, "Mode",             NULL, 0,  0, NULL },
-    {  NM_ITEM, "Amiga scancode",   NULL, CHECKIT | MENUTOGGLE,
+    { NM_TITLE, "File",               NULL, 0,  0, NULL },
+    {  NM_ITEM, "Load from file",     "L",  0,  0, NULL },
+    {  NM_ITEM, "Save to file",       "S",  0,  0, NULL },
+    {  NM_ITEM, NM_BARLABEL,          NULL, 0,  0, NULL }, // Separator bar
+    {  NM_ITEM, "About...",           "?",  0,  0, NULL },
+    {  NM_ITEM, NM_BARLABEL,          NULL, 0,  0, NULL }, // Separator bar
+    {  NM_ITEM, "Quit",               "Q",  0,  0, NULL },
+    { NM_TITLE, "BEC",                NULL, 0,  0, NULL },
+    {  NM_ITEM, "Load from BEC",      NULL, 0,  0, NULL },
+    {  NM_ITEM, "Save to BEC",        NULL, 0,  0, NULL },
+    {  NM_ITEM, "Load defaults",      NULL, 0,  0, NULL },
+    { NM_TITLE, "Mode",               NULL, 0,  0, NULL },
+    {  NM_ITEM, "Amiga scancode",     NULL, CHECKIT | MENUTOGGLE,
                                                         0x03 ^ 1, NULL },
-    {  NM_ITEM, "HID scancode",     NULL, CHECKIT | MENUTOGGLE,
+    {  NM_ITEM, "HID scancode",       NULL, CHECKIT | MENUTOGGLE,
                                                         0x03 ^ 2, NULL },
-    {  NM_ITEM, NM_BARLABEL,        NULL, 0,  0, NULL }, // Separator bar
-    {  NM_ITEM, "Map Amiga to HID", NULL, CHECKIT | MENUTOGGLE,
-                                                        0x38 ^ 0x08, NULL },
-    {  NM_ITEM, "Map HID to Amiga", NULL, CHECKIT | MENUTOGGLE,
-                                                        0x38 ^ 0x10, NULL },
-    {  NM_ITEM, "Live keys",        NULL, CHECKIT | MENUTOGGLE,
-                                                        0x38 ^ 0x20, NULL },
-    {  NM_ITEM, NM_BARLABEL,        NULL, 0,  0, NULL }, // Separator bar
-    {  NM_ITEM, "ANSI layout",      NULL, CHECKIT | MENUTOGGLE, 0, NULL },
-    { NM_TITLE, "Key",              NULL, 0,  0, NULL },
-//  {  NM_ITEM, "Custom mapping",   NULL, 0,  0, NULL },
-    {  NM_ITEM, "Remove mapping",   NULL, 0,  0, NULL },
-    {  NM_ITEM, "Redraw keys",      NULL, 0,  0, NULL },
-    {   NM_END, NULL,               NULL, 0,  0, NULL }  // End of menu
+    {  NM_ITEM, NM_BARLABEL,          NULL, 0,  0, NULL }, // Separator bar
+    {  NM_ITEM, "Map Amiga to HID",   NULL, CHECKIT | MENUTOGGLE,
+                                                        0x78 ^ 0x08, NULL },
+    {  NM_ITEM, "Map HID to Amiga",   NULL, CHECKIT | MENUTOGGLE,
+                                                        0x78 ^ 0x10, NULL },
+    {  NM_ITEM, "Live keys",          NULL, CHECKIT | MENUTOGGLE,
+                                                        0x78 ^ 0x20, NULL },
+    {  NM_ITEM, "Live keys + mapped", NULL, CHECKIT | MENUTOGGLE,
+                                                        0x78 ^ 0x40, NULL },
+    {  NM_ITEM, NM_BARLABEL,          NULL, 0,  0, NULL }, // Separator bar
+    {  NM_ITEM, "ANSI layout",        NULL, CHECKIT | MENUTOGGLE, 0, NULL },
+    { NM_TITLE, "Key",                NULL, 0,  0, NULL },
+//  {  NM_ITEM, "Custom mapping",     NULL, 0,  0, NULL },
+    {  NM_ITEM, "Remove mapping",     NULL, 0,  0, NULL },
+    {  NM_ITEM, "Redraw keys",        NULL, 0,  0, NULL },
+    {   NM_END, NULL,                 NULL, 0,  0, NULL }  // End of menu
 };
 static struct NewMenu *menu;
 // Remove mappings
@@ -654,7 +658,8 @@ static struct NewMenu *menu;
 #define MENU_MODE_AMIGA_TO_HID     3
 #define MENU_MODE_HID_TO_AMIGA     4
 #define MENU_MODE_LIVE_KEYS        5
-#define MENU_MODE_ANSI_LAYOUT      7
+#define MENU_MODE_LIVE_KEYS_MAP    6
+#define MENU_MODE_ANSI_LAYOUT      8
 
 // #define MENU_KEY_CUSTOM_MAPPING    0
 #define MENU_KEY_REMOVE_MAPPINGS   0
@@ -670,6 +675,8 @@ static struct NewMenu *menu;
                                 SHIFTITEM(MENU_MODE_HID_TO_AMIGA))
 #define ITEMNUM_LIVEKEYS       (SHIFTMENU(MENU_NUM_MODE) | \
                                 SHIFTITEM(MENU_MODE_LIVE_KEYS))
+#define ITEMNUM_LIVEKEYS_MAP   (SHIFTMENU(MENU_NUM_MODE) | \
+                                SHIFTITEM(MENU_MODE_LIVE_KEYS_MAP))
 
 // STATIC_ASSERT(ARRAY_SIZE(becky_menu) == 20);
 
@@ -688,7 +695,7 @@ create_menu(void)
     }
     memcpy(menu, becky_menu, sizeof (becky_menu));
     if (menu[MENU_INDEX_MODE +
-             MENU_MODE_HID_TO_AMIGA].nm_MutualExclude == (0x38 ^ 0x10)) {
+             MENU_MODE_HID_TO_AMIGA].nm_MutualExclude == (0x78 ^ 0x10)) {
         /* Add checkmark to "Amiga scancode" or "HID scancode" menu item */
         if (capture_hid_scancodes == 0)
             menu[MENU_INDEX_MODE + MENU_MODE_AMIGA_SCANCODE].nm_Flags |= CHECKED;
@@ -1042,6 +1049,7 @@ user_usage_hint_show(uint from_menu)
             gui_printf2("Pick HID key below and up to four Amiga keys above.");
             break;
         case 2:
+        case 3:
             if (from_menu)
                 return;  // Not this hint again
             gui_printf2("Select Mode / Map HID to Amiga to remap keys.");
@@ -1049,6 +1057,28 @@ user_usage_hint_show(uint from_menu)
     }
     set_line2 = 1;
 }
+
+static void
+handle_esc_key(uint saw_esc)
+{
+    static uint8_t warned_esc = 0;
+    if (saw_esc) {
+        if (warned_esc++ == 0) {
+            gui_printf2("Press ESC again to exit");
+        } else {
+            gui_printf2("Exiting");
+            program_done = TRUE;
+        }
+        set_line2 = 1;
+    } else if (warned_esc) {
+        if (set_line2) {
+            set_line2 = 0;
+            gui_printf2("");
+        }
+        warned_esc = 0;
+    }
+}
+
 
 static void
 user_usage_hint_clear(void)
@@ -1731,11 +1761,13 @@ amiga_rawkey(uint8_t code)
     uint released = code & 0x80;
     uint cur = amiga_scancode_to_capnum[scancode];
 
-//  printf("amiga_rawkey %x\n", code);
     if (!released) {
+        if (enable_esc_exit)
+            handle_esc_key(scancode == RAWKEY_ESC);
         amiga_cur_capnum = cur;
         amiga_cur_scancode = scancode;
     }
+//  printf("amiga_rawkey %x\n", code);
 
     /*
      * map_hid_to_amiga
@@ -1743,6 +1775,7 @@ amiga_rawkey(uint8_t code)
      * 1  An Amiga keystroke adds or removes the key from the current
      *    HID -> Amiga mapping
      * 2  Live keystrokes are reported with no regard for mappings.
+     * 3  Live keystrokes and their mappings are reported
      */
     switch (map_hid_to_amiga) {
         case 0:
@@ -1754,36 +1787,34 @@ amiga_rawkey(uint8_t code)
                 enter_leave_amiga_key(amiga_last_capnum, 0, 1);
             }
             enter_leave_amiga_key(amiga_cur_capnum, 1, 1);
-            amiga_last_capnum = cur;
             break;
         case 1:
             if (released)
                 return;
             map_or_unmap_scancode(amiga_cur_scancode, hid_cur_scancode, 1);
-            amiga_last_capnum = cur;
             enter_leave_hid_key(hid_cur_capnum, 1, 1);
             break;
         case 2:
             /* Just highlight all keys which are currently pressed */
-            if (cur != 0xff) {
-                if (released)
-                    draw_amiga_key(cur, 0);
-                else
-                    draw_amiga_key(cur, 1);
-            }
+            if (cur != 0xff)
+                draw_amiga_key(cur, !released);
+            break;
+        case 3:
+            enter_leave_amiga_key(cur, !released, 1);
             break;
     }
+    if (!released)
+        amiga_last_capnum = cur;
 }
-
 
 static void
 hid_rawkey(uint8_t scancode, uint released)
 {
     uint cur = hid_scancode_to_capnum[scancode];
-    if (enable_esc_exit && (scancode == HS_ESC) && !released) {
-        program_done = TRUE;
-    }
+
     if (!released) {
+        if (enable_esc_exit)
+            handle_esc_key(scancode == HS_ESC);
         hid_cur_scancode = scancode;
         hid_cur_capnum = cur;
     }
@@ -1795,6 +1826,7 @@ hid_rawkey(uint8_t scancode, uint released)
      *    Amiga <- HID mapping
      * 1  A HID keystroke switches to that key's mappings
      * 2  Live keystrokes are reported with no regard for mappings.
+     * 3  Live keystrokes and their mappings are reported
      */
     switch (map_hid_to_amiga) {
         case 0:
@@ -1814,89 +1846,32 @@ hid_rawkey(uint8_t scancode, uint released)
             break;
         case 2:
             /* Just highlight all keys which are currently pressed */
-            if (cur != 0xff) {
-                if (released)
-                    draw_hid_key(cur, 0);
-                else
-                    draw_hid_key(cur, 1);
-            }
+            if (cur != 0xff)
+                draw_hid_key(cur, !released);
+            break;
+        case 3:
+            enter_leave_hid_key(cur, !released, 1);
             break;
     }
-    if (!released) {
+    if (!released)
         hid_last_capnum = cur;
-    }
 }
 
 static void
 mouse_button_press(uint button_down)
 {
     /* Button press occurred. First determine where. */
-    static uint8_t last_capnum;
-    static uint8_t last_was_amiga;
-
-    if (button_down) {
-        /*
-         * Capture state at mouse button down in case user moves the mouse
-         * off of a key while holding it down.
-         */
-        last_capnum = mouse_last_capnum;
-        last_was_amiga = mouse_last_was_amiga;
-
-        if (mouse_last_was_amiga) {
-            amiga_cur_capnum = mouse_last_capnum;
-            amiga_cur_scancode = amiga_keypos[amiga_cur_capnum].scancode;
-        } else {
-            hid_cur_capnum = mouse_last_capnum;
-            hid_cur_scancode = hid_keypos[hid_cur_capnum].scancode;
-        }
-        if ((amiga_cur_capnum != 0xff) && (hid_cur_capnum != 0xff))
-            user_usage_hint_clear();
-    }
-    if (last_capnum == 0xff)
+    if (mouse_last_capnum == 0xff)
         return;  // Not over keyboard button
 
-    /*
-     * map_hid_to_amiga
-     * 0  Mouse click on Amiga key switches to that key's mappings
-     *        A second mouse click "leaves" the key.
-     *    Mouse click on HID key adds or removes that key as mapped to
-     *        the current Amiga key.
-     * 1  Mouse click on HID key switches to that key's mappings
-     *        A second mouse click "leaves" the key.
-     *    Mouse click on Amiga key adds or removes that key as mapped to
-     *        the current HID key (up to four may be mapped).
-     * 2  Live keystrokes are reported with no regard for mappings.
-     */
-    switch (map_hid_to_amiga) {
-        case 0:
-            if (!button_down)
-                return;
-            if (last_was_amiga)
-                amiga_rawkey(amiga_keypos[amiga_cur_capnum].scancode);
-            else
-                map_or_unmap_scancode(amiga_cur_scancode, hid_cur_scancode, 0);
-            break;
-        case 1:
-            if (!button_down)
-                return;
-            if (!last_was_amiga)
-                hid_rawkey(hid_keypos[hid_cur_capnum].scancode, 0);
-            else
-                map_or_unmap_scancode(amiga_cur_scancode, hid_cur_scancode, 1);
-            break;
-        case 2:
-            if (last_was_amiga)
-                enter_leave_amiga_key(amiga_cur_capnum, button_down, 1);
-            else
-                enter_leave_hid_key(hid_cur_capnum, button_down, 1);
-            break;
-    }
-    if (button_down) {
-        if (mouse_last_was_amiga) {
-            amiga_last_capnum = mouse_last_capnum;
-        } else {
-            hid_last_capnum = mouse_last_capnum;
-        }
+    /* Let the keystroke handlers deal with button-triggered key presses */
+    if (mouse_last_was_amiga) {
+        uint8_t or_val = 0;
+        if (!button_down)
+            or_val = 0x80;
+        amiga_rawkey(amiga_keypos[mouse_last_capnum].scancode | or_val);
+    } else {
+        hid_rawkey(hid_keypos[mouse_last_capnum].scancode, !button_down);
     }
 }
 
@@ -2017,8 +1992,8 @@ load_keymap_from_bec(uint which)
     uint          maxpos;
     uint          cur;
     uint          rlen;
-    uint          key;
-    uint          maxkeys;
+    uint          map;
+    uint          maxmap;
     uint8_t       replybuf[256];
     uint8_t      *data;
 
@@ -2053,9 +2028,9 @@ load_keymap_from_bec(uint which)
         }
         reply = (bec_keymap_t *) replybuf;
         data = (void *) (reply + 1);
-        maxkeys = reply->bkm_len;
-        if (maxkeys > ARRAY_SIZE(hid_scancode_to_amiga[256]))
-            maxkeys = ARRAY_SIZE(hid_scancode_to_amiga[256]);
+        maxmap = reply->bkm_len;
+        if (maxmap > ARRAY_SIZE(hid_scancode_to_amiga[0]))
+            maxmap = ARRAY_SIZE(hid_scancode_to_amiga[0]);
         maxpos = reply->bkm_count;
         if (maxpos > NUM_SCANCODES - cur)
             maxpos = NUM_SCANCODES - cur;
@@ -2064,8 +2039,8 @@ load_keymap_from_bec(uint which)
         for (pos = 0; pos < maxpos; pos++) {
             uint cap;
             uint mapped = 0;
-            for (key = 0; key < maxkeys; key++, data++) {
-                hid_scancode_to_amiga[cur][key] = *data;
+            for (map = 0; map < maxmap; map++, data++) {
+                hid_scancode_to_amiga[cur][map] = *data;
                 if (*data == 0x00) {
                     /*
                      * This scancode is special -- could mean either Amiga
@@ -2074,10 +2049,13 @@ load_keymap_from_bec(uint which)
                      *
                      * The only case where 0x00 is treated as a scancode
                      * is when the following value is non-zero. So it's
-                     * not valid for the last slot.
+                     * not valid for the last slot. The exception is if
+                     * the map provided only has room for a single slot.
                      */
-                    if ((key >= maxkeys - 1) || (data[1] == 0x00))
+                    if ((maxmap > 1) &&
+                        ((map >= maxmap - 1) || (data[1] == 0x00))) {
                         continue;
+                    }
                 }
                 cap = amiga_scancode_to_capnum[*data];
                 if (cap != 0xff) {
@@ -2087,13 +2065,20 @@ load_keymap_from_bec(uint which)
                 if (*data != 0xff)
                     mapped++;
             }
-            if (maxkeys < reply->bkm_len) {
+            if ((map == 1) && (hid_scancode_to_amiga[cur][0] == 0x00)) {
+                /* Special case -- terminate backtick when maps are 1-byte */
+                hid_scancode_to_amiga[cur][map++] = 0xff;
+            }
+            for (; map < ARRAY_SIZE(hid_scancode_to_amiga[0]); map++)
+                hid_scancode_to_amiga[cur][map] = 0;
+
+            if (maxmap < reply->bkm_len) {
                 /* Local per-key map is smaller than BEC map */
-                data += reply->bkm_len - maxkeys;
-            } else if (maxkeys > reply->bkm_len) {
+                data += reply->bkm_len - maxmap;
+            } else if (maxmap > reply->bkm_len) {
                 /* Local per-key map is larger than BEC map */
-                memset(&hid_scancode_to_amiga[cur][key], 0,
-                       maxkeys - reply->bkm_len);
+                memset(&hid_scancode_to_amiga[cur][map], 0,
+                       maxmap - reply->bkm_len);
             }
             if (mapped) {
                 cap = hid_scancode_to_capnum[cur];
@@ -2117,8 +2102,8 @@ save_keymap_to_bec(void)
     uint          maxpos = 60;
     uint          cur;
     uint          rlen;
-    uint          key;
-    uint          maxkeys = 4;
+    uint          map;
+    uint          maxmap = 4;
     uint8_t       sendbuf[256];
     uint8_t      *data;
     uint          sendlen;
@@ -2133,11 +2118,11 @@ save_keymap_to_bec(void)
             maxpos = 256 - cur;
         req->bkm_which = BKM_WHICH_KEYMAP;
         req->bkm_start = cur;
-        req->bkm_len   = maxkeys;
+        req->bkm_len   = maxmap;
         req->bkm_count = maxpos;
         for (pos = 0; pos < maxpos; pos++) {
-            for (key = 0; key < maxkeys; key++)
-                *(data++) = hid_scancode_to_amiga[cur][key];
+            for (map = 0; map < maxmap; map++)
+                *(data++) = hid_scancode_to_amiga[cur][map];
             cur++;
         }
         sendlen = (uintptr_t) data - (uintptr_t) sendbuf;
@@ -2276,15 +2261,17 @@ load_parse_error:
                 /* Handle special cases */
                 if (sc_count == 0) {
                     /* No mapping provided: terminate this mapping */
-                    hid_scancode_to_amiga[hid_code][0] = 0xff;
-                    continue;
+                    hid_scancode_to_amiga[hid_code][sc_count++] = 0xff;
                 } else if ((sc_count <= 3) &&
                            (hid_scancode_to_amiga[hid_code][sc_count] == 0x00)) {
                     /*
                      * Last mapping provided was Amiga backtick scancode:
                      * terminate mapping by adding 0xff.
                      */
-                    hid_scancode_to_amiga[hid_code][sc_count] = 0xff;
+                    hid_scancode_to_amiga[hid_code][sc_count++] = 0xff;
+                }
+                while (sc_count < 4) {
+                    hid_scancode_to_amiga[hid_code][sc_count++] = 00;
                 }
 
                 hcap = hid_scancode_to_capnum[hid_code];
@@ -2612,6 +2599,14 @@ set_menu_checked:
                                             goto set_menu_checked;
                                         }
                                         break;
+                                    case MENU_MODE_LIVE_KEYS_MAP:
+                                        map_hid_to_amiga = 3;
+                                        if (!checked) {
+                                            /* Force it to remain checked */
+                                            chk_item = ITEMNUM_LIVEKEYS_MAP;
+                                            goto set_menu_checked;
+                                        }
+                                        break;
                                     case MENU_MODE_ANSI_LAYOUT:
                                         is_ansi_layout = checked;
                                         draw_win();
@@ -2665,10 +2660,6 @@ set_menu_checked:
                     break;
                 case IDCMP_RAWKEY:
                     amiga_rawkey(icode);
-                    if (enable_esc_exit && (icode == RAWKEY_ESC)) {
-                        program_done = TRUE;
-                        break;
-                    }
                     break;
                 case IDCMP_REFRESHWINDOW:
                     BeginRefresh(window);
@@ -2700,6 +2691,7 @@ main(int argc, char *argv[])
 {
     uint8_t flag_mapamiga = 0;
     uint8_t flag_maphid = 0;
+    uint8_t flag_mapped = 0;
 
     generate_scancode_to_capnum();
     if (argc > 0) {
@@ -2730,6 +2722,9 @@ main(int argc, char *argv[])
                         case 'm':  // mapamiga
                             flag_mapamiga = 1;
                             break;
+                        case 'p':  // mapped
+                            flag_mapped = 1;
+                            break;
                         default:
                             err_printf("Unknown argument %s\n", ptr);
                             usage();
@@ -2751,6 +2746,8 @@ main(int argc, char *argv[])
         map_hid_to_amiga = 1;
     else if (flag_mapamiga)
         map_hid_to_amiga = 0;
+    else if (flag_mapped)
+        map_hid_to_amiga = 3;
     else
         map_hid_to_amiga = 2;
 
