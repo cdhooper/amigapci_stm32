@@ -256,10 +256,10 @@ bad_arg:
             if (req->bkm_timeout) {
                 uint16_t timeout = SWAP16(req->bkm_timeout);
                 keyboard_cap_timeout = timer_tick_plus_msec(timeout);
-                keyboard_cap_src     = req->bkm_source;
+                keyboard_cap_src_req = req->bkm_source;
             } else {
                 keyboard_cap_timeout = 0;
-                keyboard_cap_src     = 0;
+                keyboard_cap_src_req = 0;
                 req->bkm_count = 0;
             }
             count = req->bkm_count;

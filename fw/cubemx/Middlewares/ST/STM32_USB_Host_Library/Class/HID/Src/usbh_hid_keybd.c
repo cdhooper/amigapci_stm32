@@ -389,6 +389,7 @@ HID_KEYBD_Info_TypeDef *USBH_HID_GetKeybdInfo(USBH_HandleTypeDef *phost, HID_Han
 }
 #endif
 
+#if 0
 /**
   * @brief  USBH_HID_DecodeKeyboard
   *         Retrieve and decode keyboard input
@@ -459,6 +460,7 @@ USBH_StatusTypeDef USBH_HID_DecodeKeyboard(USBH_HandleTypeDef *phost, HID_Handle
 
     return (USBH_FAIL);
 }
+#endif
 
 #if 0
 /**

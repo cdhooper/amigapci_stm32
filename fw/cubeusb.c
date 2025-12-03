@@ -891,6 +891,7 @@ USBH_HID_EventCallback(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle)
         if (USBH_HID_DecodeKeyboard(phost, HID_Handle, &info) != USBH_OK)
             return;
         keyboard_usb_input((usb_keyboard_report_t *) &info);
+        keyboard_usb_input_mm(info.mm_key, ARRAY_SIZE(info.mm_key));
     } else {
         printf("USB%u Event\n", port);
     }

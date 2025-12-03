@@ -43,8 +43,8 @@ extern uint8_t  amiga_keyboard_sent_wake;
 extern uint8_t  amiga_keyboard_has_sync;
 extern uint8_t  amiga_keyboard_lost_sync;
 extern uint8_t  keyboard_raw_mode;
-extern uint8_t  keyboard_cap_src;
 extern uint64_t keyboard_cap_timeout;
+extern volatile uint8_t  keyboard_cap_src_req;
 
 /* Newmouse keycodes */
 #define NM_WHEEL_UP       (0x7A)

@@ -62,6 +62,7 @@ EndBSPDependencies */
 #define PPRINTF(...) do { } while (0)
 #endif
 
+#define BIT(x) (1U << (x))
 
 /** @addtogroup USBH_LIB
 * @{
@@ -1769,8 +1770,8 @@ is_mouse:
                 if (rd->pos_key[cur] == 0)
                     continue;
                 report_info->mm_key[cur] =
-                        readbits(report_data, rd->pos_key[cur], rd->bits_key, 1);
-                dprintf(DF_USB_DECODE_MISC, " %x", report_info->mm_key[cur]);
+                    readbits(report_data, rd->pos_key[cur], rd->bits_key, 1);
+                dprintf(DF_USB_DECODE_MISC, " %02x", report_info->mm_key[cur]);
             }
         } else if ((rd->id_sysctl != 0) && (rd->id_sysctl == id)) {
             report_info->sysctl = readbits(report_data,
@@ -1845,6 +1846,100 @@ is_mouse:
         return USBH_OK;
     }
     return   USBH_FAIL;
+}
+
+/**
+  * @brief  USBH_HID_DecodeKeyboard
+  *         Retrieve and decode keyboard input
+  * @param  phost: Host handle
+  * @retval keyboard information
+  */
+USBH_StatusTypeDef USBH_HID_DecodeKeyboard(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle, HID_Keyboard_Info_TypeDef *report_info)
+{
+    uint recvlen;
+    uint len;
+    uint32_t report_data[6];
+    HID_RDescTypeDef *rd = &HID_Handle->HID_RDesc;
+
+    if (HID_Handle == NULL)
+        return (USBH_FAIL);
+
+    if (HID_Handle->length == 0U)
+        return (USBH_FAIL);
+
+    /* Fill report */
+    len = HID_Handle->length;
+    if (len > sizeof (report_data))
+        len = sizeof (report_data);
+
+    memset(report_data, 0, sizeof (*report_data));
+    recvlen = USBH_HID_FifoRead(&HID_Handle->fifo, &report_data, len);
+    USBH_HID_FifoFlush(&HID_Handle->fifo);  // Discard excess data
+    if (config.debug_flag & DF_USB_DECODE_KBD) {
+        uint pos;
+        uint8_t *ptr = (uint8_t *) report_data;
+        for (pos = 0; pos < recvlen; pos++) {
+            if ((pos & 3) == 0) {
+                if (pos == 0)
+                    printf("\n");
+                else
+                    printf(" ");
+            }
+            printf("%02x", *(ptr++));
+        }
+        printf(" ");
+    }
+
+    if (recvlen > 0) {
+        uint cur;
+        uint8_t id = report_data[0];
+        memset(report_info, 0, sizeof (*report_info));
+        if ((rd->id_consumer != 0) && (rd->id_consumer == id)) {
+            dprintf(DF_USB_DECODE_MISC, "mmkey");
+            for (cur = 0; cur < rd->num_keys; cur++) {
+                if (rd->pos_key[cur] == 0)
+                    continue;
+                report_info->mm_key[cur] =
+                    readbits(report_data, rd->pos_key[cur], rd->bits_key, 1);
+                dprintf(DF_USB_DECODE_MISC, " %02x", report_info->mm_key[cur]);
+            }
+        } else if (rd->pos_keynkro & 0x8000) {
+            uint byte_keymod  = rd->pos_keymod / 8;
+            uint pos = 0;
+            uint pressed = 0;
+            uint pos_keynkro = rd->pos_keynkro & 0x7fff;
+            memset(report_info, 0, sizeof (*report_info));
+            memcpy(&report_info->modifier,
+                   ((uint8_t *) report_data) + byte_keymod, 1);
+            for (pos = pos_keynkro; pos < recvlen * 8; ) {
+                if (((pos & 31) == 0) && (report_data[pos / 32] == 0)) {
+                    /* Nothing set in these bits */
+                    pos += 32;
+                    continue;
+                }
+                if (report_data[pos / 32] & BIT(pos & 31)) {
+                    uint scancode = pos - pos_keynkro;
+                    report_info->keycode[pressed] = scancode;
+                    if (++pressed == 6)
+                        break;  // buffer full
+                }
+                pos++;
+            }
+        } else if ((rd->pos_keymod != 0) || (rd->pos_keynkro != 0)) {
+            uint byte_keymod  = rd->pos_keymod / 8;
+            uint byte_key6kro = rd->pos_keynkro / 8;
+            memset(report_info, 0, sizeof (*report_info));
+            memcpy(&report_info->modifier,
+                   ((uint8_t *) report_data) + byte_keymod, 1);
+            memcpy(&report_info->keycode,
+                   ((uint8_t *) report_data) + byte_key6kro, 6);
+        } else {
+            memcpy(report_info, report_data, sizeof (*report_info));
+        }
+        return (USBH_OK);
+    }
+
+    return (USBH_FAIL);
 }
 
 static uint32_t hid_rx_report_buf[2][HID_QUEUE_SIZE * 4];

@@ -311,7 +311,7 @@ exti0_isr(void)
                     break;
                 }
 
-            if ((rtc_cur_bank == 1) && (addr == RP_MAGIC_LO) &&
+            if ((addr == RP_MAGIC_LO) && (rtc_cur_bank == 1) &&
                 (bec_msg_out != 0)) {
                 bec_msg_out += 2;
                 if (bec_msg_out < bec_msg_out_max) {

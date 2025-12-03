@@ -385,6 +385,7 @@ typedef struct {
   uint8_t              modifier;    // Keyboard modifier keys
   uint8_t              reserved;    // Reserved for OEM use, always set to 0
   uint8_t              keycode[6];  // Key codes of the currently pressed keys
+  uint16_t             mm_key[2];   // Multimedia key(s)
 }
 HID_Keyboard_Info_TypeDef;
 

@@ -226,6 +226,21 @@ send_byte(uint8_t byte)
     send_nibble_lo(byte);
 }
 
+static void
+cmd_flush(uint long_flush)
+{
+    uint count;
+    uint maxcount = long_flush ? 100 : 10;
+    uint retries  = 0;
+    for (count = 0; count < maxcount; count++) {
+        if (get_nibble_lo() != 0) {
+            if (retries++ > 100)
+                break;  // Wedged too long
+            count = 0;
+        }
+    }
+}
+
 uint
 send_cmd(uint8_t cmd, void *arg, uint16_t arglen,
          void *reply, uint replymax, uint *replyalen)
@@ -261,10 +276,12 @@ send_cmd(uint8_t cmd, void *arg, uint16_t arglen,
     send_byte(crc >> 16);
     send_byte(crc >> 8);
     send_byte(crc);
+    Permit();
+    Forbid();
 
     /* Wait for reply (up to 500ms) */
-    for (timeout = 25000; timeout > 0; timeout--) {
-        cia_spin(CIA_USEC(50));
+    for (timeout = 5000; timeout > 0; timeout--) {
+        cia_spin(CIA_USEC(100));
         if ((got_magic[0] = get_nibble_hi()) == bec_magic[0])
             break;
     }
@@ -281,6 +298,7 @@ send_cmd(uint8_t cmd, void *arg, uint16_t arglen,
             bad_magic++;
 
     if (bad_magic) {
+        cmd_flush(1);
         if (flag_debug) {
             printf("BEC bad magic:");
             for (pos = 0; pos < ARRAY_SIZE(got_magic); pos++)
@@ -317,6 +335,7 @@ send_cmd(uint8_t cmd, void *arg, uint16_t arglen,
     calc_crc = crc32(calc_crc, &msglen, 2);
     calc_crc = crc32(calc_crc, replybuf, msglen);
     if (calc_crc != got_crc) {
+        cmd_flush(0);
         if (flag_debug) {
             printf("Bad CRC %08x != calc %08x rc=%x l=%x\n",
                    got_crc, calc_crc, status, msglen);

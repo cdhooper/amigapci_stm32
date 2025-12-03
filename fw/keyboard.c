@@ -50,11 +50,12 @@ uint8_t  amiga_keyboard_has_sync;
 uint8_t  amiga_keyboard_lost_sync;
 
 /* Keyboard scancode capture globals */
-uint8_t         keyboard_cap_src;      // Capture source (0 = None, 1 = HID)
-uint64_t        keyboard_cap_timeout;  // Capture timeout
-static uint8_t  keyboard_cap_prod;
-static uint8_t  keyboard_cap_cons;
-static uint16_t keyboard_cap_buf[64];
+volatile uint8_t keyboard_cap_src_req;  // New capture source
+static uint8_t   keyboard_cap_src;      // Capture source (0 = None, 1 = HID)
+uint64_t         keyboard_cap_timeout;  // Capture timeout
+static uint8_t   keyboard_cap_prod;
+static uint8_t   keyboard_cap_cons;
+static uint16_t  keyboard_cap_buf[64];
 
 /* sa_flags values */
 #define SAF_ADD_SHIFT 0x01
@@ -139,7 +140,7 @@ static const struct {
     { AS_NONE,       AS_NONE, 0x00 },  // 0x46  SysRq
     { AS_NONE,       AS_NONE, 0x00 },  // 0x47  Scroll Lock
     { AS_PLAYPAUSE,  AS_NONE, 0x00 },  // 0x48  Pause
-    { AS_BACKSLASH,  AS_NONE, 0x00 },  // 0x49  Insert
+    { AS_INSERT,     AS_NONE, 0x00 },  // 0x49  Insert
     { AS_KP_LPAREN,  AS_NONE, 0x00 },  // 0x4a  Home      (FS-UAE mapping)
     { AS_KP_RPAREN,  AS_NONE, 0x00 },  // 0x4b  Page Up   (FS-UAE mapping)
     { AS_DELETE,     AS_NONE, 0x00 },  // 0x4c  Delete
@@ -717,19 +718,6 @@ static const struct {
 };
 
 static inline bool
-find_key_in_report(usb_keyboard_report_t *report, uint8_t keycode)
-{
-    uint i;
-    for (i = 0; i < 6; i++)
-        if (report->keycode[i] == keycode) {
-            report->keycode[i] = 0;  // Remove as it was seen again
-            return (true);
-        }
-
-    return (false);
-}
-
-static inline bool
 find_key_in_buf(uint8_t keycode, uint8_t *buf, uint buflen)
 {
     uint i;
@@ -830,10 +818,6 @@ capture_scancode(uint16_t keycode)
     uint next;
     if (keyboard_cap_src == 0)
         return (keycode);
-    if (timer_tick_has_elapsed(keyboard_cap_timeout)) {
-        keyboard_cap_src = 0;
-        return (keycode);
-    }
 
     /* Add captured input to buffer */
     next = keyboard_cap_prod + 1;
@@ -850,14 +834,15 @@ static uint32_t
 convert_mm_scancode_to_amiga(uint keycode)
 {
     uint pos;
-    uint8_t code_usb;
+    uint tcode;
     uint8_t amiga_modifier;
 
     for (pos = 0; pos < ARRAY_SIZE(scancode_mm_to_hid_kbd); pos++) {
         if (scancode_mm_to_hid_kbd[pos].sc_mmusb == keycode) {
-            code_usb = scancode_mm_to_hid_kbd[pos].sc_usb;
-            dprintf(DF_USB_KEYBOARD, "<=%02x>", code_usb);
-            return (convert_scancode_to_amiga(code_usb,
+            tcode = scancode_mm_to_hid_kbd[pos].sc_usb;
+            dprintf(DF_USB_KEYBOARD, "<=%02x>", tcode);
+            tcode = capture_scancode(tcode);
+            return (convert_scancode_to_amiga(tcode,
                                     last_key_report_modifier, &amiga_modifier));
         }
     }
@@ -1274,7 +1259,7 @@ keyboard_hid_to_amiga(uint8_t *prev_keys, uint8_t *cur_keys, uint buflen,
                     }
                     keyboard_terminal_put(ascii, conv);
                 } else {
-                    /* Convert to Amiga keypress */
+                    /* Convert to Amiga keypress (key down) */
                     uint8_t amiga_modifier;
                     uint32_t tcode;
 
@@ -1333,7 +1318,7 @@ keyboard_hid_to_amiga(uint8_t *prev_keys, uint8_t *cur_keys, uint buflen,
                         DPRINTF("KeyUp %02x\n", ascii);
                 }
             } else {
-                /* Convert to Amiga keypress */
+                /* Convert to Amiga keypress (key up) */
                 uint8_t amiga_modifier;
                 uint32_t tcode;
                 tcode = capture_scancode(keycode | KEYCAP_UP);
@@ -1393,8 +1378,30 @@ keyboard_usb_input(usb_keyboard_report_t *report)
     static uint8_t prev_keys[6];
     static uint8_t prev_mods[8];
     uint8_t        cur_mods[8];
+    uint8_t        prev_keys_temp[6];
+    uint8_t        prev_mods_temp[8];
     uint8_t        modifier = report->modifier;
-    uint32_t mouse_buttons_old = mouse_buttons_add;
+    uint32_t       mouse_buttons_old = mouse_buttons_add;
+
+    if ((keyboard_cap_src != 0) && timer_tick_has_elapsed(keyboard_cap_timeout))
+        keyboard_cap_src_req = 0;
+
+    if (keyboard_cap_src != keyboard_cap_src_req) {
+        /* Capture mode switch: Release any keys which were asserted */
+        memset(cur_mods, 0, sizeof (cur_mods));
+
+        /*
+         * By preserving prev_keys and prev_mods, this might lead to extra
+         * key releases being sent in the new keyboard_cap_src, but at
+         * least it won't result in duplicate key presses being sent to
+         * the new keyboard_cap_src.
+         */
+        memcpy(prev_keys_temp, prev_keys, sizeof (prev_keys));
+        memcpy(prev_mods_temp, prev_mods, sizeof (prev_mods));
+        keyboard_hid_to_amiga(prev_mods_temp, cur_mods, sizeof (prev_mods), 0);
+        keyboard_hid_to_amiga(prev_keys_temp, cur_mods, sizeof (prev_keys), 0);
+        keyboard_cap_src = keyboard_cap_src_req;
+    }
 
     if (config.flags & CF_KEYBOARD_SWAPALT) {
         /*
@@ -1848,6 +1855,7 @@ keyboard_poll(void)
     }
 
     if (amiga_keyboard_sent_wake == 0) {
+        ak_rb_producer = ak_rb_consumer;  // Flush buffer
         keyboard_put_amiga(AS_POWER_INIT);
         keyboard_put_amiga(AS_POWER_DONE);
         amiga_keyboard_sent_wake = 1;
@@ -1912,7 +1920,7 @@ printf("3: %llu usec\n", timer_tick_to_usec(timer_tick_get() - start));
 void
 keyboard_init(void)
 {
-    ak_rb_producer = ak_rb_consumer = 0;
+    ak_rb_producer = ak_rb_consumer;
 #if 0
     printf("BND KBCLK_IN=%x KBCLK_OUT=%x KBDAT_IN=%x KBDAT_OUT=%x\n",
            BND_IO(KBCLK_PORT + GPIO_IDR_OFFSET, low_bit(KBCLK_PIN)),

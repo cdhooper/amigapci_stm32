@@ -56,6 +56,7 @@ const char *version = "\0$VER: becky "VERSION" ("BUILD_DATE") \xA9 Chris Hooper"
 uint        flag_debug = 0;
 static uint8_t is_ansi_layout = 1;  // 1=ANSI (North America), 0=ISO (Europe)
 static uint8_t enable_esc_exit = 1;  // ESC key will exit program
+static uint8_t edit_key_mapping_mode = 0;  // 1=Hex editing a single mapping
 static BOOL program_done = FALSE;
 
 static uint amiga_keyboard_left;
@@ -67,6 +68,9 @@ static uint win_width  = 500;
 static uint win_height = 220;
 static uint kbd_width  = 470;
 static uint kbd_height = 100;
+
+static const uint font_pixels_x = 8;
+static const uint font_pixels_y = 8;
 
 typedef struct {
     uint8_t  shaded;
@@ -225,12 +229,12 @@ typedef struct {
 #define AKB_MIN_X   5000
 #define AKB_MIN_Y   5000
 #define AKB_MAX_X  45500
-#define AKB_MAX_Y  15800
+#define AKB_MAX_Y  15600
 
 #define HIDKB_MIN_X  5000
 #define HIDKB_MIN_Y  5000
 #define HIDKB_MAX_X 44500
-#define HIDKB_MAX_Y 15800
+#define HIDKB_MAX_Y 15600
 
 // 1u    Alphanumeric keys (A, B, C, etc.), number keys, function keys
 // 1.25u Ctrl, Alt, GUI (Windows/Command) keys (bottom row)
@@ -564,7 +568,6 @@ OpenAWindow(void)
         if (win_height > 240)  // debug
             win_height = 240;
     }
-printf("wh=%u\n", win_height);
     return (OpenWindowTags(NULL,
 //      WA_Left, 0,
 #if 1
@@ -661,7 +664,6 @@ static struct NewMenu *menu;
 #define MENU_MODE_LIVE_KEYS_MAP    6
 #define MENU_MODE_ANSI_LAYOUT      8
 
-// #define MENU_KEY_CUSTOM_MAPPING    0
 #define MENU_KEY_REMOVE_MAPPINGS   0
 #define MENU_KEY_REDRAW_KEYS       1
 
@@ -682,8 +684,8 @@ static struct NewMenu *menu;
 
 static struct Menu *menus = NULL;
 static APTR        *visual_info;
-static uint8_t      capture_hid_scancodes = 1;
-static uint8_t      map_hid_to_amiga;  // 0=Amiga->HID, 1=HID->Amiga, 2=Rawkeys
+static uint8_t      capture_hid_scancodes = 1;  // 0=Amiga, 1=HID
+static uint8_t      key_mapping_mode;  // 0=Amiga->HID, 1=HID->Amiga, 2=Rawkeys
 
 static void
 create_menu(void)
@@ -706,12 +708,14 @@ create_menu(void)
          * Add checkmark to "Amiga to HID" or "HID to Amiga" or "Live keys"
          * menu item.
          */
-        if (map_hid_to_amiga == 0)
+        if (key_mapping_mode == 0)
             menu[MENU_INDEX_MODE + MENU_MODE_AMIGA_TO_HID].nm_Flags |= CHECKED;
-        else if (map_hid_to_amiga == 1)
+        else if (key_mapping_mode == 1)
             menu[MENU_INDEX_MODE + MENU_MODE_HID_TO_AMIGA].nm_Flags |= CHECKED;
-        else
+        else if (key_mapping_mode == 2)
             menu[MENU_INDEX_MODE + MENU_MODE_LIVE_KEYS].nm_Flags |= CHECKED;
+        else
+            menu[MENU_INDEX_MODE + MENU_MODE_LIVE_KEYS_MAP].nm_Flags |= CHECKED;
 
         /* Add checkmark to "ANSI Layout" menu item */
         if (is_ansi_layout)
@@ -793,7 +797,7 @@ scale_key_dimensions(void)
 }
 
 static void
-box(struct RastPort *rp, SHORT xmin, SHORT ymin, SHORT xmax, SHORT ymax)
+box(SHORT xmin, SHORT ymin, SHORT xmax, SHORT ymax)
 {
     Move(rp, xmin, ymin);
     Draw(rp, xmax, ymin);
@@ -806,8 +810,7 @@ static SHORT amiga_enter_wxlower;
 static SHORT amiga_enter_ymid;
 
 static void
-box_enterkey_iso(struct RastPort *rp, SHORT xpos, SHORT ypos,
-                 SHORT wx, SHORT wy)
+box_enterkey_iso(SHORT xpos, SHORT ypos, SHORT wx, SHORT wy)
 {
     SHORT ymin  = ypos - wy;
     SHORT ymax  = ypos + wy;
@@ -825,8 +828,7 @@ box_enterkey_iso(struct RastPort *rp, SHORT xpos, SHORT ypos,
 }
 
 static void
-box_enterkey_ansi(struct RastPort *rp, SHORT xpos, SHORT ypos,
-                  SHORT wx, SHORT wy)
+box_enterkey_ansi(SHORT xpos, SHORT ypos, SHORT wx, SHORT wy)
 {
     SHORT ymin  = ypos - wy;
     SHORT ymax  = ypos + wy;
@@ -954,8 +956,7 @@ close_font(void)
 }
 
 static void
-center_text(struct RastPort *rp, SHORT pos_x, SHORT pos_y, SHORT max_x,
-            const char *str)
+center_text(SHORT pos_x, SHORT pos_y, SHORT max_x, const char *str)
 {
     struct TextFont *tf = rp->Font;
     SHORT height = tf->tf_YSize;
@@ -995,16 +996,19 @@ gui_printf(const char *fmt, ...)
     va_end(args);
     buf[sizeof (buf) - 1] = '\0';
     len = strlen(buf);
-    if (len == 0)
-        return;
     SetAPen(rp, pen_status_fg);
     SetBPen(rp, pen_status_bg);
-    Move(rp, pos_x, pos_y);
-    Text(rp, buf, len);
-    width = TextLength(rp, buf, len);
+    if (len > 0) {
+        Move(rp, pos_x, pos_y);
+        Text(rp, buf, len);
+        width = TextLength(rp, buf, len);
+    } else {
+        width = 0;
+    }
     if (width_last > width) {
         SetAPen(rp, 0);
-        RectFill(rp, pos_x + width, pos_y - 7, pos_x + width_last, pos_y + 1);
+        RectFill(rp, pos_x + width, pos_y - font_pixels_y + 1,
+                 pos_x + width_last, pos_y + 1);
     }
     width_last = width;
 }
@@ -1015,7 +1019,7 @@ gui_printf2(const char *fmt, ...)
 {
     static SHORT width_last;
     SHORT pos_x = window->BorderLeft + 4;
-    SHORT pos_y = hid_keyboard_top - 14;
+    SHORT pos_y = hid_keyboard_top - 4 - 2 - font_pixels_y;
     SHORT width;
     uint len;
     char buf[80];
@@ -1032,7 +1036,8 @@ gui_printf2(const char *fmt, ...)
     width = TextLength(rp, buf, len);
     if (width_last > width) {
         SetAPen(rp, 0);
-        RectFill(rp, pos_x + width, pos_y - 7, pos_x + width_last, pos_y + 1);
+        RectFill(rp, pos_x + width, pos_y - font_pixels_y + 1,
+                 pos_x + width_last, pos_y + 1);
     }
     width_last = width;
 }
@@ -1041,7 +1046,7 @@ gui_printf2(const char *fmt, ...)
 static void
 user_usage_hint_show(uint from_menu)
 {
-    switch (map_hid_to_amiga) {
+    switch (key_mapping_mode) {
         case 0:
             gui_printf2("Pick Amiga key above and HID key(s) below.");
             break;
@@ -1161,7 +1166,7 @@ draw_amiga_key(uint cur, uint pressed)
             RectFill(rp, pos_x - amiga_enter_wxlower, amiga_enter_ymid,
                      pos_x, pos_y + wy);
             SetAPen(rp, pen_cap_outline_lo);
-            box_enterkey_ansi(rp, pos_x, pos_y, wx, wy);
+            box_enterkey_ansi(pos_x, pos_y, wx, wy);
         } else {
             amiga_enter_ymid = pos_y - wy * 18 / 100;
             amiga_enter_wxlower = wx * 65 / 100;
@@ -1169,20 +1174,20 @@ draw_amiga_key(uint cur, uint pressed)
             RectFill(rp, pos_x - amiga_enter_wxlower, amiga_enter_ymid,
                      pos_x + wx, pos_y + wy);
             SetAPen(rp, pen_cap_outline_lo);
-            box_enterkey_iso(rp, pos_x, pos_y, wx, wy);
+            box_enterkey_iso(pos_x, pos_y, wx, wy);
             text_off = 2;
         }
         SetAPen(rp, keycap_fg_pen);
         SetBPen(rp, keycap_bg_pen);
-        center_text(rp, pos_x + text_off,
-                    pos_y, wx * 2 - text_off, amiga_keypos[cur].name);
+        center_text(pos_x + text_off, pos_y,
+                    wx * 2 - text_off, amiga_keypos[cur].name);
     } else {
         RectFill(rp, pos_x - wx, pos_y - wy, pos_x + wx, pos_y + wy);
         SetAPen(rp, keycap_fg_pen);
         SetBPen(rp, keycap_bg_pen);
-        center_text(rp, pos_x, pos_y, wx * 2, amiga_keypos[cur].name);
+        center_text(pos_x, pos_y, wx * 2, amiga_keypos[cur].name);
         SetAPen(rp, pen_cap_outline_lo);
-        box(rp, pos_x - wx, pos_y - wy, pos_x + wx, pos_y + wy);
+        box(pos_x - wx, pos_y - wy, pos_x + wx, pos_y + wy);
     }
     amiga_key_bbox[cur].x_min = pos_x - wx;
     amiga_key_bbox[cur].y_min = pos_y - wy;
@@ -1244,75 +1249,26 @@ draw_hid_key(uint cur, uint pressed)
     RectFill(rp, pos_x - wx, pos_y - wy, pos_x + wx, pos_y + wy);
     SetAPen(rp, keycap_fg_pen);
     SetBPen(rp, keycap_bg_pen);
-    center_text(rp, pos_x, pos_y, wx * 2, hid_keypos[cur].name);
+    center_text(pos_x, pos_y, wx * 2, hid_keypos[cur].name);
     SetAPen(rp, pen_cap_outline_lo);
-    box(rp, pos_x - wx, pos_y - wy, pos_x + wx, pos_y + wy);
+    box(pos_x - wx, pos_y - wy, pos_x + wx, pos_y + wy);
     hid_key_bbox[cur].x_min = pos_x - wx;
     hid_key_bbox[cur].y_min = pos_y - wy;
     hid_key_bbox[cur].x_max = pos_x + wx;
     hid_key_bbox[cur].y_max = pos_y + wy;
 }
 
-static BOOL
-draw_win(void)
-{
-    uint cur;
+static char    editbox[2][20];
+static uint8_t editbox_max_len[2];
+static uint8_t editbox_cursor_x;
+static uint8_t editbox_cursor_y;
+static SHORT   editbox_x_min;
+static SHORT   editbox_x_max[2];
+static SHORT   editbox_y_min[2];
+static SHORT   editbox_y_max[2];
+static uint8_t editbox_update_mode;  // 0=Amiga Key, 1=HID Key
+static uint8_t editbox_scancode;     // Either Amiga scancode or HID scancode
 
-    win_width = window->Width - window->BorderLeft - window->BorderRight + 3;
-    win_height = window->Height;
-
-    kbd_width     = win_width - 4;
-    kbd_height    = win_height * 8 / 20;
-
-    scale_key_dimensions();
-
-    /* Draw Amiga keyboard case */
-    uint draw_kbd_height = kbd_height * 18 / 20;
-    uint win_left = window->BorderLeft;
-    uint win_right = win_width;
-    hid_keyboard_top = win_height - kbd_height + window->BorderBottom;
-
-    /* Default drawing mode */
-    SetDrMd(rp, JAM2);
-    SetBPen(rp, pen_keyboard_background);
-
-    /* Draw Amiga keyboard case */
-    SetAPen(rp, pen_keyboard_background);
-    RectFill(rp, win_left, window->BorderTop,
-             win_right, window->BorderTop + draw_kbd_height);
-
-    /* Empty area between keyboards */
-    SetAPen(rp, 0);
-    RectFill(rp, win_left, window->BorderTop + draw_kbd_height,
-             win_right, hid_keyboard_top);
-    /* Draw HID keyboard case */
-    SetAPen(rp, pen_keyboard_background);
-    RectFill(rp, win_left, hid_keyboard_top,
-             win_right, win_height - window->BorderBottom);
-
-    SetAPen(rp, pen_cap_white);
-    box(rp, win_left, window->BorderTop,
-        win_right, window->BorderTop + draw_kbd_height);
-    SetAPen(rp, pen_cap_white);
-    box(rp, win_left, hid_keyboard_top,
-        win_right, win_height - window->BorderBottom);
-
-    /* Draw Amiga keyboard */
-    amiga_keyboard_left = window->BorderLeft + amiga_keysize[0].x + 4;
-    amiga_keyboard_top  = window->BorderTop  + amiga_keysize[0].y + 4;
-
-    for (cur = 0; cur < ARRAY_SIZE(amiga_keypos); cur++)
-        draw_amiga_key(cur, 0);
-
-    /* Draw HID keyboard */
-    hid_keyboard_left = window->BorderLeft + hid_keysize[0].x + 4;
-
-    for (cur = 0; cur < ARRAY_SIZE(hid_keypos); cur++)
-        draw_hid_key(cur, 0);
-
-    user_usage_hint_show(0);
-    return (TRUE);
-}
 
 static void
 draw_amiga_key_box(uint cur, uint do_mark)
@@ -1326,17 +1282,17 @@ draw_amiga_key_box(uint cur, uint do_mark)
         uint wy = amiga_keysize[ktype].y;
 
         if (is_ansi_layout) {
-            box_enterkey_ansi(rp, amiga_key_bbox[cur].x_min + wx,
+            box_enterkey_ansi(amiga_key_bbox[cur].x_min + wx,
                               amiga_key_bbox[cur].y_min + wy, wx, wy);
         } else {
-            box_enterkey_iso(rp, amiga_key_bbox[cur].x_min + wx,
+            box_enterkey_iso(amiga_key_bbox[cur].x_min + wx,
                              amiga_key_bbox[cur].y_min + wy, wx, wy);
         }
     } else {
-        box(rp, amiga_key_bbox[cur].x_min,
-                amiga_key_bbox[cur].y_min,
-                amiga_key_bbox[cur].x_max,
-                amiga_key_bbox[cur].y_max);
+        box(amiga_key_bbox[cur].x_min,
+            amiga_key_bbox[cur].y_min,
+            amiga_key_bbox[cur].x_max,
+            amiga_key_bbox[cur].y_max);
     }
 }
 
@@ -1344,30 +1300,178 @@ static void
 draw_hid_key_box(uint cur, uint do_mark)
 {
     SetAPen(rp, do_mark ? pen_cap_outline_hi : pen_cap_outline_lo);
-    box(rp, hid_key_bbox[cur].x_min,
-            hid_key_bbox[cur].y_min,
-            hid_key_bbox[cur].x_max,
-            hid_key_bbox[cur].y_max);
+    box(hid_key_bbox[cur].x_min,
+        hid_key_bbox[cur].y_min,
+        hid_key_bbox[cur].x_max,
+        hid_key_bbox[cur].y_max);
+}
+
+static uint8_t amiga_cur_capnum       = 0xff;
+static uint8_t amiga_cur_scancode     = 0xff;
+static uint8_t amiga_last_capnum      = 0xff;
+static uint8_t amiga_last_scancode    = 0xff;
+static uint8_t hid_last_capnum        = 0xff;
+static uint8_t hid_last_scancode      = 0xff;
+static uint8_t hid_cur_capnum         = 0xff;
+static uint8_t hid_cur_scancode       = 0xff;
+static uint8_t mouse_cur_scancode     = 0xff;
+static uint8_t mouse_cur_capnum       = 0xff;
+static uint8_t mouse_cur_selection    = 0;  // 0=None, 1=Amiga, 2=HID, 3=Editbox
+
+static void
+editbox_draw_box(uint is_hid)
+{
+    const uint gap_pixels = 2;
+    uint  cur;
+    uint  pos;
+    SHORT xmin;
+    SHORT xmax;
+    SHORT ymin;
+    SHORT ymax;
+    static SHORT last_len[2];
+    uint len = editbox_max_len[is_hid];
+
+    if (len > 12)
+        len = 12;
+    xmin = editbox_x_min;
+    xmax = editbox_x_max[is_hid];
+    ymin = editbox_y_min[is_hid];
+    ymax = ymin + font_pixels_y + 2;
+    pos = xmin + 1;
+
+    /* Surrounding box */
+    SetAPen(rp, pen_status_fg);
+    box(xmin, ymin, xmax, ymax);
+
+    for (cur = 0; cur < len; cur += 2) {
+        /* Fill background above each set of digits */
+        SetAPen(rp, pen_status_bg);
+        Move(rp, pos, ymin + 1);
+        Draw(rp, pos + font_pixels_x * 2 - 1, ymin + 1);
+
+        /* Each set of digits */
+        SetAPen(rp, pen_status_fg);
+        SetBPen(rp, pen_status_bg);
+        Move(rp, pos, ymin + font_pixels_y);
+        Text(rp, &editbox[is_hid][cur], 2);
+
+        pos += font_pixels_x * 2 + gap_pixels;
+    }
+    if (last_len[is_hid] > len) {
+        /* Cover previous display */
+        pos--;
+        SetAPen(rp, 0);
+        xmax = xmin + font_pixels_x * last_len[is_hid] +
+               ((last_len[is_hid] / 2) * gap_pixels) + 1;
+        RectFill(rp, pos, ymin, xmax, ymax);
+    }
+    last_len[is_hid] = len;
 }
 
 static void
-enter_leave_amiga_key(uint pos, uint do_mark, uint do_keycap)
+editbox_update_scancode(uint hid_to_amiga, uint is_hid, uint8_t *buf, uint len)
 {
-    uint8_t amiga_scancode = amiga_keypos[pos].scancode;
+    uint  cur;
+    char *strbuf;
+
+    if (edit_key_mapping_mode)
+        return;  // Don't allow updates while editing is taking place
+
+    if (hid_to_amiga) {
+        /* In HID to Amiga mode, there is 1 HID box and 4 Amiga boxes */
+        editbox_max_len[is_hid] = (is_hid ? 1 : 4) * 2;
+    } else {
+        /* In Amiga to HID mode, there is 1 Amiga box and 6 HID boxes */
+        editbox_max_len[is_hid] = (is_hid ? 6 : 1) * 2;
+    }
+
+    for (cur = 0; cur < 2; cur++) {
+        editbox_x_max[cur] = editbox_x_min + 1 +
+                             font_pixels_x * editbox_max_len[cur] +
+                             ((editbox_max_len[cur] - 1) / 2) * 2;  // gap
+    }
+
+    strbuf = editbox[is_hid];
+    for (cur = 0; cur < len; cur++)
+        sprintf(strbuf + cur * 2, "%02x", buf[cur]);
+    cur *= 2;
+    for (; cur < ARRAY_SIZE(editbox[0]); cur++)
+        strbuf[cur] = ' ';
+
+    editbox_update_mode = hid_to_amiga;
+    editbox_cursor_y = hid_to_amiga;
+    editbox_draw_box(is_hid);
+    if (hid_to_amiga == is_hid) {
+        /* The scancode being mapped is always the only entry */
+        editbox_scancode = buf[0];
+    }
+}
+
+static void
+editbox_copy_amiga_scancode_mapping(uint8_t amiga_scancode)
+{
+    uint8_t match_scancode;
+    uint    code;
+    uint    map;
+    uint    scanbuflen = 0;
+    uint8_t scanbuf[8];
+    for (code = 0; code < ARRAY_SIZE(hid_scancode_to_amiga); code++) {
+        for (map = 0; map < ARRAY_SIZE(hid_scancode_to_amiga[0]); map++) {
+            match_scancode = hid_scancode_to_amiga[code][map];
+            if (match_scancode == 0xff)
+                break;  // End of list
+            if (match_scancode == 0) {
+                /* Special case for Amiga backtick */
+                uint pos = map + 1;
+                for (; pos < ARRAY_SIZE(hid_scancode_to_amiga[0]); pos++)
+                    if (hid_scancode_to_amiga[code][pos] != 0x00)
+                        break;
+                if (pos >= ARRAY_SIZE(hid_scancode_to_amiga[0]))
+                    continue;
+            }
+            if (amiga_scancode == match_scancode) {
+                if (scanbuflen < sizeof (scanbuf))
+                    scanbuf[scanbuflen++] = code;
+                break;
+            }
+        }
+    }
+    editbox_update_scancode(0, 0, &amiga_scancode, 1);
+    editbox_update_scancode(0, 1, scanbuf, scanbuflen);
+}
+
+static void
+editbox_copy_hid_scancode_mapping(uint8_t hid_scancode)
+{
+    editbox_update_scancode(1, 0, hid_scancode_to_amiga[hid_scancode],
+                      sizeof (hid_scancode_to_amiga[0]));
+    editbox_update_scancode(1, 1, &hid_scancode, 1);
+}
+
+static void
+enter_leave_amiga_scancode(uint8_t amiga_scancode, uint do_mark, uint do_keycap)
+{
     uint8_t match_scancode;
     char    printbuf[80];
     char   *printbufptr = printbuf;
+    uint    cap;
     uint    code;
     uint    map;
+    uint    scanbuflen = 0;
+    uint8_t scanbuf[8];
     uint8_t hid_capnum;
 
-    if (pos == 0xff)
-        return;  // Not a valid cap
+    if (amiga_scancode == 0xff)
+        return;  // Not a valid scancode
 
-    if (do_keycap)
-        draw_amiga_key(pos, do_mark);
-    else
-        draw_amiga_key_box(pos, do_mark);
+    cap = amiga_scancode_to_capnum[amiga_scancode];
+    if (cap != 0xff) {
+        if (do_keycap)
+            draw_amiga_key(cap, do_mark);
+        else
+            draw_amiga_key_box(cap, do_mark);
+    }
+
     for (code = 0; code < ARRAY_SIZE(hid_scancode_to_amiga); code++) {
         for (map = 0; map < ARRAY_SIZE(hid_scancode_to_amiga[0]); map++) {
             match_scancode = hid_scancode_to_amiga[code][map];
@@ -1384,6 +1488,8 @@ enter_leave_amiga_key(uint pos, uint do_mark, uint do_keycap)
             }
             if (amiga_scancode == match_scancode) {
                 if (do_mark) {
+                    if (scanbuflen < sizeof (scanbuf))
+                        scanbuf[scanbuflen++] = code;
                     sprintf(printbufptr, " %02x", code);
                     printbufptr += strlen(printbufptr);
                 }
@@ -1405,22 +1511,26 @@ enter_leave_amiga_key(uint pos, uint do_mark, uint do_keycap)
 }
 
 static void
-enter_leave_hid_key(uint pos, uint do_mark, uint do_keycap)
+enter_leave_hid_scancode(uint8_t hid_scancode, uint do_mark, uint do_keycap)
 {
-    uint8_t hid_scancode = hid_keypos[pos].scancode;
-    uint8_t amiga_scancode;
-    uint    amigakey;
+    uint    cap;
     uint    map;
+    uint    amigakey;
     char    printbuf[80];
     char   *printbufptr = printbuf;
+    uint8_t amiga_scancode;
 
-    if (pos == 0xff)
-        return;  // Not a valid cap
+    if (hid_scancode == 0xff)
+        return;  // Not a valid scancode
 
-    if (do_keycap)
-        draw_hid_key(pos, do_mark);
-    else
-        draw_hid_key_box(pos, do_mark);
+    cap = hid_scancode_to_capnum[hid_scancode];
+    if (cap != 0xff) {
+        if (do_keycap)
+            draw_hid_key(cap, do_mark);
+        else
+            draw_hid_key_box(cap, do_mark);
+    }
+
     for (map = 0; map < ARRAY_SIZE(hid_scancode_to_amiga[0]); map++) {
         amiga_scancode = hid_scancode_to_amiga[hid_scancode][map];
         if (amiga_scancode == 0xff)
@@ -1452,16 +1562,6 @@ enter_leave_hid_key(uint pos, uint do_mark, uint do_keycap)
     }
 }
 
-
-static uint8_t amiga_cur_capnum = 0xff;
-static uint8_t amiga_cur_scancode = 0xff;
-static uint8_t amiga_last_capnum = 0xff;
-static uint8_t hid_last_capnum = 0xff;
-static uint8_t hid_cur_capnum = 0xff;
-static uint8_t hid_cur_scancode = 0xff;
-static uint8_t mouse_last_capnum = 0xff;
-static uint8_t mouse_last_was_amiga = 0;
-
 static void
 mouse_move(SHORT x, SHORT y)
 {
@@ -1472,6 +1572,7 @@ mouse_move(SHORT x, SHORT y)
     x += window->BorderLeft;
     y += window->BorderTop;
 
+    /* Check Amiga keyboard keys */
     for (cur = 0; cur < ARRAY_SIZE(amiga_key_bbox); cur++) {
         if (amiga_key_bbox[cur].y_max < y)
             continue;
@@ -1492,23 +1593,33 @@ mouse_move(SHORT x, SHORT y)
 
         /* Inside a box */
 
-        if ((mouse_last_capnum == cur) && mouse_last_was_amiga)
+        if ((mouse_cur_capnum == cur) && (mouse_cur_selection == 1))
             return;  // Still in the same box
 
-        if (mouse_last_capnum != 0xff) {
+        if (mouse_cur_capnum != 0xff) {
             /* Redraw original bounding box */
-            if (mouse_last_was_amiga)
-                enter_leave_amiga_key(mouse_last_capnum, 0, 0);
-            else
-                enter_leave_hid_key(mouse_last_capnum, 0, 0);
+            switch (mouse_cur_selection) {
+                case 0: // None
+                    break;
+                case 1: // Amiga
+                    enter_leave_amiga_scancode(mouse_cur_scancode, 0, 0);
+                    break;
+                case 2: // HID
+                    enter_leave_hid_scancode(mouse_cur_scancode, 0, 0);
+                    break;
+                case 3: // Editbox
+                    break;
+            }
         }
         /* Draw new highlight bounding box */
-        enter_leave_amiga_key(cur, 1, 0);
-        mouse_last_capnum = cur;
-        mouse_last_was_amiga = 1;
+        mouse_cur_capnum = cur;
+        mouse_cur_scancode = amiga_keypos[cur].scancode;
+        mouse_cur_selection = 1;
+        enter_leave_amiga_scancode(mouse_cur_scancode, 1, 0);
         return;
     }
 
+    /* Check HID keyboard keys */
     for (cur = 0; cur < ARRAY_SIZE(hid_key_bbox); cur++) {
         if (hid_key_bbox[cur].y_max < y)
             continue;
@@ -1524,31 +1635,90 @@ mouse_move(SHORT x, SHORT y)
         }
 
         /* Inside a box */
-        if ((mouse_last_capnum == cur) && !mouse_last_was_amiga)
+        if ((mouse_cur_capnum == cur) && (mouse_cur_selection == 2))
             return;  // Still in the same box
 
-        if (mouse_last_capnum != 0xff) {
+        if (mouse_cur_capnum != 0xff) {
             /* Redraw original bounding box */
-            if (mouse_last_was_amiga)
-                enter_leave_amiga_key(mouse_last_capnum, 0, 0);
-            else
-                enter_leave_hid_key(mouse_last_capnum, 0, 0);
+            switch (mouse_cur_selection) {
+                case 0: // None
+                    break;
+                case 1: // Amiga
+                    enter_leave_amiga_scancode(mouse_cur_scancode, 0, 0);
+                    break;
+                case 2: // HID
+                    enter_leave_hid_scancode(mouse_cur_scancode, 0, 0);
+                    break;
+                case 3: // Editbox
+                    break;
+            }
         }
         /* Draw new highlight bounding box */
-        enter_leave_hid_key(cur, 1, 0);
-        mouse_last_capnum = cur;
-        mouse_last_was_amiga = 0;
+        mouse_cur_capnum = cur;
+        mouse_cur_scancode = hid_keypos[cur].scancode;
+        mouse_cur_selection = 2;
+        enter_leave_hid_scancode(mouse_cur_scancode, 1, 0);
         return;
     }
 
+    /* Check edit area boxes */
+    for (cur = 0; cur < ARRAY_SIZE(editbox_y_min); cur++) {
+        uint charpos;
+        uint capnum;
+        if ((y <= editbox_y_min[cur]) || (y >= editbox_y_max[cur]))
+            continue;
+        if ((x < editbox_x_min) || (x > editbox_x_max[cur]))
+            continue;
+
+        /* Inside a box */
+
+        charpos = (x - editbox_x_min) / (font_pixels_x + 1);
+        capnum = (cur << 4) | charpos;
+
+        if ((mouse_cur_capnum == capnum) && (mouse_cur_selection == 3))
+            return;  // Still in the same box
+
+        if (mouse_cur_capnum != 0xff) {
+            /* Redraw original bounding box */
+            switch (mouse_cur_selection) {
+                case 0: // None
+                    break;
+                case 1: // Amiga
+                    enter_leave_amiga_scancode(mouse_cur_scancode, 0, 0);
+                    break;
+                case 2: // HID
+                    enter_leave_hid_scancode(mouse_cur_scancode, 0, 0);
+                    break;
+                case 3: // Editbox
+                    break;
+            }
+        }
+
+        mouse_cur_capnum = capnum;
+        gui_printf("%x.%x", mouse_cur_capnum >> 4, mouse_cur_capnum & 0xf);
+        mouse_cur_selection = 3;
+        return;
+    }
+
+    gui_printf("");
     /* Mouse is not in a bounding box */
-    if (mouse_last_capnum != 0xff) {
+    if (mouse_cur_capnum != 0xff) {
         /* Redraw original bounding box */
-        if (mouse_last_was_amiga)
-            enter_leave_amiga_key(mouse_last_capnum, 0, 0);
-        else
-            enter_leave_hid_key(mouse_last_capnum, 0, 0);
-        mouse_last_capnum = 0xff;
+        switch (mouse_cur_selection) {
+            case 0: // None
+                break;
+            case 1: // Amiga
+                enter_leave_amiga_scancode(mouse_cur_scancode, 0, 0);
+                break;
+            case 2: // HID
+                enter_leave_hid_scancode(mouse_cur_scancode, 0, 0);
+                break;
+            case 3: // Editbox
+                break;
+        }
+        mouse_cur_capnum = 0xff;
+        mouse_cur_scancode = 0xff;
+        mouse_cur_selection = 0;
     }
 }
 
@@ -1557,12 +1727,14 @@ unhighlight_last_key(void)
 {
     /* Find all HID keys which map to the last code */
     if (amiga_cur_capnum != 0xff)
-        enter_leave_amiga_key(amiga_cur_capnum, 0, 1);
+        enter_leave_amiga_scancode(amiga_cur_scancode, 0, 1);
     if (hid_cur_capnum != 0xff)
-        enter_leave_hid_key(hid_cur_capnum, 0, 1);
+        enter_leave_hid_scancode(hid_cur_scancode, 0, 1);
 
     amiga_last_capnum   = 0xff;
+    amiga_last_scancode = 0xff;
     hid_last_capnum     = 0xff;
+    hid_last_scancode   = 0xff;
     hid_cur_capnum      = 0xff;
     amiga_cur_capnum    = 0xff;
     amiga_cur_scancode  = 0xff;
@@ -1663,39 +1835,14 @@ remove_amiga_mapping_from_hid_scancode(uint8_t hid_scancode,
 }
 
 static int
-map_or_unmap_scancode(uint8_t amiga_scancode, uint8_t hid_scancode,
-                      uint doing_hid_key)
+add_amiga_mapping_to_hid_scancode(uint8_t hid_scancode,
+                                  uint8_t amiga_scancode)
 {
     uint       map;
     uint       pos;
+    const uint max_map      = ARRAY_SIZE(hid_scancode_to_amiga[0]);
     uint       hid_capnum   = hid_scancode_to_capnum[hid_scancode];
     uint       amiga_capnum = amiga_scancode_to_capnum[amiga_scancode];
-    const uint max_map   = ARRAY_SIZE(hid_scancode_to_amiga[0]);
-
-    if ((amiga_scancode == 0xff) || (hid_scancode == 0xff))
-        return (-1);
-
-    if (remove_amiga_mapping_from_hid_scancode(hid_scancode, amiga_scancode)) {
-        /*
-         * Successfully removed existing mapping
-         *
-         * Adjustment of hid_key_mapped[] and amiga_key_mapped[] was handled
-         * by remove_amiga_mapping_from_hid_scancode();
-         */
-
-        if (doing_hid_key) {
-            if (amiga_capnum != 0xff)
-                draw_amiga_key(amiga_capnum, 0);
-            if (hid_capnum != 0xff)
-                enter_leave_hid_key(hid_capnum, 1, 1);
-        } else {
-            if (hid_capnum != 0xff)
-                draw_hid_key(hid_capnum, 0);
-            if (amiga_capnum != 0xff)
-                enter_leave_amiga_key(amiga_capnum, 1, 1);
-        }
-        return (1);
-    }
 
     /* Check if there is space for a new mapping */
     for (map = 0; map < max_map; map++) {
@@ -1706,6 +1853,9 @@ map_or_unmap_scancode(uint8_t amiga_scancode, uint8_t hid_scancode,
                 break;
         if (pos == max_map)
             break;  // End of list
+
+        if (hid_scancode_to_amiga[hid_scancode][map] == amiga_scancode)
+            return (0); // Already in the list; treat it as "added"
     }
     if ((map >= max_map) ||
         ((amiga_scancode == 0x00) && (map >= max_map - 1))) {
@@ -1723,36 +1873,571 @@ map_or_unmap_scancode(uint8_t amiga_scancode, uint8_t hid_scancode,
 
     if (amiga_scancode == 0)
         hid_scancode_to_amiga[hid_scancode][++map] = 0xff;
-    if (doing_hid_key) {
-        if (amiga_capnum != 0xff)
-            draw_amiga_key(amiga_capnum, 1);
-        if (hid_capnum != 0xff)
-            enter_leave_hid_key(hid_capnum, 1, 1);
-    } else {
-        if (hid_capnum != 0xff)
-            draw_hid_key(hid_capnum, 1);
-        if (amiga_capnum != 0xff)
-            enter_leave_amiga_key(amiga_capnum, 1, 1);
-    }
-
     return (0);
 }
 
-#if 0
-static void
-map_or_unmap_key(uint amiga_capnum, uint hid_capnum, uint is_amiga_key)
+static int
+map_or_unmap_scancode(uint8_t amiga_scancode, uint8_t hid_scancode,
+                      uint doing_hid_key)
 {
-    uint8_t amiga_scancode = amiga_keypos[amiga_capnum].scancode;
-    uint8_t hid_scancode   = hid_keypos[hid_capnum].scancode;
+    uint       hid_capnum   = hid_scancode_to_capnum[hid_scancode];
+    uint       amiga_capnum = amiga_scancode_to_capnum[amiga_scancode];
+    int        rc;
 
-    if ((amiga_capnum > ARRAY_SIZE(amiga_keypos)) ||
-        (hid_capnum > ARRAY_SIZE(hid_keypos))) {
-        err_printf("bug: map_or_unmap_key(%u,%u)\n", amiga_capnum, hid_capnum);
-        return;
+    if ((amiga_scancode == 0xff) || (hid_scancode == 0xff))
+        return (-1);
+
+    if (remove_amiga_mapping_from_hid_scancode(hid_scancode, amiga_scancode)) {
+        /*
+         * Successfully removed existing mapping
+         *
+         * Adjustment of hid_key_mapped[] and amiga_key_mapped[] was handled
+         * by remove_amiga_mapping_from_hid_scancode();
+         */
+
+        if (doing_hid_key) {
+            if (amiga_capnum != 0xff)
+                draw_amiga_key(amiga_capnum, 0);
+            if (hid_capnum != 0xff)
+                enter_leave_hid_scancode(hid_scancode, 1, 1);
+        } else {
+            if (hid_capnum != 0xff)
+                draw_hid_key(hid_capnum, 0);
+            if (amiga_capnum != 0xff)
+                enter_leave_amiga_scancode(amiga_scancode, 1, 1);
+        }
+        return (1);
     }
-    map_or_unmap_scancode(amiga_scancode, hid_scancode, is_amiga_key);
+
+    rc = add_amiga_mapping_to_hid_scancode(hid_scancode, amiga_scancode);
+    if (rc == 0) {
+        if (doing_hid_key) {
+            if (amiga_capnum != 0xff)
+                draw_amiga_key(amiga_capnum, 1);
+            enter_leave_hid_scancode(hid_scancode, 1, 1);
+        } else {
+            if (hid_capnum != 0xff)
+                draw_hid_key(hid_capnum, 1);
+            enter_leave_amiga_scancode(amiga_scancode, 1, 1);
+        }
+    }
+    return (rc);
 }
-#endif
+
+static void
+editbox_draw_titles(void)
+{
+    uint is_hid;
+    SHORT pos_x;
+    SHORT pos_y;
+    const char * const textstr[] = { "Amiga", "HID" };
+
+    SetAPen(rp, pen_status_fg);
+    SetBPen(rp, pen_status_bg);
+    for (is_hid = 0; is_hid < 2; is_hid++) {
+        const char *str = textstr[is_hid];
+        uint        len = strlen(str);
+        pos_y = editbox_y_min[is_hid];
+        pos_x = editbox_x_min - font_pixels_x * (len + 1);
+        Move(rp, pos_x, pos_y + font_pixels_y);
+        Text(rp, str, len);
+    }
+}
+
+static void
+editbox_show_single(uint is_at_cursor, uint cursor_x, uint cursor_y)
+{
+    SHORT ypos = editbox_y_min[cursor_y] + font_pixels_y;
+    SHORT xpos = editbox_x_min + cursor_x * font_pixels_x +
+                 (cursor_x / 2) * 2 + 1;
+
+    if (xpos >= editbox_x_max[cursor_y])
+        return;
+
+    /* Fill background above the digit */
+    SetAPen(rp, is_at_cursor ? 3 : pen_status_bg);
+    Move(rp, xpos, ypos - font_pixels_y + 1);
+    Draw(rp, xpos + font_pixels_x, ypos - font_pixels_y + 1);
+
+    /* Digit */
+    SetAPen(rp, pen_status_fg);
+    SetBPen(rp, is_at_cursor ? 3 : pen_status_bg);
+    Move(rp, xpos, ypos);
+
+    Text(rp, &editbox[cursor_y][cursor_x], 1);
+}
+
+static void
+editbox_key_display(uint show_keys)
+{
+    switch (editbox_update_mode) {
+        case 0:
+            enter_leave_amiga_scancode(editbox_scancode, show_keys, 1);
+            break;
+        case 1:
+            enter_leave_hid_scancode(editbox_scancode, show_keys, 1);
+            break;
+    }
+}
+
+static void
+editbox_set_cursor_position(uint edit_capnum)
+{
+    editbox_show_single(0, editbox_cursor_x, editbox_cursor_y);
+    editbox_cursor_x = edit_capnum & 0x0f;
+    editbox_cursor_y = edit_capnum >> 4;
+    editbox_show_single(1, editbox_cursor_x, editbox_cursor_y);
+    edit_key_mapping_mode = 1;
+
+    editbox_key_display(1);
+}
+
+static void
+editbox_draw(void)
+{
+    editbox_draw_box(0);
+    editbox_draw_box(1);
+}
+
+typedef struct {
+    uint8_t scancode;
+    uint8_t value;
+} key_to_hex_digit_t;
+static const key_to_hex_digit_t key_to_hex_digit[] = {
+    { AS_0,    '0' },
+    { AS_1,    '1' },
+    { AS_2,    '2' },
+    { AS_3,    '3' },
+    { AS_4,    '4' },
+    { AS_5,    '5' },
+    { AS_6,    '6' },
+    { AS_7,    '7' },
+    { AS_8,    '8' },
+    { AS_9,    '9' },
+    { AS_KP_0, '0' },
+    { AS_KP_1, '1' },
+    { AS_KP_2, '2' },
+    { AS_KP_3, '3' },
+    { AS_KP_4, '4' },
+    { AS_KP_5, '5' },
+    { AS_KP_6, '6' },
+    { AS_KP_7, '7' },
+    { AS_KP_8, '8' },
+    { AS_KP_9, '9' },
+    { AS_A,    'a' },
+    { AS_B,    'b' },
+    { AS_C,    'c' },
+    { AS_D,    'd' },
+    { AS_E,    'e' },
+    { AS_F,    'f' },
+};
+
+static uint
+editbox_okay_to_end(uint *new_x, uint *new_y)
+{
+    uint cursor_x;
+    uint cursor_y;
+
+    /* Check characters */
+    for (cursor_y = 0; cursor_y < 2; cursor_y++) {
+        for (cursor_x = 0; cursor_x < editbox_max_len[cursor_y]; cursor_x++) {
+            if ((editbox[cursor_y][cursor_x] == ' ') &&
+                (editbox[cursor_y][cursor_x ^ 1] != ' ')) {
+                /* One digit of two is a space */
+                *new_x = cursor_x;
+                *new_y = cursor_y;
+                gui_printf("Partial scancode at %u", cursor_x);
+                return (0);
+            }
+        }
+    }
+    return (1);
+}
+
+/*
+ * editbox_save_mapping_to_key() will parse the two strings, converting
+ * them back to scancodes, and then save the new mappings.
+ */
+static uint
+editbox_save_mapping_to_key(void)
+{
+    uint    cur;
+    uint    pos;
+    uint    amiga_scancode;
+    uint    hid_scancode;
+    uint    scancode;
+    char    *ptr;
+    uint8_t newlist[8];
+    uint8_t oldlist[8];
+    uint    newcount = 0;
+    uint    box_for_single   = (editbox_update_mode == 0) ? 0 : 1;
+    uint    box_for_multiple = (editbox_update_mode == 0) ? 1 : 0;
+
+    /* Get "from" scancode */
+    if (sscanf(editbox[box_for_single], "%02x", &scancode) != 1) {
+        gui_printf2("Failed to scan Amiga %.2s", editbox);
+        return (1);
+    }
+    if ((editbox_update_mode == 0) && (scancode == 0xff)) {
+        gui_printf2("Amiga scancode %02x is invalid", scancode);
+        return (1);
+    }
+    if ((editbox_update_mode == 1) && ((scancode == 0) || (scancode == 0xff))) {
+        gui_printf2("HID scancode %02x is invalid", scancode);
+        return (1);
+    }
+
+    ptr = editbox[box_for_multiple];
+    for (cur = 0; cur < editbox_max_len[box_for_multiple]; cur += 2, ptr += 2) {
+    /* Get mapped scancodes */
+        uint value;
+        if ((ptr[0] == ' ') && (ptr[1] == ' '))
+            continue;  // Skip blank entry
+
+        if (sscanf(ptr, "%02x", &value) != 1) {
+            gui_printf2("Failed to scan %.2s", ptr);
+            return (1);
+        }
+        if (editbox_update_mode == 0) {
+            /* Mapping Amiga -> HID */
+            if (newcount >= sizeof (newlist)) {
+                gui_printf2("Too many HID entries");
+                return (1);
+            }
+            if ((value == 0) || (value == 0xff)) {
+                gui_printf2("HID scancode %02x is invalid", value);
+                return (1);
+            }
+        } else {
+            /* Mapping HID -> Amiga */
+            if (newcount >= ARRAY_SIZE(hid_scancode_to_amiga[0])) {
+                gui_printf2("Too many Amiga entries");
+                return (1);
+            }
+        }
+        if (newcount >= ARRAY_SIZE(newlist))
+            break;
+        newlist[newcount++] = value;
+    }
+
+    if (editbox_update_mode == 0) {
+        uint map;
+        uint oldcount = 0;
+        const uint max_map = ARRAY_SIZE(hid_scancode_to_amiga[0]);
+
+        /* Single Amiga scancode can map to multiple HID scancodes */
+        amiga_scancode = scancode;
+
+        /* Generate the list of current HID -> amiga_scancode mappings */
+        for (hid_scancode = 0; hid_scancode <= 0xff; hid_scancode++) {
+            for (map = 0; map < max_map; map++) {
+                if (hid_scancode_to_amiga[hid_scancode][map] == 0xff)
+                    break;  // End of list
+                for (pos = map; pos < max_map; pos++)
+                    if (hid_scancode_to_amiga[hid_scancode][pos] != 0x00)
+                        break;
+                if (pos == max_map)
+                    break;  // End of list
+
+                if (hid_scancode_to_amiga[hid_scancode][map] != amiga_scancode)
+                    continue;
+
+                if (oldcount >= ARRAY_SIZE(oldlist))
+                    break;
+
+                /* Found a mapping */
+                oldlist[oldcount++] = hid_scancode;
+            }
+        }
+
+        /*
+         * Now that the lists have been generated, remove all mappings
+         * which are not in the newlist.
+         */
+        for (cur = 0; cur < oldcount; cur++) {
+            for (pos = 0; pos < newcount; pos++)
+                if (oldlist[cur] == newlist[pos])
+                    break;
+            if (pos < newcount) {
+                /* In both lists */
+                newlist[pos] = 0xff;  // Eliminate from the new list
+            } else {
+                /* Remove old mapping */
+                remove_amiga_mapping_from_hid_scancode(oldlist[cur],
+                                                       amiga_scancode);
+            }
+        }
+
+        /* Finally add mappings which were not in the original list */
+        for (cur = 0; cur < newcount; cur++) {
+            if (newlist[cur] != 0xff) {
+                add_amiga_mapping_to_hid_scancode(newlist[cur], amiga_scancode);
+            }
+        }
+        gui_printf2("");
+        gui_printf("Mapping for Amiga %02x updated", amiga_scancode);
+    } else {
+        /* Single HID scancode can map to up to 4 Amiga scancodes */
+        hid_scancode = scancode;
+
+        /*
+         * Massage the list of new scancodes.
+         * A 0x00 entry is special. It can mean either a backtick (reverse
+         * aprostrophe) or just 0x00 padding for unused mapping cells. If
+         * a real 0x00 entry is present, it must be terminated by another
+         * non-zero entry, such as 0xff.
+         * If no entries are present, 0xff should be in the first entry.
+         * Other 0xff entries are eliminated unless they terminate a 0x00
+         * entry.
+         *
+         * 00 ff ff 00    00 ff 00 00    00 ff 11 00    11 ff xx xx
+         *    ^ remove       ^ keep         ^ remove       ^ remove
+         *
+         * ff 00 00 00    ff 11 00 00    ff 00 11 00
+         * ^ keep         ^ remove       ^ remove
+         */
+
+        /* Trim trailing 0x00 */
+        for (cur = newcount - 1; cur > 0; cur--) {
+            if (newlist[cur] != 0x00)
+                break;
+            newcount--;
+        }
+
+        /* Remove excess 0xff */
+        for (cur = 0; cur < newcount; cur++) {
+            if (newlist[cur] == 0xff) {
+                for (pos = cur + 1; pos < newcount; pos++) {
+                    if (newlist[pos] != 0x00)
+                        break;
+                }
+                if ((pos < newcount) ||  // Something follows
+                    ((cur > 0) && (newlist[cur - 1] != 0x00))) {
+                    /* Eliminate this entry */
+                    newcount--;
+                    for (pos = cur; pos < newcount; pos++)
+                        newlist[pos] = newlist[pos + 1];
+                    cur--;
+                }
+            }
+        }
+
+        /* Terminate list with 0xff, if required */
+        if (newcount == 0) {
+            newlist[0] = 0xff;
+            cur = 1;
+        }
+        if ((newcount == 1) && (newlist[0] == 0x00)) {
+            newlist[1] = 0xff;
+            cur = 2;
+        }
+
+        /* Fill remainder with 0x00 */
+        for (; cur < ARRAY_SIZE(hid_scancode_to_amiga[0]); cur++)
+            newlist[cur] = 0x00;
+
+        for (cur = 0; cur < ARRAY_SIZE(hid_scancode_to_amiga[0]); cur++)
+            hid_scancode_to_amiga[hid_scancode][cur] = newlist[cur];
+        gui_printf2("");
+        gui_printf("Mapping for HID %02x updated", hid_scancode);
+    }
+    return (0);
+}
+
+static void
+editbox_key_command(uint8_t scancode)
+{
+    uint pos;
+    uint cursor_x = editbox_cursor_x;
+    uint cursor_y = editbox_cursor_y;
+    uint do_complete_redraw = 0;
+
+    if (scancode & 0x80)
+        return;  // Don't care about key up events
+
+    switch (scancode) {
+        case AS_SPACE:      // Overwrite cur with space
+            if (cursor_x < editbox_max_len[cursor_y] - 1) {
+                editbox[cursor_y][cursor_x] = ' ';
+                cursor_x++;
+            }
+            break;
+        case AS_BACKSPACE:  // Overwrite prev with space
+            if (cursor_x == 0)
+                break;
+            editbox[cursor_y][--cursor_x] = ' ';
+            break;
+        case AS_DELETE:     // Delete char and possibly one to the right
+            for (pos = cursor_x; pos < editbox_max_len[cursor_y] - 1; pos++)
+                editbox[cursor_y][pos] = editbox[cursor_y][pos + 1];
+            editbox[cursor_y][pos] = ' ';
+            do_complete_redraw = 1;
+            break;
+        case AS_UP:         // Move to Amiga editing
+            if (cursor_y > 0) {
+                cursor_y--;
+                if (cursor_x > editbox_max_len[cursor_y] - 1)
+                    cursor_x = editbox_max_len[cursor_y] - 1;
+            }
+            break;
+        case AS_DOWN:       // Move to HID editing
+            if (cursor_y < 1) {
+                cursor_y++;
+                if (cursor_x > editbox_max_len[cursor_y] - 1)
+                    cursor_x = editbox_max_len[cursor_y] - 1;
+            }
+            break;
+        case AS_RIGHT:      // Move left
+            if (cursor_x < editbox_max_len[cursor_y] - 1)
+                cursor_x++;
+            break;
+        case AS_LEFT:       // Move right
+            if (cursor_x > 0)
+                cursor_x--;
+            break;
+        case AS_INSERT:     // Insert space, possibly pushing to the right
+            for (pos = editbox_max_len[cursor_y] - 1; pos > cursor_x; pos--)
+                editbox[cursor_y][pos] = editbox[cursor_y][pos - 1];
+            editbox[cursor_y][cursor_x] = ' ';
+            do_complete_redraw = 1;
+            break;
+        case AS_ESC:        // Terminate edit mode
+            editbox_show_single(0, editbox_cursor_x, editbox_cursor_y);
+            editbox_key_display(0);
+            edit_key_mapping_mode = 0;
+            return;
+        case AS_ENTER:      // Save and terminate edit mode
+        case AS_KP_ENTER:   // Save and terminate edit mode
+            editbox_show_single(0, editbox_cursor_x, editbox_cursor_y);
+            editbox_key_display(0);
+            if (editbox_okay_to_end(&cursor_x, &cursor_y) &&
+                (editbox_save_mapping_to_key() == 0)) {
+                edit_key_mapping_mode = 0;
+                return;
+            }
+            /* Failed; resume editing */
+            editbox_key_display(1);
+            break;
+        default:
+            for (pos = 0; pos < ARRAY_SIZE(key_to_hex_digit); pos++)
+                if (key_to_hex_digit[pos].scancode == scancode)
+                    break;
+            if (pos < ARRAY_SIZE(key_to_hex_digit)) {
+                /* Digit match; replace current digit and advance cursor */
+                editbox[cursor_y][cursor_x] = key_to_hex_digit[pos].value;
+                if (cursor_x < editbox_max_len[cursor_y] - 1)
+                    cursor_x++;
+            }
+    }
+
+    if (do_complete_redraw) {
+        editbox_cursor_x = cursor_x;
+        editbox_cursor_y = cursor_y;
+        for (pos = 0; pos < editbox_max_len[cursor_y]; pos++)
+            editbox_show_single(pos == cursor_x, pos, editbox_cursor_y);
+    } else if ((editbox_cursor_x != cursor_x) ||
+               (editbox_cursor_y != cursor_y)) {
+        /* Disable cursor, do move, enable cursor */
+        editbox_show_single(0, editbox_cursor_x, editbox_cursor_y);
+        editbox_cursor_x = cursor_x;
+        editbox_cursor_y = cursor_y;
+    }
+    editbox_show_single(1, editbox_cursor_x, editbox_cursor_y);
+}
+
+static void
+editbox_key_command_hid(uint8_t scancode)
+{
+    uint map;
+    for (map = 0; map < ARRAY_SIZE(hid_scancode_to_amiga[0]); map++) {
+        uint8_t code = hid_scancode_to_amiga[scancode][map];
+        if (code == 0xff)
+            break;
+        if (code == 0x00) {
+            uint cur = map + 3;
+            for (; cur < ARRAY_SIZE(hid_scancode_to_amiga[0]); cur++)
+                if (hid_scancode_to_amiga[scancode][cur] != 0x00)
+                    break;
+            if (cur == ARRAY_SIZE(hid_scancode_to_amiga[0]))
+                break;  // No more mappings
+        }
+        editbox_key_command(code);
+    }
+}
+
+static BOOL
+draw_win(void)
+{
+    uint cur;
+
+    win_width = window->Width - window->BorderLeft - window->BorderRight + 3;
+    win_height = window->Height;
+
+    kbd_width     = win_width - 4;
+    kbd_height    = win_height * 15 / 40;
+
+    scale_key_dimensions();
+
+    /* Draw Amiga keyboard case */
+    uint draw_kbd_height = kbd_height;
+    uint win_left = window->BorderLeft;
+    uint win_right = win_width;
+    hid_keyboard_top = win_height - kbd_height + window->BorderBottom;
+
+    /* Default drawing mode */
+    SetDrMd(rp, JAM2);
+    SetBPen(rp, pen_keyboard_background);
+
+    /* Draw Amiga keyboard case */
+    SetAPen(rp, pen_keyboard_background);
+    RectFill(rp, win_left, window->BorderTop,
+             win_right, window->BorderTop + draw_kbd_height);
+
+    /* Empty area between keyboards */
+    SetAPen(rp, 0);
+    RectFill(rp, win_left, window->BorderTop + draw_kbd_height,
+             win_right, hid_keyboard_top);
+    /* Draw HID keyboard case */
+    SetAPen(rp, pen_keyboard_background);
+    RectFill(rp, win_left, hid_keyboard_top,
+             win_right, win_height - window->BorderBottom);
+
+    SetAPen(rp, pen_cap_white);
+    box(win_left, window->BorderTop,
+        win_right, window->BorderTop + draw_kbd_height);
+    SetAPen(rp, pen_cap_white);
+    box(win_left, hid_keyboard_top,
+        win_right, win_height - window->BorderBottom);
+
+    /* Draw Amiga keyboard */
+    amiga_keyboard_left = window->BorderLeft + amiga_keysize[0].x + 4;
+    amiga_keyboard_top  = window->BorderTop  + amiga_keysize[0].y + 4;
+
+    for (cur = 0; cur < ARRAY_SIZE(amiga_keypos); cur++)
+        draw_amiga_key(cur, 0);
+
+    /* Draw HID keyboard */
+    hid_keyboard_left = window->BorderLeft + hid_keysize[0].x + 4;
+
+    for (cur = 0; cur < ARRAY_SIZE(hid_keypos); cur++)
+        draw_hid_key(cur, 0);
+
+    editbox_x_min = win_width - (font_pixels_x + 2) * 10 - window->BorderRight;
+    editbox_y_min[0] = (amiga_keyboard_top + kbd_height - 6);  // Amiga
+    editbox_y_min[1] = (hid_keyboard_top - 4 - font_pixels_y); // HID
+    for (cur = 0; cur < 2; cur++) {
+        editbox_x_max[cur] = editbox_x_min + 1 +
+                             font_pixels_x * editbox_max_len[cur] +
+                             ((editbox_max_len[cur] - 1) / 2) * 2;  // gap
+        editbox_y_max[cur] = editbox_y_min[cur] + font_pixels_y + 4;
+    }
+
+    editbox_draw_titles();
+    editbox_draw();
+
+    user_usage_hint_show(0);
+    return (TRUE);
+}
 
 static void
 amiga_rawkey(uint8_t code)
@@ -1761,38 +2446,44 @@ amiga_rawkey(uint8_t code)
     uint released = code & 0x80;
     uint cur = amiga_scancode_to_capnum[scancode];
 
+//  printf("amiga_rawkey %x\n", code);
+    if (edit_key_mapping_mode) {
+        editbox_key_command(code);
+        return;
+    }
+
     if (!released) {
-        if (enable_esc_exit)
-            handle_esc_key(scancode == RAWKEY_ESC);
+        if (enable_esc_exit && !released)
+            handle_esc_key(code == RAWKEY_ESC);
         amiga_cur_capnum = cur;
         amiga_cur_scancode = scancode;
+        editbox_copy_amiga_scancode_mapping(amiga_cur_scancode);
     }
-//  printf("amiga_rawkey %x\n", code);
 
     /*
-     * map_hid_to_amiga
+     * key_mapping_mode
      * 0  An Amiga keystroke switches to that key's mappings
      * 1  An Amiga keystroke adds or removes the key from the current
      *    HID -> Amiga mapping
      * 2  Live keystrokes are reported with no regard for mappings.
      * 3  Live keystrokes and their mappings are reported
      */
-    switch (map_hid_to_amiga) {
+    switch (key_mapping_mode) {
         case 0:
             /* Last key pressed stays highlighted */
             if (released)
                 return;
             if (amiga_last_capnum != cur) {
                 /* Exit all keys which map to the last code */
-                enter_leave_amiga_key(amiga_last_capnum, 0, 1);
+                enter_leave_amiga_scancode(amiga_last_scancode, 0, 1);
             }
-            enter_leave_amiga_key(amiga_cur_capnum, 1, 1);
+            enter_leave_amiga_scancode(amiga_cur_scancode, 1, 1);
             break;
         case 1:
             if (released)
                 return;
             map_or_unmap_scancode(amiga_cur_scancode, hid_cur_scancode, 1);
-            enter_leave_hid_key(hid_cur_capnum, 1, 1);
+            enter_leave_hid_scancode(hid_cur_scancode, 1, 1);
             break;
         case 2:
             /* Just highlight all keys which are currently pressed */
@@ -1800,11 +2491,13 @@ amiga_rawkey(uint8_t code)
                 draw_amiga_key(cur, !released);
             break;
         case 3:
-            enter_leave_amiga_key(cur, !released, 1);
+            enter_leave_amiga_scancode(scancode, !released, 1);
             break;
     }
-    if (!released)
+    if (!released) {
         amiga_last_capnum = cur;
+        amiga_last_scancode = amiga_cur_scancode;
+    }
 }
 
 static void
@@ -1812,23 +2505,30 @@ hid_rawkey(uint8_t scancode, uint released)
 {
     uint cur = hid_scancode_to_capnum[scancode];
 
+//  printf("hid_rawkey %x %x\n", scancode, released);
+    if (edit_key_mapping_mode) {
+        if (!released)
+            editbox_key_command_hid(scancode);
+        return;
+    }
+
     if (!released) {
-        if (enable_esc_exit)
+        if (enable_esc_exit && !released)
             handle_esc_key(scancode == HS_ESC);
         hid_cur_scancode = scancode;
         hid_cur_capnum = cur;
+        editbox_copy_hid_scancode_mapping(hid_cur_scancode);
     }
-//  printf("hid_rawkey %x %x\n", scancode, map_hid_to_amiga);
 
     /*
-     * map_hid_to_amiga
+     * key_mapping_mode
      * 0  A HID keystroke adds or removes the key from the current
      *    Amiga <- HID mapping
      * 1  A HID keystroke switches to that key's mappings
      * 2  Live keystrokes are reported with no regard for mappings.
      * 3  Live keystrokes and their mappings are reported
      */
-    switch (map_hid_to_amiga) {
+    switch (key_mapping_mode) {
         case 0:
             if (released)
                 return;
@@ -1840,9 +2540,9 @@ hid_rawkey(uint8_t scancode, uint released)
                 return;
             if (hid_last_capnum != cur) {
                 /* Exit all keys which map to the last code */
-                enter_leave_hid_key(hid_last_capnum, 0, 1);
+                enter_leave_hid_scancode(hid_last_scancode, 0, 1);
             }
-            enter_leave_hid_key(hid_cur_capnum, 1, 1);
+            enter_leave_hid_scancode(hid_cur_scancode, 1, 1);
             break;
         case 2:
             /* Just highlight all keys which are currently pressed */
@@ -1850,28 +2550,39 @@ hid_rawkey(uint8_t scancode, uint released)
                 draw_hid_key(cur, !released);
             break;
         case 3:
-            enter_leave_hid_key(cur, !released, 1);
+            enter_leave_hid_scancode(scancode, !released, 1);
             break;
     }
-    if (!released)
+    if (!released) {
         hid_last_capnum = cur;
+        hid_last_scancode = hid_cur_scancode;
+    }
 }
 
 static void
 mouse_button_press(uint button_down)
 {
-    /* Button press occurred. First determine where. */
-    if (mouse_last_capnum == 0xff)
-        return;  // Not over keyboard button
+    /* Button press occurred */
 
     /* Let the keystroke handlers deal with button-triggered key presses */
-    if (mouse_last_was_amiga) {
-        uint8_t or_val = 0;
-        if (!button_down)
-            or_val = 0x80;
-        amiga_rawkey(amiga_keypos[mouse_last_capnum].scancode | or_val);
-    } else {
-        hid_rawkey(hid_keypos[mouse_last_capnum].scancode, !button_down);
+    switch (mouse_cur_selection) {
+        case 0: // None
+            break;
+        case 1: // Amiga
+            if (mouse_cur_capnum == 0xff)
+                return;  // Not over keyboard button
+            amiga_rawkey(amiga_keypos[mouse_cur_capnum].scancode |
+                         (button_down ? 0x00 : 0x80));
+            break;
+        case 2: // HID
+            if (mouse_cur_capnum == 0xff)
+                return;  // Not over keyboard button
+            hid_rawkey(hid_keypos[mouse_cur_capnum].scancode, !button_down);
+            break;
+        case 3: // Editbox
+            if (button_down)
+                editbox_set_cursor_position(mouse_cur_capnum);
+            break;
     }
 }
 
@@ -1883,7 +2594,7 @@ remove_single_key_mappings(void)
     uint8_t scancode = 0xff;
     uint    remove_hid = 0;
 
-    switch (map_hid_to_amiga) {
+    switch (key_mapping_mode) {
         case 0:
             capnum = amiga_cur_capnum;
             scancode = amiga_cur_scancode;
@@ -1895,14 +2606,22 @@ remove_single_key_mappings(void)
             remove_hid = 1;
             break;
         case 2:
-            if (mouse_last_was_amiga) {
-                capnum = amiga_cur_capnum;
-                scancode = amiga_cur_scancode;
-                remove_hid = 0;
-            } else {
-                capnum = hid_cur_capnum;
-                scancode = hid_cur_scancode;
-                remove_hid = 1;
+        case 3:
+            switch (mouse_cur_selection) {
+                case 0: // None
+                    break;
+                case 1: // Amiga
+                    capnum = amiga_cur_capnum;
+                    scancode = amiga_cur_scancode;
+                    remove_hid = 0;
+                    break;
+                case 2: // HID
+                    capnum = hid_cur_capnum;
+                    scancode = hid_cur_scancode;
+                    remove_hid = 1;
+                    break;
+                case 3: // Editbox
+                    break;
             }
             break;
     }
@@ -1915,21 +2634,21 @@ remove_single_key_mappings(void)
         /* Remove all HID mappings to this Amiga scancode */
         uint hid_scancode;
         uint8_t amiga_scancode = scancode;
-        enter_leave_amiga_key(capnum, 0, 1);
+        enter_leave_amiga_scancode(amiga_scancode, 0, 1);
 
         for (hid_scancode = 0; hid_scancode <= 0xff; hid_scancode++) {
             remove_amiga_mapping_from_hid_scancode(hid_scancode, amiga_scancode);
         }
         amiga_key_mapped[capnum] = 0;
         draw_amiga_key(capnum, 0);
-        if (map_hid_to_amiga == 2)
-            enter_leave_amiga_key(capnum, 0, 1);
+        if ((key_mapping_mode == 2) || (key_mapping_mode == 3))
+            enter_leave_amiga_scancode(amiga_scancode, 0, 1);
         else
-            enter_leave_amiga_key(capnum, 1, 1);
+            enter_leave_amiga_scancode(amiga_scancode, 1, 1);
     } else {
         /* Remove all Amiga mappings to this HID scancode */
         uint8_t hid_scancode = scancode;
-        enter_leave_hid_key(capnum, 0, 1);
+        enter_leave_hid_scancode(hid_scancode, 0, 1);
         for (map = 0; map < ARRAY_SIZE(hid_scancode_to_amiga[0]); map++) {
             uint8_t amiga_scancode = hid_scancode_to_amiga[hid_scancode][map];
             remove_amiga_mapping_from_hid_scancode(hid_scancode, amiga_scancode);
@@ -1938,37 +2657,12 @@ remove_single_key_mappings(void)
 
         hid_key_mapped[capnum] = 0;
         draw_hid_key(capnum, 0);
-        if (map_hid_to_amiga == 2)
-            enter_leave_hid_key(capnum, 0, 1);
+        if ((key_mapping_mode == 2) || (key_mapping_mode == 3))
+            enter_leave_hid_scancode(hid_scancode, 0, 1);
         else
-            enter_leave_hid_key(capnum, 1, 1);
+            enter_leave_hid_scancode(hid_scancode, 1, 1);
     }
 }
-
-#if 0
-static void
-custom_key_mapping(void)
-{
-#if 0
-    struct EasyStruct about = {
-        sizeof (struct EasyStruct),
-        0,
-        "Custom key",  // es_Title
-        "Becky "VERSION"\n\n"
-        "The AmigaPCI BEC key mapping\n"
-        "tool by Chris Hooper.\n"
-        "Built "BUILD_DATE" "BUILD_TIME"\n",
-        "Ok"
-    };
-#endif
-    if (mouse_last_capnum == 0xff) {
-        gui_printf("You must first select a key to program");
-        return;
-    }
-    printf("custom %s %x\n", mouse_last_was_amiga ? "Amiga" : "HID",
-           mouse_last_capnum);
-}
-#endif
 
 static void
 unmap_all_keycaps(void)
@@ -2289,7 +2983,6 @@ load_parse_error:
 #endif
     fclose(fp);
     gui_printf("Read keymap from %s", full_path);
-    // XXX: open file
 }
 
 static void
@@ -2402,6 +3095,22 @@ poll_for_hid_scancodes(void)
     uint8_t        *data;
     static uint8_t  err_timeout;
     static uint8_t  err_count;
+    static uint8_t  polled;
+
+    if (edit_key_mapping_mode) {
+        if (polled) {
+            polled = 0;
+            req.bkm_source  = BKM_SOURCE_NONE;
+            req.bkm_count   = 16;
+            req.bkm_timeout = 0;
+
+            /* Flush previous poll */
+            (void) send_cmd(BEC_CMD_POLL_INPUT, &req, sizeof (req),
+                            replybuf, sizeof (replybuf), &rlen);
+        }
+        return;
+    }
+    polled = 1;
 
     if (err_timeout) {
         err_timeout--;
@@ -2418,6 +3127,7 @@ poll_for_hid_scancodes(void)
         if (err_count < 7)
             err_count++;
         err_timeout = (1 << err_count);  // Exponential backoff
+        gui_printf("BEC poll fail rc=%d", rc);
         return;
     }
     if (rep->bkm_count == 0)
@@ -2576,7 +3286,7 @@ set_menu_checked:
                                         }
                                         break;
                                     case MENU_MODE_AMIGA_TO_HID:
-                                        map_hid_to_amiga = 0;
+                                        key_mapping_mode = 0;
                                         if (!checked) {
                                             /* Force it to remain checked */
                                             chk_item = ITEMNUM_AMIGA_TO_HID;
@@ -2584,7 +3294,7 @@ set_menu_checked:
                                         }
                                         break;
                                     case MENU_MODE_HID_TO_AMIGA:
-                                        map_hid_to_amiga = 1;
+                                        key_mapping_mode = 1;
                                         if (!checked) {
                                             /* Force it to remain checked */
                                             chk_item = ITEMNUM_HID_TO_AMIGA;
@@ -2592,7 +3302,7 @@ set_menu_checked:
                                         }
                                         break;
                                     case MENU_MODE_LIVE_KEYS:
-                                        map_hid_to_amiga = 2;
+                                        key_mapping_mode = 2;
                                         if (!checked) {
                                             /* Force it to remain checked */
                                             chk_item = ITEMNUM_LIVEKEYS;
@@ -2600,7 +3310,7 @@ set_menu_checked:
                                         }
                                         break;
                                     case MENU_MODE_LIVE_KEYS_MAP:
-                                        map_hid_to_amiga = 3;
+                                        key_mapping_mode = 3;
                                         if (!checked) {
                                             /* Force it to remain checked */
                                             chk_item = ITEMNUM_LIVEKEYS_MAP;
@@ -2616,11 +3326,6 @@ set_menu_checked:
                             }
                             case MENU_NUM_KEY:
                                 switch (item_num) {
-#if 0
-                                    case MENU_KEY_CUSTOM_MAPPING:
-                                        custom_key_mapping();
-                                        break;
-#endif
                                     case MENU_KEY_REMOVE_MAPPINGS:
                                         remove_single_key_mappings();
                                         break;
@@ -2743,13 +3448,13 @@ main(int argc, char *argv[])
         (void) wbs;
     }
     if (flag_maphid)
-        map_hid_to_amiga = 1;
+        key_mapping_mode = 1;
     else if (flag_mapamiga)
-        map_hid_to_amiga = 0;
+        key_mapping_mode = 0;
     else if (flag_mapped)
-        map_hid_to_amiga = 3;
+        key_mapping_mode = 3;
     else
-        map_hid_to_amiga = 2;
+        key_mapping_mode = 2;
 
     if (OpenAmigaLibraries()) {
         window = OpenAWindow();
@@ -2775,5 +3480,4 @@ main(int argc, char *argv[])
 
 //
 // TODO
-//    custom key mapping
 //    add Amiga buttons for power off and reset
