@@ -37,7 +37,6 @@
 
 #define KEYCAP_DOWN 0x0000
 #define KEYCAP_UP   0x0100
-#define KEYCAP_MM   0x0200
 
 /* Keyboard-to-Amiga ring buffer */
 static uint    ak_rb_producer;
@@ -698,23 +697,24 @@ static const struct {
     uint16_t sc_mmusb;
     uint8_t  sc_usb;
 } scancode_mm_to_hid_kbd[] = {
-    {  0xb5, 0xeb },  // OSC Scan Next Track       -> Media Next Song
-    {  0xb6, 0xea },  // OSC Scan Previous Track   -> Media Previous Song
-    {  0xb7, 0xe9 },  // OSC Stop                  -> Media Stop CD
-    {  0xcd, 0xe8 },  // OSC Play / Pause          -> Media Play / Pause
-    {  0xe2, 0xef },  // OOC Mute                  -> Media Mute
-    {  0xe9, 0xed },  // RTC Volume Increment      -> Media Volume Up
-    {  0xea, 0xee },  // RTC Volume Decrement      -> Media Volume Down
-    { 0x183, 0xf7 },  // Sel AL Consumer Ctl. Conf -> Media Edit
-    { 0x18a, 0xf9 },  // Sel AL Email Reader       -> Media Coffee
-    { 0x192, 0xfb },  // Sel AL Calculator         -> Media Calc
-    { 0x194, 0xf0 },  // Sel AL Local Browser      -> Media WWW
-    { 0x221, 0xf4 },  // Sel AC Search             -> Media Find
-    { 0x223, 0x4a },  // Sel AC Home               -> Home
-    { 0x224, 0xf1 },  // Sel AC Back               -> Media Back
-    { 0x225, 0xf2 },  // Sel AC Forward            -> Media Forward
-    { 0x226, 0xf3 },  // Sel AC Stop               -> Media Stop
-    { 0x227, 0xfa },  // Sel AC Refresh            -> Media Refresh
+    {  0xb5, HS_MEDIA_NEXT   },  // OSC Scan Next Track    -> Media Next Song
+    {  0xb6, HS_MEDIA_PREV   },  // OSC Scan Prev Track    -> Media Prev Song
+    {  0xb7, HS_MEDIA_STOPCD },  // OSC Stop               -> Media Stop CD
+    {  0xcd, HS_MEDIA_PLAY   },  // OSC Play / Pause       -> Media Play / Pause
+    {  0xe2, HS_MEDIA_MUTE   },  // OOC Mute               -> Media Mute
+    {  0xe9, HS_MEDIA_V_UP   },  // RTC Volume Increment   -> Media Volume Up
+    {  0xea, HS_MEDIA_V_DOWN },  // RTC Volume Decrement   -> Media Volume Down
+    { 0x183, HS_MEDIA_EDIT   },  // Sel AL Cons. Ctl. Conf -> Media Edit
+    { 0x18a, HS_MEDIA_COFFEE },  // Sel AL Email Reader    -> Media Coffee
+    { 0x192, HS_MEDIA_CALC   },  // Sel AL Calculator      -> Media Calc
+    { 0x194, HS_MEDIA_WWW    },  // Sel AL Local Browser   -> Media WWW
+    { 0x221, HS_MEDIA_FIND   },  // Sel AC Search          -> Media Find
+    { 0x223, HS_F13          },  // Sel AC Home            -> F13
+    { 0x224, HS_MEDIA_BACK   },  // Sel AC Back            -> Media Back
+    { 0x225, HS_MEDIA_FWD    },  // Sel AC Forward         -> Media Forward
+    { 0x226, HS_MEDIA_STOP   },  // Sel AC Stop            -> Media Stop
+    { 0x227, HS_MEDIA_AGAIN  },  // Sel AC Refresh         -> Media Refresh
+    { 0x22a, HS_F14          },  // Sel AC Bookmarks Star  -> F14
 };
 
 static inline bool
@@ -810,13 +810,13 @@ convert_scancode_to_amiga(uint8_t keycode, uint8_t modifier,
     return (code);
 }
 
-static uint last_key_report_modifier;
-
 static uint8_t
 capture_scancode(uint16_t keycode)
 {
     uint next;
     if (keyboard_cap_src == 0)
+        return (keycode);
+    if ((keycode & 0xff) == 0)
         return (keycode);
 
     /* Add captured input to buffer */
@@ -830,20 +830,16 @@ capture_scancode(uint16_t keycode)
     return (0);
 }
 
-static uint32_t
-convert_mm_scancode_to_amiga(uint keycode)
+static uint
+convert_mm_scancode_to_hid(uint keycode)
 {
     uint pos;
     uint tcode;
-    uint8_t amiga_modifier;
 
     for (pos = 0; pos < ARRAY_SIZE(scancode_mm_to_hid_kbd); pos++) {
         if (scancode_mm_to_hid_kbd[pos].sc_mmusb == keycode) {
             tcode = scancode_mm_to_hid_kbd[pos].sc_usb;
-            dprintf(DF_USB_KEYBOARD, "<=%02x>", tcode);
-            tcode = capture_scancode(tcode);
-            return (convert_scancode_to_amiga(tcode,
-                                    last_key_report_modifier, &amiga_modifier));
+            return (tcode);
         }
     }
     return (0);
@@ -891,6 +887,22 @@ get_kbclk_output_value(void)
    return (*ADDR32(BND_IO(KBDATA_PORT + GPIO_ODR_OFFSET, low_bit(KBDATA_PIN))));
 }
 
+static void
+keyboard_power_button_press(void)
+{
+    if (power_state == POWER_STATE_OFF)
+        power_set(POWER_STATE_ON);
+    else
+        power_set(POWER_STATE_OFF);
+    kbrst_amiga(0, 0);
+}
+
+static void
+keyboard_reset_button_press(void)
+{
+    printf("Resetting Amiga\n");
+    kbrst_amiga(0, 0);
+}
 
 /*
  * amiga_keyboard_send() is responsible for clocking out keyboard data
@@ -1006,7 +1018,7 @@ amiga_keyboard_send(void)
 /*
  * keyboard_put_amiga
  * ------------------
- * Push the specified keystroke to the Amiga keyboard buffer
+ * Push the specified keystroke to the Amiga keyboard buffer (FIFO)
  */
 void
 keyboard_put_amiga(uint8_t code)
@@ -1044,6 +1056,12 @@ keyboard_put_amiga(uint8_t code)
         case AS_RIGHTALT | 0x80:
             ak_ctrl_amiga_amiga &= ~BIT(4);
             break;
+        case AS_RESET_BTN:
+            keyboard_reset_button_press();
+            break;
+        case AS_POWER_BTN:
+            keyboard_power_button_press();
+            break;
     }
 
     dprintf(DF_USB_KEYBOARD, "[%02x]", code);
@@ -1058,6 +1076,29 @@ keyboard_put_amiga(uint8_t code)
     ak_rb[ak_rb_producer] = code;
     __sync_synchronize();  // Memory barrier
     ak_rb_producer = new_prod;
+}
+
+/*
+ * keyboard_put_amiga_stack
+ * -------------------------
+ * Push a priority keystroke to the Amiga keyboard buffer (Stack)
+ */
+static void
+keyboard_put_amiga_stack(uint8_t code)
+{
+    uint new_cons;
+    new_cons = (ak_rb_consumer - 1);
+    if (new_cons > sizeof (ak_rb) - 1)
+        new_cons = sizeof (ak_rb) - 1;
+    if (new_cons == ak_rb_producer) {
+        /* Ring buffer full! */
+//      printf("!%02x!", code);
+        return;
+    }
+
+    /* Rotate and invert for send */
+    ak_rb[ak_rb_consumer] = code;
+    ak_rb_consumer = new_cons;
 }
 
 /*
@@ -1180,11 +1221,7 @@ keyboard_handle_magic(uint8_t keycode, uint modifier)
     }
     if (ascii == power_seq[power_pos]) {
         if (++power_pos == ARRAY_SIZE(power_seq)) {
-            if (power_state == POWER_STATE_OFF)
-                power_set(POWER_STATE_ON);
-            else
-                power_set(POWER_STATE_OFF);
-            kbrst_amiga(0, 0);
+            keyboard_power_button_press();
             power_pos = 0;
         }
     } else {
@@ -1192,8 +1229,7 @@ keyboard_handle_magic(uint8_t keycode, uint modifier)
     }
     if (ascii == reset_seq[reset_pos]) {
         if (++reset_pos == ARRAY_SIZE(reset_seq)) {
-            printf("Resetting Amiga\n");
-            kbrst_amiga(0, 0);
+            keyboard_reset_button_press();
             reset_pos = 0;
         }
     } else {
@@ -1404,6 +1440,7 @@ keyboard_usb_input(usb_keyboard_report_t *report)
     }
 
     if (config.flags & CF_KEYBOARD_SWAPALT) {
+        uint pos;
         /*
          * Swap Alt keys and Amiga keys
          *    Bit 0 Left Ctrl
@@ -1418,6 +1455,9 @@ keyboard_usb_input(usb_keyboard_report_t *report)
         modifier = (modifier & 0x33) |        // Ctrl and Shift
                    ((modifier & 0x44) << 1) | // Alt -> Amiga
                    ((modifier & 0x88) >> 1);  // Amiga -> Alt
+        for (pos = 0; pos < sizeof (report->keycode); pos++)
+            if (report->keycode[pos] == HS_MENU)
+                report->keycode[pos] = HS_RALT;
     }
     keyboard_convert_mod_keys_to_hid_codes(modifier, cur_mods);
 
@@ -1451,9 +1491,12 @@ keyboard_usb_input_mm(uint16_t *ch, uint count)
                 break;
         if (pos == count) {
             /* Key down */
-            tcode = capture_scancode(ch[cur] | KEYCAP_DOWN | KEYCAP_MM);
-            tcode = convert_mm_scancode_to_amiga(tcode);
-            dprintf(DF_USB_KEYBOARD, " MKEYDOWN %lx ", tcode);
+            uint8_t amiga_modifier;
+            dprintf(DF_USB_KEYBOARD, " MKEYDOWN %02x ", ch[cur]);
+            tcode = convert_mm_scancode_to_hid(ch[cur]);
+            dprintf(DF_USB_KEYBOARD, "<=%02lx>", tcode);
+            tcode = capture_scancode(tcode | KEYCAP_DOWN);
+            tcode = convert_scancode_to_amiga(tcode, 0, &amiga_modifier);
             for (; tcode != 0; tcode >>= 8) {
                 uint8_t code = (uint8_t) tcode;
                 if (code != AS_NONE) {
@@ -1475,9 +1518,11 @@ keyboard_usb_input_mm(uint16_t *ch, uint count)
                 break;
         if (pos == count) {
             /* Key up */
-            tcode = capture_scancode(last[cur] | KEYCAP_UP | KEYCAP_MM);
-            tcode = convert_mm_scancode_to_amiga(tcode);
-            dprintf(DF_USB_KEYBOARD, " MKEYUP %lx ", tcode);
+            uint8_t amiga_modifier;
+            dprintf(DF_USB_KEYBOARD, " MKEYUP %02x ", last[cur]);
+            tcode = convert_mm_scancode_to_hid(last[cur]);
+            tcode = capture_scancode(tcode | KEYCAP_UP);
+            tcode = convert_scancode_to_amiga(tcode, 0, &amiga_modifier);
             for (; tcode != 0; tcode >>= 8) {
                 uint8_t code = (uint8_t) tcode;
                 if (code != AS_NONE) {
@@ -1855,9 +1900,8 @@ keyboard_poll(void)
     }
 
     if (amiga_keyboard_sent_wake == 0) {
-        ak_rb_producer = ak_rb_consumer;  // Flush buffer
-        keyboard_put_amiga(AS_POWER_INIT);
-        keyboard_put_amiga(AS_POWER_DONE);
+        keyboard_put_amiga_stack(AS_POWER_DONE);
+        keyboard_put_amiga_stack(AS_POWER_INIT);
         amiga_keyboard_sent_wake = 1;
     }
 

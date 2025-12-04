@@ -64,10 +64,12 @@ static uint amiga_keyboard_top;
 static uint hid_keyboard_left;
 static uint hid_keyboard_top;
 
-static uint win_width  = 500;
-static uint win_height = 220;
-static uint kbd_width  = 470;
-static uint kbd_height = 100;
+static uint win_width          = 500;
+static uint win_height         = 220;
+static uint kbd_width          = 470;
+static uint kbd_height         = 100;
+static uint kbd_keyarea_width  = 450;
+static uint kbd_keyarea_height = 90;
 
 static const uint font_pixels_x = 8;
 static const uint font_pixels_y = 8;
@@ -82,23 +84,23 @@ typedef struct {
 static uint8_t hid_scancode_to_amiga[NUM_SCANCODES][4];
 
 /* 1u 1.25u 1.5u 2u 2.25u 9u */
-#define U      191
+#define U      200
 #define PLAIN  0
 #define SHADED 1
 static const keysize_t amiga_keywidths[] = {
     { PLAIN,  1 * U,     1 * U },  //  0: Standard key ('1' key)
     { SHADED, 1 * U,     1 * U },  //  1: Standard shaded key (ESC key)
-    { SHADED, 1.25 * U,  1 * U },  //  2: Function and modifier key (F1 key)
-    { SHADED, 1.5 * U,   1 * U },  //  3: Tilde and backtick key
-    { SHADED, 1.5 * U,   1 * U },  //  4: Del and Help keys
-    { SHADED, 2.1 * U,   1 * U },  //  5: Tab key
+    { SHADED, 1.22 * U,  1 * U },  //  2: Function and modifier key (F1 key)
+    { SHADED, 1.45 * U,  1 * U },  //  3: Tilde and backtick key
+    { SHADED, 1.45 * U,  1 * U },  //  4: Del and Help keys
+    { SHADED, 2 * U,     1 * U },  //  5: Tab key
     { SHADED, 1.75 * U,  1 * U },  //  6: Left shift (wider for ANSI layout)
-    { SHADED, 2.9  * U,  1 * U },  //  7: Right shift
+    { SHADED, 2.8  * U,  1 * U },  //  7: Right shift
     { SHADED, 1 * U,   2.1 * U },  //  8: Keypad enter key
-    { PLAIN,  9.5  * U,  1 * U },  //  9: Spacebar
+    { PLAIN,  9 * U,     1 * U },  //  9: Spacebar
     { PLAIN,  2 * U,     1 * U },  // 10: Keypad 0
     { PLAIN,  1 * U,     1 * U },  // 11: Extra keys (ISO layout)
-    { SHADED, 1.6 * U,   2 * U },  // 12: Enter key
+    { SHADED, 1.5 * U, 2.1 * U },  // 12: Enter key
 };
 
 typedef struct {
@@ -123,6 +125,9 @@ static const keypos_t amiga_keypos[] = {
     { AS_F8,          2, 25761,  5050, "F8" },
     { AS_F9,          2, 28149,  5050, "F9" },
     { AS_F10,         2, 30537,  5050, "F10" },
+
+    { AS_RESET_BTN,   5, 43100,  5000, "Reset" },
+    { AS_POWER_BTN,   5, 46900,  5000, "Power" },
 
     { AS_BACKTICK,    3,  5553,  7917, C('`') },
     { AS_1,           0,  7931,  7917, C('1') },
@@ -228,13 +233,13 @@ typedef struct {
 
 #define AKB_MIN_X   5000
 #define AKB_MIN_Y   5000
-#define AKB_MAX_X  45500
-#define AKB_MAX_Y  15600
+#define AKB_MAX_X  48500
+#define AKB_MAX_Y  17000
 
 #define HIDKB_MIN_X  5000
 #define HIDKB_MIN_Y  5000
-#define HIDKB_MAX_X 44500
-#define HIDKB_MAX_Y 15600
+#define HIDKB_MAX_X 47600
+#define HIDKB_MAX_Y 17000
 
 // 1u    Alphanumeric keys (A, B, C, etc.), number keys, function keys
 // 1.25u Ctrl, Alt, GUI (Windows/Command) keys (bottom row)
@@ -267,10 +272,10 @@ static const keysize_t hid_keywidths[] = {
     { SHADED, 2.30 * U,  1 * U },  //  6: Left shift
     { SHADED, 2.80 * U,  1 * U },  //  7: Right shift
     { SHADED, 1 * U,   2.2 * U },  //  8: Keypad enter key
-    { PLAIN,  6.6 * U,   1 * U },  //  9: Spacebar
+    { PLAIN,  6.3 * U,   1 * U },  //  9: Spacebar
     { PLAIN,  2 * U,     1 * U },  // 10: Keypad 0
-    { SHADED, 1.80 * U,  1 * U },  // 11: Capslock
-    { SHADED, 2.30 * U,  1 * U },  // 12: Enter key
+    { SHADED, 1.75 * U,  1 * U },  // 11: Capslock
+    { SHADED, 2.25 * U,  1 * U },  // 12: Enter key
 };
 
 static const keypos_t hid_keypos[] = {
@@ -380,12 +385,12 @@ static const keypos_t hid_keypos[] = {
     { HS_KP_ENTER,    8, 46995, 14577, "_/" },
 
     { HS_LCTRL,       2,  5324, 15537, "Ctrl" },
-    { HS_LALT,        2,  7705, 15537, "Alt" },
-    { HS_LMETA,       2, 10086, 15537, "Meta" },
+    { HS_LMETA,       2,  7705, 15537, "Meta" },
+    { HS_LALT,        2, 10086, 15537, "Alt" },
     { HS_SPACE,       9, 17182, 15537, "" },
     { HS_RALT,        2, 24278, 15537, "Alt" },
-    { 0,              2, 26659, 15537, "Fn" },
-    { HS_RMETA,       2, 29040, 15537, "Meta" },
+    { HS_RMETA,       2, 26659, 15537, "Meta" },
+    { HS_MENU,        2, 29040, 15537, "Menu" },
     { HS_RCTRL,       2, 31421, 15537, "Ctrl" },
     { HS_LEFT,        0, 34613, 15537, C('<') },
     { HS_DOWN,        0, 36518, 15537, C('v') },
@@ -765,10 +770,10 @@ static void
 scale_key_dimensions(void)
 {
     uint cur;
-    uint mul_x = win_width - 8;
+    uint mul_x = kbd_width;
     uint mul_y = kbd_height;  // Need space for two keyboards
-    uint div_x = 25 * U * 2;  // Room for about 25 columns of keys
-    uint div_y = 9 * U * 2;   // Room for about 9 rows of keys
+    uint div_x = 24 * U * 2;  // Room for about 24 columns of keys
+    uint div_y = 8 * U * 2;   // Room for about 8 rows of keys
     /* 2 above is because the dimensions are +/- pixels from center */
 
     for (cur = 0; cur < ARRAY_SIZE(amiga_keywidths); cur++) {
@@ -854,7 +859,7 @@ static BYTE pen_cap_text;              // Keycap text
 static BYTE pen_cap_text_pressed;      // Keycap text when pressed
 static BYTE pen_cap_outline_lo;        // Normal outline around cap
 static BYTE pen_cap_outline_hi;        // Highlighted outline around cap
-static BYTE pen_keyboard_background;   // Keyboard case color
+static BYTE pen_keyboard_case;         // Keyboard case color
 static BYTE pen_status_fg;             // Black
 static BYTE pen_status_bg;             // White
 
@@ -873,9 +878,9 @@ select_pens(void)
             pen_cap_pressed         = 1;  // Black
             pen_cap_text            = 1;  // Black
             pen_cap_text_pressed    = 0;  // White
-            pen_cap_outline_lo      = 0;  // White
-            pen_cap_outline_hi      = 1;  // Black
-            pen_keyboard_background = 1;  // Background color
+            pen_cap_outline_lo      = 1;  // White
+            pen_cap_outline_hi      = 0;  // Black
+            pen_keyboard_case       = 0;  // Background color
             pen_status_fg           = 1;  // Black
             pen_status_bg           = 0;  // White
             break;
@@ -895,7 +900,7 @@ select_pens(void)
             pen_cap_text_pressed    = 1;  // Black
             pen_cap_outline_lo      = 1;  // Black
             pen_cap_outline_hi      = 3;  // Blue
-            pen_keyboard_background = 0;  // Background color
+            pen_keyboard_case       = 0;  // Background color
             pen_status_fg           = 1;  // Black
             pen_status_bg           = 2;  // White
             break;
@@ -918,7 +923,7 @@ select_pens(void)
             pen_cap_text_pressed    = 1;  // Black
             pen_cap_outline_lo      = 1;  // Black
             pen_cap_outline_hi      = 4;  // Red
-            pen_keyboard_background = 6;  // Dark Blue
+            pen_keyboard_case       = 6;  // Dark Blue
             pen_status_fg           = 1;  // Black
             pen_status_bg           = 2;  // White
             break;
@@ -1121,8 +1126,10 @@ draw_amiga_key(uint cur, uint pressed)
         ke_y += 1905 / 2;  // Fixup center for tall keys
     }
 
-    pos_x = (ke_x - AKB_MIN_X) * kbd_width  / AKB_MAX_X + amiga_keyboard_left;
-    pos_y = (ke_y - AKB_MIN_Y) * kbd_height / AKB_MAX_Y + amiga_keyboard_top;
+    pos_x = (ke_x - AKB_MIN_X) * kbd_keyarea_width /
+            (AKB_MAX_X - AKB_MIN_X) + amiga_keyboard_left;
+    pos_y = (ke_y - AKB_MIN_Y) * kbd_keyarea_height /
+            (AKB_MAX_Y - AKB_MIN_Y) + amiga_keyboard_top;
 
     if (amiga_keysize[amiga_keypos[cur].type].shaded == 0xff)
         return;  // Key not present in this keymap
@@ -1150,7 +1157,7 @@ draw_amiga_key(uint cur, uint pressed)
             keycap_bg_pen = pressed ? pen_cap_text_pressed : pen_cap_text;
             break;
         case 3:  // Key that has been pressed (Blue)
-            keycap_fg_pen = pen_cap_text;
+            keycap_fg_pen = pen_cap_text_pressed;
             keycap_bg_pen = pen_cap_pressed;
             break;
     }
@@ -1200,9 +1207,8 @@ draw_hid_key(uint cur, uint pressed)
 {
     const keypos_t *ke = &hid_keypos[cur];
     uint shaded = hid_keysize[hid_keypos[cur].type].shaded;
-    uint pos_x = (ke->x - HIDKB_MIN_X) * kbd_width / HIDKB_MAX_X + hid_keyboard_left;
-    uint pos_y = (ke->y - HIDKB_MIN_Y) * kbd_height / HIDKB_MAX_Y +
-                 hid_keyboard_top + hid_keysize[0].y * 2;
+    uint pos_x;
+    uint pos_y;
     uint ktype = hid_keypos[cur].type;
     uint wx = hid_keysize[ktype].x;
     uint wy = hid_keysize[ktype].y;
@@ -1216,6 +1222,12 @@ draw_hid_key(uint cur, uint pressed)
 
     if (hid_keysize[hid_keypos[cur].type].shaded == 0xff)
         return;  // Key not present in this keymap
+
+    pos_x = (ke->x - HIDKB_MIN_X) * kbd_keyarea_width /
+            (HIDKB_MAX_X - HIDKB_MIN_X) + hid_keyboard_left;
+    pos_y = (ke->y - HIDKB_MIN_Y) * kbd_keyarea_height /
+            (HIDKB_MAX_Y - HIDKB_MIN_Y) +
+            hid_keyboard_top + hid_keysize[0].y * 2;
 
     if (pressed) {
         shaded = 3;
@@ -1240,7 +1252,7 @@ draw_hid_key(uint cur, uint pressed)
             keycap_bg_pen = pressed ? pen_cap_text_pressed : pen_cap_text;
             break;
         case 3:  // Key that has been pressed (Blue)
-            keycap_fg_pen = pen_cap_text;
+            keycap_fg_pen = pen_cap_text_pressed;
             keycap_bg_pen = pen_cap_pressed;
             break;
     }
@@ -2370,44 +2382,50 @@ draw_win(void)
 {
     uint cur;
 
-    win_width = window->Width - window->BorderLeft - window->BorderRight + 3;
-    win_height = window->Height;
+    win_width  = window->Width - window->BorderLeft - window->BorderRight;
+    win_height = window->Height - window->BorderTop - window->BorderBottom;
 
-    kbd_width     = win_width - 4;
-    kbd_height    = win_height * 15 / 40;
+    kbd_width  = win_width - 2;
+    kbd_height = win_height * 25 / 64;
 
     scale_key_dimensions();
 
+    kbd_keyarea_width  = kbd_width  - amiga_keysize[0].x * 2;
+    kbd_keyarea_height = kbd_height - amiga_keysize[0].y * 2;
+
     /* Draw Amiga keyboard case */
-    uint draw_kbd_height = kbd_height;
     uint win_left = window->BorderLeft;
-    uint win_right = win_width;
-    hid_keyboard_top = win_height - kbd_height + window->BorderBottom;
+    hid_keyboard_top = win_height - kbd_height - 2 +
+                       window->BorderTop + window->BorderBottom;
 
     /* Default drawing mode */
     SetDrMd(rp, JAM2);
-    SetBPen(rp, pen_keyboard_background);
+    SetBPen(rp, pen_keyboard_case);
 
     /* Draw Amiga keyboard case */
-    SetAPen(rp, pen_keyboard_background);
+    SetAPen(rp, pen_keyboard_case);
     RectFill(rp, win_left, window->BorderTop,
-             win_right, window->BorderTop + draw_kbd_height);
+             win_left + kbd_width, window->BorderTop + kbd_height);
 
     /* Empty area between keyboards */
     SetAPen(rp, 0);
-    RectFill(rp, win_left, window->BorderTop + draw_kbd_height,
-             win_right, hid_keyboard_top);
-    /* Draw HID keyboard case */
-    SetAPen(rp, pen_keyboard_background);
-    RectFill(rp, win_left, hid_keyboard_top,
-             win_right, win_height - window->BorderBottom);
+    RectFill(rp, win_left, window->BorderTop + kbd_height,
+             win_left + kbd_width, hid_keyboard_top);
 
-    SetAPen(rp, pen_cap_white);
-    box(win_left, window->BorderTop,
-        win_right, window->BorderTop + draw_kbd_height);
+    /* Draw HID keyboard case */
+    SetAPen(rp, pen_keyboard_case);
+    RectFill(rp, win_left, hid_keyboard_top,
+             win_left + kbd_width, hid_keyboard_top + kbd_height);
+
+    /* Draw HID keyboard outline */
     SetAPen(rp, pen_cap_white);
     box(win_left, hid_keyboard_top,
-        win_right, win_height - window->BorderBottom);
+        win_left + kbd_width, hid_keyboard_top + kbd_height);
+
+    /* Draw Amiga keyboard outline */
+    SetAPen(rp, pen_cap_white);
+    box(win_left, window->BorderTop,
+        win_left + kbd_width, window->BorderTop + kbd_height);
 
     /* Draw Amiga keyboard */
     amiga_keyboard_left = window->BorderLeft + amiga_keysize[0].x + 4;
@@ -2976,11 +2994,6 @@ load_parse_error:
             }
         }
     }
-#if 0
-    /* Do the Fn key for completeness */
-    hid_key_mapped[cap] = 1;
-    draw_hid_key(0, 0);
-#endif
     fclose(fp);
     gui_printf("Read keymap from %s", full_path);
 }
@@ -3477,7 +3490,3 @@ main(int argc, char *argv[])
     CloseAmigaLibraries();
     exit(EXIT_SUCCESS);
 }
-
-//
-// TODO
-//    add Amiga buttons for power off and reset

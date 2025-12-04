@@ -112,7 +112,7 @@
 #define HS_KP_0         (0x62)  // Keypad '0'
 #define HS_KP_DOT       (0x63)  // Keypad '.'
 #define HS_BACKSLASH2   (0x64)  // 102ND '\' and '|' (non-US)
-#define HS_COMPOSE      (0x65)  // Compose
+#define HS_MENU         (0x65)  // Menu (aka Application / Compose)
 #define HS_POWER        (0x66)  // Power Key
 #define HS_KP_EQUAL     (0x67)  // Keypad '='
 #define HS_F13          (0x68)  // F13

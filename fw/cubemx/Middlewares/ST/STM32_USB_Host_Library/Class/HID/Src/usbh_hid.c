@@ -62,8 +62,6 @@ EndBSPDependencies */
 #define PPRINTF(...) do { } while (0)
 #endif
 
-#define BIT(x) (1U << (x))
-
 /** @addtogroup USBH_LIB
 * @{
 */

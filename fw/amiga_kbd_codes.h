@@ -128,6 +128,8 @@
 #define AS_WHEEL_DOWN  (0x7b)  // Mouse Wheel Down  (NM_WHEEL_DOWN)
 #define AS_WHEEL_LEFT  (0x7c)  // Mouse Wheel Left  (NM_WHEEL_LEFT)
 #define AS_WHEEL_RIGHT (0x7d)  // Mouse Wheel Right (NM_WHEEL_RIGHT)
+#define AS_RESET_BTN   (0x7e)  // Reset button (AmigaPCI reset button)
+#define AS_POWER_BTN   (0x7f)  // Power button (AmigaPCI power button)
 #define AS_LOST_SYNC   (0xf9)  // Keyboard lost sync with Amiga
 #define AS_BUFOVERFLOW (0xfa)  // Keyboard output buffer overflow
 #define AS_POST_FAIL   (0xfc)  // Keyboard selftest failed
