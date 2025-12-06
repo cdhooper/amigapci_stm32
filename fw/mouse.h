@@ -15,6 +15,7 @@ void mouse_action(int off_x, int off_y, int off_wheel, int off_pan,
                   uint32_t buttons);
 void mouse_poll(void);
 void mouse_put_macro(uint32_t macro, uint is_pressed, uint was_pressed);
+void mouse_set_defaults(void);
 extern uint32_t mouse_buttons_add;
 extern uint8_t mouse_asserted;
 

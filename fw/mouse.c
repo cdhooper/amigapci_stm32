@@ -11,6 +11,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <string.h>
 #include "main.h"
 #include "config.h"
 #include "mouse.h"
@@ -247,6 +248,19 @@ mouse_action(int off_x, int off_y, int off_wheel, int off_pan, uint32_t buttons)
     }
     if (change)
         hiden_set(1);
+}
+
+void
+mouse_set_defaults(void)
+{
+    config.mouse_mul_x = 0;
+    config.mouse_mul_y = 0;
+    config.mouse_div_x = 0;
+    config.mouse_div_y = 0;
+    memset(config.buttonmap, 0, sizeof (config.buttonmap));    // Mouse
+    memset(config.scrollmap, 0, sizeof (config.scrollmap));    // Mouse
+    memset(config.jbuttonmap, 0, sizeof (config.jbuttonmap));  // Joystick
+    memset(config.jdirectmap, 0, sizeof (config.jdirectmap));  // Joystick
 }
 
 static void

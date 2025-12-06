@@ -90,12 +90,15 @@ typedef struct {
 } bec_keymap_t;
 
 #define BKM_WHICH_KEYMAP          0x01  // Scancode mapping table
-#define BKM_WHICH_MODKEYMAP       0x02
-#define BKM_WHICH_BUTTONMAP       0x03  // Mouse button map
-#define BKM_WHICH_SCROLLMAP       0x04  // Mouse scroll wheel map
-#define BKM_WHICH_JBUTTONMAP      0x05  // Joystick button map
-#define BKM_WHICH_JDIRECTMAP      0x06  // Joystick direction map
-#define BKM_WHICH_DEFAULT_KEYMAP  0x07  // Default scancode mapping table
+#define BKM_WHICH_BUTTONMAP       0x02  // Mouse button map
+#define BKM_WHICH_SCROLLMAP       0x03  // Mouse scroll wheel map
+#define BKM_WHICH_JBUTTONMAP      0x04  // Joystick button map
+#define BKM_WHICH_JDIRECTMAP      0x05  // Joystick direction map
+#define BKM_WHICH_DEF_KEYMAP      0x11  // Default scancode mapping table
+#define BKM_WHICH_DEF_BUTTONMAP   0x12  // Default button mapping table
+#define BKM_WHICH_DEF_SCROLLMAP   0x13  // Default scroll wheel map
+#define BKM_WHICH_DEF_JBUTTONMAP  0x14  // Default joystick button map
+#define BKM_WHICH_DEF_JDIRECTMAP  0x15  // Default joystick direction map
 
 /*
  * The below structure is used for the following command:

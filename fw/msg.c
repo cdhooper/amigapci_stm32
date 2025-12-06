@@ -119,6 +119,51 @@ msg_process_fast(void)
 #endif
 }
 
+static void
+msg_get_map_reply(bec_keymap_t *req, void *buf, uint maxcount, uint esize)
+{
+    uint count = req->bkm_count;
+    uint start = req->bkm_start;
+
+    /* Limit count to not exceed BEC message maximum size */
+    if (count > 60)
+        count = 60;
+
+    if (count > maxcount - start)
+        count = maxcount - start;  // Don't send past the end
+    req->bkm_len   = esize;
+    req->bkm_count = count;
+
+    msg_reply(BEC_STATUS_OK, sizeof (*req), req,
+              count * req->bkm_len, buf);
+}
+
+static void
+msg_set_map_reply(bec_keymap_t *req, void *buf, uint maxcount, uint esize)
+{
+    uint8_t *data    = (void *) (req + 1);
+    uint8_t *bufptr  = (uint8_t *) buf;
+    uint     maxkeys = req->bkm_len;
+    uint     count   = req->bkm_count;
+    uint     start   = req->bkm_start;
+    uint     key;
+
+    if (count > maxcount - start)
+        count = maxcount - start;  // Don't receive past the end
+
+    while (count-- > 0) {
+        for (key = 0; key < maxkeys; key++) {
+            if (key >= esize)
+                break;
+            *(bufptr++) = data[key];
+        }
+        for (; key < esize; key++)
+            *(bufptr++) = 0;
+        data += maxkeys;
+    }
+    msg_reply(BEC_STATUS_OK, 0, NULL, 0, NULL);
+}
+
 void
 msg_process_slow(void)
 {
@@ -167,7 +212,8 @@ msg_process_slow(void)
             break;
         }
         case BEC_CMD_TESTPATT:
-            msg_reply(BEC_STATUS_OK, sizeof (testpatt_reply), &testpatt_reply, 0, NULL);
+            msg_reply(BEC_STATUS_OK, sizeof (testpatt_reply), &testpatt_reply,
+                      0, NULL);
             break;
         case BEC_CMD_LOOPBACK:
             msg_reply(cmd, msglen, bec_msg_inbuf + BEC_MSG_HDR_LEN, 0, NULL);
@@ -176,6 +222,7 @@ msg_process_slow(void)
             bec_keymap_t *req = (void *) &bec_msg_inbuf[BEC_MSG_HDR_LEN];
             uint count = req->bkm_count;
             uint start = req->bkm_start;
+            uint8_t buf[64];
 
             /* Send max 240 bytes at a time (plus reply struct) */
             if (count > 240 / sizeof (config.keymap[0]))
@@ -183,28 +230,60 @@ msg_process_slow(void)
 
             switch (req->bkm_which) {
                 case BKM_WHICH_KEYMAP:
-                    /* Don't send past the end */
-                    if (count > ARRAY_SIZE(config.keymap) - start)
-                        count = ARRAY_SIZE(config.keymap) - start;
+                    msg_get_map_reply(req, &config.keymap[start],
+                                      ARRAY_SIZE(config.keymap),
+                                      sizeof (config.keymap[0]));
 
-                    req->bkm_len   = sizeof (config.keymap[0]);
-                    req->bkm_count = count;
-                    msg_reply(BEC_STATUS_OK, sizeof (*req), req,
-                              count * req->bkm_len, &config.keymap[start]);
                     break;
-                case BKM_WHICH_DEFAULT_KEYMAP: {
-                    /* Don't send past the end */
-                    uint8_t buf[64];
+                case BKM_WHICH_BUTTONMAP:
+                    msg_get_map_reply(req, &config.buttonmap[start],
+                                      ARRAY_SIZE(config.buttonmap),
+                                      sizeof (config.buttonmap[0]));
+                    break;
+                case BKM_WHICH_SCROLLMAP:
+                    msg_get_map_reply(req, &config.scrollmap[start],
+                                      ARRAY_SIZE(config.scrollmap),
+                                      sizeof (config.scrollmap[0]));
+                    break;
+                case BKM_WHICH_JBUTTONMAP:
+                    msg_get_map_reply(req, &config.jbuttonmap[start],
+                                      ARRAY_SIZE(config.jbuttonmap),
+                                      sizeof (config.jbuttonmap[0]));
+                    break;
+                case BKM_WHICH_JDIRECTMAP:
+                    msg_get_map_reply(req, &config.jdirectmap[start],
+                                      ARRAY_SIZE(config.jdirectmap),
+                                      sizeof (config.jdirectmap[0]));
+                    break;
+                case BKM_WHICH_DEF_KEYMAP:
                     if (count > ARRAY_SIZE(config.keymap) - start)
                         count = ARRAY_SIZE(config.keymap) - start;
                     if (count > ARRAY_SIZE(buf))
                         count = ARRAY_SIZE(buf);
+                    keyboard_get_defaults(start, count, buf);
                     req->bkm_len   = 1;
                     req->bkm_count = count;
-                    keyboard_get_defaults(start, count, buf);
                     msg_reply(BEC_STATUS_OK, sizeof (*req), req, count, buf);
                     break;
-                }
+                case BKM_WHICH_DEF_BUTTONMAP:
+                    if (count > ARRAY_SIZE(config.buttonmap) - start)
+                        count = ARRAY_SIZE(config.buttonmap) - start;
+send_empty_defmap:
+                    if (count > ARRAY_SIZE(buf))
+                        count = ARRAY_SIZE(buf);
+                    memset(buf, 0, count);
+                    req->bkm_len   = 1;
+                    req->bkm_count = count;
+                    msg_reply(BEC_STATUS_OK, sizeof (*req), req, count, buf);
+                    break;
+                case BKM_WHICH_DEF_JBUTTONMAP:
+                    if (count > ARRAY_SIZE(config.jbuttonmap) - start)
+                        count = ARRAY_SIZE(config.jbuttonmap) - start;
+                    goto send_empty_defmap;
+                case BKM_WHICH_DEF_JDIRECTMAP:
+                    if (count > ARRAY_SIZE(config.jdirectmap) - start)
+                        count = ARRAY_SIZE(config.jdirectmap) - start;
+                    goto send_empty_defmap;
                 default:
 bad_arg:
                     msg_reply(BEC_STATUS_BADARG, 0, NULL, 0, NULL);
@@ -214,28 +293,33 @@ bad_arg:
         }
         case BEC_CMD_SET_MAP: {
             bec_keymap_t *req = (void *) &bec_msg_inbuf[BEC_MSG_HDR_LEN];
-            uint count   = req->bkm_count;
-            uint cur     = req->bkm_start;
-            uint maxkeys = req->bkm_len;
-            uint maxkeys_local = sizeof (config.keymap[0]);
-            uint key;
-            uint8_t *data;
+            uint start   = req->bkm_start;
 
             switch (req->bkm_which) {
                 case BKM_WHICH_KEYMAP:
-                    data = (void *) (req + 1);
-                    for (pos = 0; pos < count; pos++) {
-                        uint32_t val = 0;
-                        for (key = 0; key < maxkeys; key++) {
-                            if (key >= maxkeys_local)
-                                break;
-                            val |= (data[key] << (8 * key));
-                        }
-                        config.keymap[cur] = val;
-                        data += maxkeys;
-                        cur++;
-                    }
-                    msg_reply(BEC_STATUS_OK, 0, NULL, 0, NULL);
+                    msg_set_map_reply(req, &config.keymap[start],
+                                      ARRAY_SIZE(config.keymap),
+                                      sizeof (config.keymap[0]));
+                    break;
+                case BKM_WHICH_BUTTONMAP:
+                    msg_set_map_reply(req, &config.buttonmap[start],
+                                      ARRAY_SIZE(config.buttonmap),
+                                      sizeof (config.buttonmap[0]));
+                    break;
+                case BKM_WHICH_SCROLLMAP:
+                    msg_set_map_reply(req, &config.scrollmap[start],
+                                      ARRAY_SIZE(config.scrollmap),
+                                      sizeof (config.scrollmap[0]));
+                    break;
+                case BKM_WHICH_JBUTTONMAP:
+                    msg_set_map_reply(req, &config.jbuttonmap[start],
+                                      ARRAY_SIZE(config.jbuttonmap),
+                                      sizeof (config.jbuttonmap[0]));
+                    break;
+                case BKM_WHICH_JDIRECTMAP:
+                    msg_set_map_reply(req, &config.jdirectmap[start],
+                                      ARRAY_SIZE(config.jdirectmap),
+                                      sizeof (config.jdirectmap[0]));
                     break;
                 default:
                     goto bad_arg;

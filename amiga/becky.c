@@ -53,6 +53,12 @@ const char *version = "\0$VER: becky "VERSION" ("BUILD_DATE") \xA9 Chris Hooper"
 #define BIT(x) (1U << (x))
 #define ARRAY_SIZE(x) ((sizeof (x) / sizeof ((x)[0])))
 
+#define KEY_PLAIN       0  // Regular white keycap
+#define KEY_SHADED      1  // Non-alphanumeric keys (ESC, Fn, Shift, Alt, etc)
+#define KEY_NOT_MAPPED  2  // Key present, but does not have active mapping
+#define KEY_PRESSED     3  // Key is actively pressed
+#define KEY_NOT_PRESENT 4  // Key is not present in this keymap (ANSI vs ISO)
+
 uint        flag_debug = 0;
 static uint8_t is_ansi_layout = 1;  // 1=ANSI (North America), 0=ISO (Europe)
 static uint8_t enable_esc_exit = 1;  // ESC key will exit program
@@ -85,8 +91,8 @@ static uint8_t hid_scancode_to_amiga[NUM_SCANCODES][4];
 
 /* 1u 1.25u 1.5u 2u 2.25u 9u */
 #define U      200
-#define PLAIN  0
-#define SHADED 1
+#define PLAIN  KEY_PLAIN
+#define SHADED KEY_SHADED
 static const keysize_t amiga_keywidths[] = {
     { PLAIN,  1 * U,     1 * U },  //  0: Standard key ('1' key)
     { SHADED, 1 * U,     1 * U },  //  1: Standard shaded key (ESC key)
@@ -624,12 +630,11 @@ static const struct NewMenu becky_menu[] = { // name key flags mutex userdata
                                                         0x78 ^ 0x20, NULL },
     {  NM_ITEM, "Live keys + mapped", NULL, CHECKIT | MENUTOGGLE,
                                                         0x78 ^ 0x40, NULL },
-    {  NM_ITEM, NM_BARLABEL,          NULL, 0,  0, NULL }, // Separator bar
-    {  NM_ITEM, "ANSI layout",        NULL, CHECKIT | MENUTOGGLE, 0, NULL },
     { NM_TITLE, "Key",                NULL, 0,  0, NULL },
-//  {  NM_ITEM, "Custom mapping",     NULL, 0,  0, NULL },
+    {  NM_ITEM, "Custom mapping",     NULL, 0,  0, NULL },
     {  NM_ITEM, "Remove mapping",     NULL, 0,  0, NULL },
     {  NM_ITEM, "Redraw keys",        NULL, 0,  0, NULL },
+    {  NM_ITEM, "ANSI layout",        NULL, CHECKIT | MENUTOGGLE, 0, NULL },
     {   NM_END, NULL,                 NULL, 0,  0, NULL }  // End of menu
 };
 static struct NewMenu *menu;
@@ -651,6 +656,7 @@ static struct NewMenu *menu;
 #define MENU_NUM_KEY               3
 
 #define MENU_INDEX_MODE            12
+#define MENU_INDEX_KEY             (MENU_INDEX_MODE + 8)
 
 #define MENU_FILE_LOAD             0
 #define MENU_FILE_SAVE             1
@@ -667,10 +673,11 @@ static struct NewMenu *menu;
 #define MENU_MODE_HID_TO_AMIGA     4
 #define MENU_MODE_LIVE_KEYS        5
 #define MENU_MODE_LIVE_KEYS_MAP    6
-#define MENU_MODE_ANSI_LAYOUT      8
 
-#define MENU_KEY_REMOVE_MAPPINGS   0
-#define MENU_KEY_REDRAW_KEYS       1
+#define MENU_KEY_CUSTOM_MAPPING    0
+#define MENU_KEY_REMOVE_MAPPINGS   1
+#define MENU_KEY_REDRAW_KEYS       2
+#define MENU_KEY_ANSI_LAYOUT       3
 
 #define ITEMNUM_AMIGA_SCANCODE (SHIFTMENU(MENU_NUM_MODE) | \
                                 SHIFTITEM(MENU_MODE_AMIGA_SCANCODE))
@@ -691,6 +698,10 @@ static struct Menu *menus = NULL;
 static APTR        *visual_info;
 static uint8_t      capture_hid_scancodes = 1;  // 0=Amiga, 1=HID
 static uint8_t      key_mapping_mode;  // 0=Amiga->HID, 1=HID->Amiga, 2=Rawkeys
+#define KEY_MAPPING_MODE_AMIGA_TO_HID    0
+#define KEY_MAPPING_MODE_HID_TO_AMIGA    1
+#define KEY_MAPPING_MODE_LIVEKEYS        2
+#define KEY_MAPPING_MODE_LIVEKEYS_MAPPED 3
 
 static void
 create_menu(void)
@@ -724,7 +735,7 @@ create_menu(void)
 
         /* Add checkmark to "ANSI Layout" menu item */
         if (is_ansi_layout)
-            menu[MENU_INDEX_MODE + MENU_MODE_ANSI_LAYOUT].nm_Flags |= CHECKED;
+            menu[MENU_INDEX_KEY + MENU_KEY_ANSI_LAYOUT].nm_Flags |= CHECKED;
     } else {
         err_printf("Bug: becky_menu changed\n");
     }
@@ -796,7 +807,7 @@ scale_key_dimensions(void)
      * non-square Return key.
      */
     if (is_ansi_layout) {
-        amiga_keysize[11].shaded = 0xff;    // Extra keys = invisible
+        amiga_keysize[11].shaded = KEY_NOT_PRESENT;  // Extra keys = invisible
         amiga_keysize[6].x += 1 * U * mul_x / div_x;  // Left shitt
     }
 }
@@ -1052,14 +1063,14 @@ static void
 user_usage_hint_show(uint from_menu)
 {
     switch (key_mapping_mode) {
-        case 0:
+        case KEY_MAPPING_MODE_AMIGA_TO_HID:
             gui_printf2("Pick Amiga key above and HID key(s) below.");
             break;
-        case 1:
+        case KEY_MAPPING_MODE_HID_TO_AMIGA:
             gui_printf2("Pick HID key below and up to four Amiga keys above.");
             break;
-        case 2:
-        case 3:
+        case KEY_MAPPING_MODE_LIVEKEYS:
+        case KEY_MAPPING_MODE_LIVEKEYS_MAPPED:
             if (from_menu)
                 return;  // Not this hint again
             gui_printf2("Select Mode / Map HID to Amiga to remap keys.");
@@ -1131,32 +1142,32 @@ draw_amiga_key(uint cur, uint pressed)
     pos_y = (ke_y - AKB_MIN_Y) * kbd_keyarea_height /
             (AKB_MAX_Y - AKB_MIN_Y) + amiga_keyboard_top;
 
-    if (amiga_keysize[amiga_keypos[cur].type].shaded == 0xff)
+    if (amiga_keysize[amiga_keypos[cur].type].shaded == KEY_NOT_PRESENT)
         return;  // Key not present in this keymap
 
     if (pressed) {
-        shaded = 3;
+        shaded = KEY_PRESSED;
     } else if (!amiga_key_mapped[cur]) {
-        shaded = 2;
+        shaded = KEY_NOT_MAPPED;
     } else {
         shaded = amiga_keysize[amiga_keypos[cur].type].shaded;
     }
 
     switch (shaded) {
         default:
-        case 0:  // Normal white key
+        case KEY_PLAIN:  // Normal white key
             keycap_fg_pen = pressed ? pen_cap_text_pressed : pen_cap_text;
             keycap_bg_pen = pen_cap_white;
             break;
-        case 1:  // Normal shaded key
+        case KEY_SHADED:  // Normal shaded key
             keycap_fg_pen = pressed ? pen_cap_text_pressed : pen_cap_text;
             keycap_bg_pen = pen_cap_shaded;
             break;
-        case 2:  // Key that has not been mapped (Black)
+        case KEY_NOT_MAPPED:  // Key that has not been mapped (Black)
             keycap_fg_pen = pen_cap_white;
             keycap_bg_pen = pressed ? pen_cap_text_pressed : pen_cap_text;
             break;
-        case 3:  // Key that has been pressed (Blue)
+        case KEY_PRESSED:  // Key that has been pressed (Blue)
             keycap_fg_pen = pen_cap_text_pressed;
             keycap_bg_pen = pen_cap_pressed;
             break;
@@ -1220,7 +1231,7 @@ draw_hid_key(uint cur, uint pressed)
         return;
     }
 
-    if (hid_keysize[hid_keypos[cur].type].shaded == 0xff)
+    if (hid_keysize[hid_keypos[cur].type].shaded == KEY_NOT_PRESENT)
         return;  // Key not present in this keymap
 
     pos_x = (ke->x - HIDKB_MIN_X) * kbd_keyarea_width /
@@ -1230,28 +1241,28 @@ draw_hid_key(uint cur, uint pressed)
             hid_keyboard_top + hid_keysize[0].y * 2;
 
     if (pressed) {
-        shaded = 3;
+        shaded = KEY_PRESSED;
     } else if (!hid_key_mapped[cur]) {
-        shaded = 2;
+        shaded = KEY_NOT_MAPPED;
     } else {
         shaded = hid_keysize[hid_keypos[cur].type].shaded;
     }
 
     switch (shaded) {
         default:
-        case 0:  // Normal white key
+        case KEY_PLAIN:  // Normal white key
             keycap_fg_pen = pressed ? pen_cap_text_pressed : pen_cap_text;
             keycap_bg_pen = pen_cap_white;
             break;
-        case 1:  // Normal shaded key
+        case KEY_SHADED:  // Normal shaded key
             keycap_fg_pen = pressed ? pen_cap_text_pressed : pen_cap_text;
             keycap_bg_pen = pen_cap_shaded;
             break;
-        case 2:  // Key that has not been mapped (Black)
+        case KEY_NOT_MAPPED:  // Key that has not been mapped (Black)
             keycap_fg_pen = pen_cap_white;
             keycap_bg_pen = pressed ? pen_cap_text_pressed : pen_cap_text;
             break;
-        case 3:  // Key that has been pressed (Blue)
+        case KEY_PRESSED:  // Key that has been pressed (Blue)
             keycap_fg_pen = pen_cap_text_pressed;
             keycap_bg_pen = pen_cap_pressed;
             break;
@@ -1329,6 +1340,10 @@ static uint8_t hid_cur_scancode       = 0xff;
 static uint8_t mouse_cur_scancode     = 0xff;
 static uint8_t mouse_cur_capnum       = 0xff;
 static uint8_t mouse_cur_selection    = 0;  // 0=None, 1=Amiga, 2=HID, 3=Editbox
+#define MOUSE_CUR_SELECTION_NONE         0
+#define MOUSE_CUR_SELECTION_AMIGA        1
+#define MOUSE_CUR_SELECTION_HID          2
+#define MOUSE_CUR_SELECTION_EDITBOX      3
 
 static void
 editbox_draw_box(uint is_hid)
@@ -1600,7 +1615,7 @@ mouse_move(SHORT x, SHORT y)
             break;  // Not found
         }
 
-        if (amiga_keysize[amiga_keypos[cur].type].shaded == 0xff)
+        if (amiga_keysize[amiga_keypos[cur].type].shaded == KEY_NOT_PRESENT)
             continue;  // Key not present in this keymap
 
         /* Inside a box */
@@ -1611,15 +1626,15 @@ mouse_move(SHORT x, SHORT y)
         if (mouse_cur_capnum != 0xff) {
             /* Redraw original bounding box */
             switch (mouse_cur_selection) {
-                case 0: // None
+                case MOUSE_CUR_SELECTION_NONE: // None
                     break;
-                case 1: // Amiga
+                case MOUSE_CUR_SELECTION_AMIGA: // Amiga
                     enter_leave_amiga_scancode(mouse_cur_scancode, 0, 0);
                     break;
-                case 2: // HID
+                case MOUSE_CUR_SELECTION_HID: // HID
                     enter_leave_hid_scancode(mouse_cur_scancode, 0, 0);
                     break;
-                case 3: // Editbox
+                case MOUSE_CUR_SELECTION_EDITBOX: // Editbox
                     break;
             }
         }
@@ -1653,15 +1668,15 @@ mouse_move(SHORT x, SHORT y)
         if (mouse_cur_capnum != 0xff) {
             /* Redraw original bounding box */
             switch (mouse_cur_selection) {
-                case 0: // None
+                case MOUSE_CUR_SELECTION_NONE: // None
                     break;
-                case 1: // Amiga
+                case MOUSE_CUR_SELECTION_AMIGA: // Amiga
                     enter_leave_amiga_scancode(mouse_cur_scancode, 0, 0);
                     break;
-                case 2: // HID
+                case MOUSE_CUR_SELECTION_HID: // HID
                     enter_leave_hid_scancode(mouse_cur_scancode, 0, 0);
                     break;
-                case 3: // Editbox
+                case MOUSE_CUR_SELECTION_EDITBOX: // Editbox
                     break;
             }
         }
@@ -1693,15 +1708,15 @@ mouse_move(SHORT x, SHORT y)
         if (mouse_cur_capnum != 0xff) {
             /* Redraw original bounding box */
             switch (mouse_cur_selection) {
-                case 0: // None
+                case MOUSE_CUR_SELECTION_NONE: // None
                     break;
-                case 1: // Amiga
+                case MOUSE_CUR_SELECTION_AMIGA: // Amiga
                     enter_leave_amiga_scancode(mouse_cur_scancode, 0, 0);
                     break;
-                case 2: // HID
+                case MOUSE_CUR_SELECTION_HID: // HID
                     enter_leave_hid_scancode(mouse_cur_scancode, 0, 0);
                     break;
-                case 3: // Editbox
+                case MOUSE_CUR_SELECTION_EDITBOX: // Editbox
                     break;
             }
         }
@@ -1717,15 +1732,15 @@ mouse_move(SHORT x, SHORT y)
     if (mouse_cur_capnum != 0xff) {
         /* Redraw original bounding box */
         switch (mouse_cur_selection) {
-            case 0: // None
+            case MOUSE_CUR_SELECTION_NONE: // None
                 break;
-            case 1: // Amiga
+            case MOUSE_CUR_SELECTION_AMIGA: // Amiga
                 enter_leave_amiga_scancode(mouse_cur_scancode, 0, 0);
                 break;
-            case 2: // HID
+            case MOUSE_CUR_SELECTION_HID: // HID
                 enter_leave_hid_scancode(mouse_cur_scancode, 0, 0);
                 break;
-            case 3: // Editbox
+            case MOUSE_CUR_SELECTION_EDITBOX: // Editbox
                 break;
         }
         mouse_cur_capnum = 0xff;
@@ -2475,7 +2490,8 @@ amiga_rawkey(uint8_t code)
             handle_esc_key(code == RAWKEY_ESC);
         amiga_cur_capnum = cur;
         amiga_cur_scancode = scancode;
-        editbox_copy_amiga_scancode_mapping(amiga_cur_scancode);
+        if (key_mapping_mode != KEY_MAPPING_MODE_HID_TO_AMIGA)
+            editbox_copy_amiga_scancode_mapping(amiga_cur_scancode);
     }
 
     /*
@@ -2487,7 +2503,7 @@ amiga_rawkey(uint8_t code)
      * 3  Live keystrokes and their mappings are reported
      */
     switch (key_mapping_mode) {
-        case 0:
+        case KEY_MAPPING_MODE_AMIGA_TO_HID:
             /* Last key pressed stays highlighted */
             if (released)
                 return;
@@ -2497,18 +2513,19 @@ amiga_rawkey(uint8_t code)
             }
             enter_leave_amiga_scancode(amiga_cur_scancode, 1, 1);
             break;
-        case 1:
+        case KEY_MAPPING_MODE_HID_TO_AMIGA:
             if (released)
                 return;
             map_or_unmap_scancode(amiga_cur_scancode, hid_cur_scancode, 1);
             enter_leave_hid_scancode(hid_cur_scancode, 1, 1);
+            editbox_copy_hid_scancode_mapping(hid_cur_scancode);
             break;
-        case 2:
+        case KEY_MAPPING_MODE_LIVEKEYS:
             /* Just highlight all keys which are currently pressed */
             if (cur != 0xff)
                 draw_amiga_key(cur, !released);
             break;
-        case 3:
+        case KEY_MAPPING_MODE_LIVEKEYS_MAPPED:
             enter_leave_amiga_scancode(scancode, !released, 1);
             break;
     }
@@ -2535,7 +2552,8 @@ hid_rawkey(uint8_t scancode, uint released)
             handle_esc_key(scancode == HS_ESC);
         hid_cur_scancode = scancode;
         hid_cur_capnum = cur;
-        editbox_copy_hid_scancode_mapping(hid_cur_scancode);
+        if (key_mapping_mode != KEY_MAPPING_MODE_AMIGA_TO_HID)
+            editbox_copy_hid_scancode_mapping(hid_cur_scancode);
     }
 
     /*
@@ -2547,12 +2565,13 @@ hid_rawkey(uint8_t scancode, uint released)
      * 3  Live keystrokes and their mappings are reported
      */
     switch (key_mapping_mode) {
-        case 0:
+        case KEY_MAPPING_MODE_AMIGA_TO_HID:
             if (released)
                 return;
             map_or_unmap_scancode(amiga_cur_scancode, hid_cur_scancode, 0);
+            editbox_copy_amiga_scancode_mapping(amiga_cur_scancode);
             break;
-        case 1:
+        case KEY_MAPPING_MODE_HID_TO_AMIGA:
             /* Last key pressed stays highlighted */
             if (released)
                 return;
@@ -2562,12 +2581,12 @@ hid_rawkey(uint8_t scancode, uint released)
             }
             enter_leave_hid_scancode(hid_cur_scancode, 1, 1);
             break;
-        case 2:
+        case KEY_MAPPING_MODE_LIVEKEYS:
             /* Just highlight all keys which are currently pressed */
             if (cur != 0xff)
                 draw_hid_key(cur, !released);
             break;
-        case 3:
+        case KEY_MAPPING_MODE_LIVEKEYS_MAPPED:
             enter_leave_hid_scancode(scancode, !released, 1);
             break;
     }
@@ -2584,20 +2603,20 @@ mouse_button_press(uint button_down)
 
     /* Let the keystroke handlers deal with button-triggered key presses */
     switch (mouse_cur_selection) {
-        case 0: // None
+        case MOUSE_CUR_SELECTION_NONE: // None
             break;
-        case 1: // Amiga
+        case MOUSE_CUR_SELECTION_AMIGA: // Amiga
             if (mouse_cur_capnum == 0xff)
                 return;  // Not over keyboard button
             amiga_rawkey(amiga_keypos[mouse_cur_capnum].scancode |
                          (button_down ? 0x00 : 0x80));
             break;
-        case 2: // HID
+        case MOUSE_CUR_SELECTION_HID: // HID
             if (mouse_cur_capnum == 0xff)
                 return;  // Not over keyboard button
             hid_rawkey(hid_keypos[mouse_cur_capnum].scancode, !button_down);
             break;
-        case 3: // Editbox
+        case MOUSE_CUR_SELECTION_EDITBOX: // Editbox
             if (button_down)
                 editbox_set_cursor_position(mouse_cur_capnum);
             break;
@@ -2613,32 +2632,32 @@ remove_single_key_mappings(void)
     uint    remove_hid = 0;
 
     switch (key_mapping_mode) {
-        case 0:
+        case KEY_MAPPING_MODE_AMIGA_TO_HID:
             capnum = amiga_cur_capnum;
             scancode = amiga_cur_scancode;
             remove_hid = 0;
             break;
-        case 1:
+        case KEY_MAPPING_MODE_HID_TO_AMIGA:
             capnum = hid_cur_capnum;
             scancode = hid_cur_scancode;
             remove_hid = 1;
             break;
-        case 2:
-        case 3:
+        case KEY_MAPPING_MODE_LIVEKEYS:
+        case KEY_MAPPING_MODE_LIVEKEYS_MAPPED:
             switch (mouse_cur_selection) {
-                case 0: // None
+                case MOUSE_CUR_SELECTION_NONE: // None
                     break;
-                case 1: // Amiga
+                case MOUSE_CUR_SELECTION_AMIGA: // Amiga
                     capnum = amiga_cur_capnum;
                     scancode = amiga_cur_scancode;
                     remove_hid = 0;
                     break;
-                case 2: // HID
+                case MOUSE_CUR_SELECTION_HID: // HID
                     capnum = hid_cur_capnum;
                     scancode = hid_cur_scancode;
                     remove_hid = 1;
                     break;
-                case 3: // Editbox
+                case MOUSE_CUR_SELECTION_EDITBOX: // Editbox
                     break;
             }
             break;
@@ -2712,7 +2731,7 @@ load_keymap_from_bec(uint which)
     if (which == 0) {
         req.bkm_which = BKM_WHICH_KEYMAP;
     } else if (which == 1) {
-        req.bkm_which = BKM_WHICH_DEFAULT_KEYMAP;
+        req.bkm_which = BKM_WHICH_DEF_KEYMAP;
     } else {
         err_printf("bug: load_keymap_from_bec(%u)\n", which);
         return;
@@ -3224,6 +3243,11 @@ handle_win(void)
                         ULONG menu_num = MENUNUM(menu_item);
                         ULONG item_num = ITEMNUM(menu_item);
                         // ULONG subitem_num = SUBITEMNUM(menu_item);
+                        struct MenuItem *item = ItemAddress(menus, menu_item);
+                        uint  checked = 0;
+                        ULONG chk_item = 0;
+                        if ((item != NULL) && (item->Flags & CHECKED))
+                            checked = 1;
 #if 0
                         printf("item=%x menu=%x item=%x\n",
                                menu_item, menu_num, item_num);
@@ -3263,14 +3287,7 @@ handle_win(void)
                                         break;
                                 }
                                 break;
-                            case MENU_NUM_MODE: {
-                                struct MenuItem *item =
-                                            ItemAddress(menus, menu_item);
-                                uint checked = 0;
-                                ULONG chk_item = 0;
-                                if ((item != NULL) && (item->Flags & CHECKED))
-                                    checked = 1;
-
+                            case MENU_NUM_MODE:
                                 unhighlight_last_key();
                                 switch (item_num) {
                                     case MENU_MODE_AMIGA_SCANCODE:
@@ -3330,19 +3347,40 @@ set_menu_checked:
                                             goto set_menu_checked;
                                         }
                                         break;
-                                    case MENU_MODE_ANSI_LAYOUT:
-                                        is_ansi_layout = checked;
-                                        draw_win();
-                                        break;
                                 }
                                 break;
-                            }
                             case MENU_NUM_KEY:
                                 switch (item_num) {
+                                    case MENU_KEY_CUSTOM_MAPPING: {
+                                        uint pos = 0;
+                                        if (edit_key_mapping_mode)
+                                            break;  // Already in mapping mode
+                                        switch (key_mapping_mode) {
+                                            case KEY_MAPPING_MODE_AMIGA_TO_HID:
+                                                pos = 0x10;  // Edit HID
+                                                break;
+                                            case KEY_MAPPING_MODE_HID_TO_AMIGA:
+                                                pos = 0x00;  // Edit Amiga
+                                                break;
+                                            default:
+                                                /* Last keypress determines */
+                                                if (editbox_update_mode == 0)
+                                                    pos = 0x10;  // Edit HID
+                                                else
+                                                    pos = 0x00;  // Edit Amiga
+                                                break;
+                                        }
+                                        editbox_set_cursor_position(pos);
+                                        break;
+                                    }
                                     case MENU_KEY_REMOVE_MAPPINGS:
                                         remove_single_key_mappings();
                                         break;
                                     case MENU_KEY_REDRAW_KEYS:
+                                        draw_win();
+                                        break;
+                                    case MENU_KEY_ANSI_LAYOUT:
+                                        is_ansi_layout = checked;
                                         draw_win();
                                         break;
                                 }

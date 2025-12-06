@@ -22,7 +22,6 @@
 #include "keyboard.h"
 #include "mouse.h"
 #include "cubeusb.h"
-#include "power.h"
 #include "usb.h"
 #include <usbh_cdc.h>  // CDC
 #include <usbh_hid.h>  // HID
@@ -873,17 +872,17 @@ USBH_HID_EventCallback(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle)
                 mouse_action(info.x, info.y, -info.wheel, info.ac_pan,
                              info.buttons);
             } else {
-                up |= (info.y < 0);
-                down |= info.y > 0;
-                left |= info.x < 0;
-                right |= info.x > 0;
+                up    |= (info.y < 0);
+                down  |= (info.y > 0);
+                left  |= (info.x < 0);
+                right |= (info.x > 0);
             }
             joystick_action(up, down, left, right, info.buttons);
         } else {
             mouse_action(info.x, info.y, -info.wheel, info.ac_pan,
                          info.buttons);
             keyboard_usb_input_mm(info.mm_key, ARRAY_SIZE(info.mm_key));
-            power_sysctl(info.sysctl);
+            keyboard_usb_input_sysctl(info.sysctl);
         }
     } else if (devtype == HID_KEYBOARD) {  // Keyboard
         HID_Keyboard_Info_TypeDef info;

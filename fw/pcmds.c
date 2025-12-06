@@ -33,6 +33,7 @@
 #include "kbrst.h"
 #include "keyboard.h"
 #include "led.h"
+#include "mouse.h"
 #include "power.h"
 #include "rtc.h"
 #include "sensor.h"
@@ -85,7 +86,7 @@ const char cmd_reset_help[] =
 const char cmd_set_help[] =
 "set cpu_temp_bias <num>  - Bias (+/-) for CPU temperature\n"
 "set debug <flags> [save] - Debug flags\n"
-"set defaults [keymap]    - Force settings to default values\n"
+"set defaults [key|mouse] - Force settings to default values\n"
 "set fan_rpm_max <num>    - Fan maximum speed in RPM\n"
 "set fan_speed <num>|auto - Fan speed\n"
 "set fan_speed_min <num>  - Fan speed minimum percent\n"
@@ -952,9 +953,12 @@ cmd_set(int argc, char * const *argv)
             config_updated();
     } else if (strncmp(argv[1], "defaults", 7) == 0) {
         if (argc > 2) {
-            if (strncmp(argv[2], "keymap", 1) == 0) {
+            if (strncmp(argv[2], "keymap", 3) == 0) {
                 printf("Resetting keymap\n");
                 keyboard_set_defaults();
+                config_updated();
+            } else if (strncmp(argv[2], "mouse", 2) == 0) {
+                mouse_set_defaults();
                 config_updated();
             } else {
                 printf("Unknown argument %s\n", argv[2]);

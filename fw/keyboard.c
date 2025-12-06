@@ -717,6 +717,13 @@ static const struct {
     { 0x22a, HS_F14          },  // Sel AC Bookmarks Star  -> F14
 };
 
+static const uint8_t scancode_sysctl_to_hid_kbd[] = {
+    HS_F21,  // Sleep on Logitech wireless
+    HS_F22,  // Power button on Logitech wireless: user can map to AS_POWER_BTN
+    HS_F23,  // Wake up on Logitech wireless
+    HS_F24,
+};
+
 static inline bool
 find_key_in_buf(uint8_t keycode, uint8_t *buf, uint buflen)
 {
@@ -789,6 +796,7 @@ keyboard_set_defaults(void)
     config.modkeymap[5] = AS_RIGHTSHIFT;
     config.modkeymap[6] = AS_RIGHTALT;
     config.modkeymap[7] = AS_RIGHTAMIGA;
+    memset(config.sysctlmap, 0, sizeof (config.sysctlmap));
 }
 
 static uint32_t
@@ -1247,13 +1255,76 @@ keyboard_handle_magic(uint8_t keycode, uint modifier)
     }
 }
 
+/*
+ * keyboard_put_macro
+ * ------------------
+ * Queue multiple keystrokes (up to 4) to the Amiga keyboard
+ */
+void
+keyboard_put_macro(uint32_t macro, uint is_pressed)
+{
+    uint32_t tcode;
+    for (tcode = macro; tcode != 0; tcode >>= 8) {
+        uint8_t code = (uint8_t) macro;
+        if (code != AS_NONE) {
+            if (is_pressed)
+                keyboard_put_amiga(code);
+            else
+                keyboard_put_amiga(code | 0x80);
+        }
+    }
+}
+
+/*
+ * keyboard_put_macro_multi
+ * -------------------------
+ * Queue multiple keystrokes (up to 4) to the Amiga keyboard or mouse buttons.
+ */
+static void
+keyboard_put_macro_multi(uint32_t tcode, uint key_up)
+{
+    static uint8_t capslock;
+    for (; tcode != 0; tcode >>= 8) {
+        uint8_t code = (uint8_t) tcode;
+        if (key_up & KEYCAP_UP) {
+            /* Key up */
+            if (code == AS_CAPSLOCK) {
+                if (capslock) {
+                    capslock = 0;
+                } else {
+                    capslock = 1;
+                    code = AS_NONE;
+                }
+            }
+            if (code != AS_NONE) {
+                if (code & 0x80)  // Button release or macro release
+                    mouse_buttons_add &= ~BIT(code & 31);
+                else
+                    keyboard_put_amiga(code | 0x80);
+            }
+        } else {
+            /* Key down */
+            if (code == AS_CAPSLOCK) {
+                /* Capslock is pressed a second time to release */
+                if (capslock)
+                    code = AS_NONE;
+            }
+            if (code != AS_NONE) {
+                if (code & 0x80)  // Button press or macro expansion
+                    mouse_buttons_add |= BIT(code & 31);
+                else
+                    keyboard_put_amiga(code);
+            }
+        }
+    }
+}
+
 static void
 keyboard_hid_to_amiga(uint8_t *prev_keys, uint8_t *cur_keys, uint buflen,
                       uint modifier)
 {
     uint cur;
     uint ascii;
-    static uint8_t capslock;
 
     /* Handle key press */
     for (cur = 0; cur < buflen; cur++) {
@@ -1303,21 +1374,7 @@ keyboard_hid_to_amiga(uint8_t *prev_keys, uint8_t *cur_keys, uint buflen,
                     tcode = capture_scancode(keycode | KEYCAP_DOWN);
                     tcode = convert_scancode_to_amiga(tcode, modifier,
                                                       &amiga_modifier);
-                    for (; tcode != 0; tcode >>= 8) {
-                        uint8_t code = tcode & 0xff;
-                        if (code == AS_CAPSLOCK) {
-                            /* Capslock is pressed a second time to release */
-                            if (capslock)
-                                code = AS_NONE;
-                        }
-                        if (code != AS_NONE) {
-                            if (code & 0x80) // Button press or macro expansion
-                                /* Button press or macro expansion */
-                                mouse_buttons_add |= BIT(code & 31);
-                            else
-                                keyboard_put_amiga(code);
-                        }
-                    }
+                    keyboard_put_macro_multi(tcode, KEYCAP_DOWN);
                 }
             }
         }
@@ -1360,23 +1417,7 @@ keyboard_hid_to_amiga(uint8_t *prev_keys, uint8_t *cur_keys, uint buflen,
                 tcode = capture_scancode(keycode | KEYCAP_UP);
                 tcode = convert_scancode_to_amiga(tcode, modifier,
                                                   &amiga_modifier);
-                for (; tcode != 0; tcode >>= 8) {
-                    uint8_t code = (uint8_t) tcode;
-                    if (code == AS_CAPSLOCK) {
-                        if (capslock) {
-                            capslock = 0;
-                        } else {
-                            capslock = 1;
-                            code = AS_NONE;
-                        }
-                    }
-                    if (code != AS_NONE) {
-                        if (code & 0x80)  // Button press or macro expansion
-                            mouse_buttons_add &= ~BIT(code & 31);
-                        else
-                            keyboard_put_amiga(code | 0x80);
-                    }
-                }
+                keyboard_put_macro_multi(tcode, KEYCAP_UP);
             }
         }
     }
@@ -1497,15 +1538,7 @@ keyboard_usb_input_mm(uint16_t *ch, uint count)
             dprintf(DF_USB_KEYBOARD, "<=%02lx>", tcode);
             tcode = capture_scancode(tcode | KEYCAP_DOWN);
             tcode = convert_scancode_to_amiga(tcode, 0, &amiga_modifier);
-            for (; tcode != 0; tcode >>= 8) {
-                uint8_t code = (uint8_t) tcode;
-                if (code != AS_NONE) {
-                    if (code & 0x80)  // Button press or macro expansion
-                        mouse_buttons_add |= BIT(code & 31);
-                    else
-                        keyboard_put_amiga(code);
-                }
-            }
+            keyboard_put_macro_multi(tcode, KEYCAP_DOWN);
         }
     }
 
@@ -1523,15 +1556,7 @@ keyboard_usb_input_mm(uint16_t *ch, uint count)
             tcode = convert_mm_scancode_to_hid(last[cur]);
             tcode = capture_scancode(tcode | KEYCAP_UP);
             tcode = convert_scancode_to_amiga(tcode, 0, &amiga_modifier);
-            for (; tcode != 0; tcode >>= 8) {
-                uint8_t code = (uint8_t) tcode;
-                if (code != AS_NONE) {
-                    if (code & 0x80)  // Button release or macro expansion
-                        mouse_buttons_add &= ~BIT(code & 31);
-                    else
-                        keyboard_put_amiga(code | 0x80);
-                }
-            }
+            keyboard_put_macro_multi(tcode, KEYCAP_UP);
         }
     }
 
@@ -1540,26 +1565,35 @@ keyboard_usb_input_mm(uint16_t *ch, uint count)
         last[cur] = ch[cur];
 }
 
-/*
- * keyboard_put_macro
- * ------------------
- * Queue multiple keystrokes (up to 4) to the Amiga keyboard
- */
+/* Handle sysctl input from USB keyboard */
 void
-keyboard_put_macro(uint32_t macro, uint is_pressed)
+keyboard_usb_input_sysctl(uint16_t buttons)
 {
+    static uint16_t buttons_last;
+    uint16_t diff = buttons ^ buttons_last;
     uint32_t tcode;
-    for (tcode = macro; tcode != 0; tcode >>= 8) {
-        uint8_t code = (uint8_t) macro;
-        if (code != AS_NONE) {
-            if (is_pressed)
-                keyboard_put_amiga(code);
-            else
-                keyboard_put_amiga(code | 0x80);
+    uint8_t  amiga_modifier;
+    uint     bit;
+    uint     key_up;
+    const uint max_sysctl = ARRAY_SIZE(scancode_sysctl_to_hid_kbd);
+
+    for (bit = 0; bit < max_sysctl; diff >>= 1, bit++) {
+        if (diff == 0)
+            break;
+        if (diff & 1) {
+            /* Difference */
+            key_up = (buttons & BIT(bit)) ? KEYCAP_DOWN : KEYCAP_UP;
+            tcode = scancode_sysctl_to_hid_kbd[bit];
+
+            if (key_up)
+                dprintf(DF_USB_KEYBOARD, "<=%02lx>", tcode);
+            tcode = capture_scancode(tcode | key_up);
+            tcode = convert_scancode_to_amiga(tcode, 0, &amiga_modifier);
+            keyboard_put_macro_multi(tcode, key_up);
         }
     }
+    buttons_last = buttons;
 }
-
 
 /* Input ESC key modes */
 typedef enum {

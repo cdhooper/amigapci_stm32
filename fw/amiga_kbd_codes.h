@@ -25,6 +25,7 @@
 #define AS_MINUS       (0x0b)  // '_' and '-'
 #define AS_EQUAL       (0x0c)  // '+' and '='
 #define AS_BACKSLASH   (0x0d)  // '|' and '\'
+// undefined           (0x0e)
 #define AS_KP_0        (0x0f)  // Keypad '0'
 #define AS_Q           (0x10)  // 'Q' and 'q'
 #define AS_W           (0x11)  // 'W' and 'w'
@@ -38,6 +39,7 @@
 #define AS_P           (0x19)  // 'P' and 'p'
 #define AS_LBRACKET    (0x1a)  // '{' and '['
 #define AS_RBRACKET    (0x1b)  // '}' and ']'
+#define AS_RESET_BTN   (0x1c)  // Reset button (AmigaPCI reset button)
 #define AS_KP_1        (0x1d)  // Keypad '1'
 #define AS_KP_2        (0x1e)  // Keypad '2'
 #define AS_KP_3        (0x1f)  // Keypad '3'
@@ -53,6 +55,7 @@
 #define AS_SEMICOLON   (0x29)  // ';' and ':'
 #define AS_APOSTROPHE  (0x2a)  // ''' and '"'
 #define AS_EXTRA1      (0x2b)  // Key next to Return
+#define AS_POWER_BTN   (0x2c)  // Power button (AmigaPCI power button)
 #define AS_KP_4        (0x2d)  // Keypad '4'
 #define AS_KP_5        (0x2e)  // Keypad '5'
 #define AS_KP_6        (0x2f)  // Keypad '6'
@@ -67,6 +70,7 @@
 #define AS_COMMA       (0x38)  // '<' and ','
 #define AS_DOT         (0x39)  // '>' and '.'
 #define AS_SLASH       (0x3a)  // '>' and '/'
+// undefined           (0x3b)
 #define AS_KP_DOT      (0x3c)  // Keypad '.'
 #define AS_KP_7        (0x3d)  // Keypad '7'
 #define AS_KP_8        (0x3e)  // Keypad '8'
@@ -112,6 +116,7 @@
 #define AS_LEFTAMIGA   (0x66)  // Left Amiga
 #define AS_RIGHTAMIGA  (0x67)  // Right Amiga
 #define AS_MENU        (0x6b)  // Menu         (not on classic keyboards)
+// undefined           (0x6c)
 #define AS_PRINTSCR    (0x6d)  // Print screen (not on classic keyboards)
 #define AS_BREAK       (0x6e)  // Break        (not on classic keyboards)
 #define AS_F12         (0x6f)  // F12          (not on classic keyboards)
@@ -128,10 +133,12 @@
 #define AS_WHEEL_DOWN  (0x7b)  // Mouse Wheel Down  (NM_WHEEL_DOWN)
 #define AS_WHEEL_LEFT  (0x7c)  // Mouse Wheel Left  (NM_WHEEL_LEFT)
 #define AS_WHEEL_RIGHT (0x7d)  // Mouse Wheel Right (NM_WHEEL_RIGHT)
-#define AS_RESET_BTN   (0x7e)  // Reset button (AmigaPCI reset button)
-#define AS_POWER_BTN   (0x7f)  // Power button (AmigaPCI power button)
+#define AS_BUTTON_4    (0x7e)  // Mouse Button 4    (NM_BUTTON_FOURTH)
+#define AS_BUTTON_5    (0x7f)  // Mouse Button 5    (NM_BUTTON_FIFTH)
+
 #define AS_LOST_SYNC   (0xf9)  // Keyboard lost sync with Amiga
 #define AS_BUFOVERFLOW (0xfa)  // Keyboard output buffer overflow
+// undefined           (0xfb)
 #define AS_POST_FAIL   (0xfc)  // Keyboard selftest failed
 #define AS_POWER_INIT  (0xfd)  // Keyboard powerup start key stream
 #define AS_POWER_DONE  (0xfe)  // Keyboard powerup done key stream
