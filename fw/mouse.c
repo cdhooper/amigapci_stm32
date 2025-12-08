@@ -286,9 +286,7 @@ mouse_set_defaults(void)
     config.mouse_div_x = 0;
     config.mouse_div_y = 0;
     memset(config.buttonmap, 0, sizeof (config.buttonmap));    // Mouse
-    memset(config.scrollmap, 0, sizeof (config.scrollmap));    // Mouse
     memset(config.jbuttonmap, 0, sizeof (config.jbuttonmap));  // Joystick
-    memset(config.jdirectmap, 0, sizeof (config.jdirectmap));  // Joystick
 }
 
 static void

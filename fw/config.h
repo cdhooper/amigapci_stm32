@@ -67,8 +67,8 @@ typedef struct {
     uint32_t    flags;          // Runtime flags
     uint32_t    buttonmap[32];  // Mouse button mappings
     uint32_t    jbuttonmap[32]; // Joystick button mappings
-    uint32_t    jdirectmap[4];  // Joystick direction mappings (U, D, L, R)
-    uint32_t    scrollmap[4];   // Mouse scroll wheel mappings (U, D, L, R)
+    uint32_t    jdirectmap[4];  // DEPRECATED Joystick direction mappings (UDLR)
+    uint32_t    scrollmap[4];   // DEPRECATED Mouse scroll wheel mappings (UDLR)
     uint32_t    sysctlmap[4];   // DEPRECATED System control button mappings
     uint8_t     mouse_div_x;    // Mouse X speed scaling divisor
     uint8_t     mouse_div_y;    // Mouse Y speed scaling divisor

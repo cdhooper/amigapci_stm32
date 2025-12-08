@@ -241,20 +241,10 @@ msg_process_slow(void)
                                       ARRAY_SIZE(config.buttonmap),
                                       sizeof (config.buttonmap[0]));
                     break;
-                case BKM_WHICH_SCROLLMAP:
-                    msg_get_map_reply(req, &config.scrollmap[start],
-                                      ARRAY_SIZE(config.scrollmap),
-                                      sizeof (config.scrollmap[0]));
-                    break;
                 case BKM_WHICH_JBUTTONMAP:
                     msg_get_map_reply(req, &config.jbuttonmap[start],
                                       ARRAY_SIZE(config.jbuttonmap),
                                       sizeof (config.jbuttonmap[0]));
-                    break;
-                case BKM_WHICH_JDIRECTMAP:
-                    msg_get_map_reply(req, &config.jdirectmap[start],
-                                      ARRAY_SIZE(config.jdirectmap),
-                                      sizeof (config.jdirectmap[0]));
                     break;
                 case BKM_WHICH_DEF_KEYMAP:
                     if (count > ARRAY_SIZE(config.keymap) - start)
@@ -281,10 +271,6 @@ send_empty_defmap:
                     if (count > ARRAY_SIZE(config.jbuttonmap) - start)
                         count = ARRAY_SIZE(config.jbuttonmap) - start;
                     goto send_empty_defmap;
-                case BKM_WHICH_DEF_JDIRECTMAP:
-                    if (count > ARRAY_SIZE(config.jdirectmap) - start)
-                        count = ARRAY_SIZE(config.jdirectmap) - start;
-                    goto send_empty_defmap;
                 default:
 bad_arg:
                     msg_reply(BEC_STATUS_BADARG, 0, NULL, 0, NULL);
@@ -307,20 +293,10 @@ bad_arg:
                                       ARRAY_SIZE(config.buttonmap),
                                       sizeof (config.buttonmap[0]));
                     break;
-                case BKM_WHICH_SCROLLMAP:
-                    msg_set_map_reply(req, &config.scrollmap[start],
-                                      ARRAY_SIZE(config.scrollmap),
-                                      sizeof (config.scrollmap[0]));
-                    break;
                 case BKM_WHICH_JBUTTONMAP:
                     msg_set_map_reply(req, &config.jbuttonmap[start],
                                       ARRAY_SIZE(config.jbuttonmap),
                                       sizeof (config.jbuttonmap[0]));
-                    break;
-                case BKM_WHICH_JDIRECTMAP:
-                    msg_set_map_reply(req, &config.jdirectmap[start],
-                                      ARRAY_SIZE(config.jdirectmap),
-                                      sizeof (config.jdirectmap[0]));
                     break;
                 default:
                     goto bad_arg;
