@@ -36,7 +36,8 @@ msg_reply(uint rstatus, uint rlen1, const void *data1,
     uint rlen = rlen1 + rlen2;
 
     if (rlen + BEC_MSG_HDR_LEN + BEC_MSG_CRC_LEN > sizeof (bec_msg_outbuf)) {
-        printf("msg len %x too long to send: %u\n", rlen, sizeof (bec_msg_outbuf));
+        printf("msg len %x too long to send: %u\n",
+               rlen, sizeof (bec_msg_outbuf));
         return;
     }
     bec_msg_out = 0;

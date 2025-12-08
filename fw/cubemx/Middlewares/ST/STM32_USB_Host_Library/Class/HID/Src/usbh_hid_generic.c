@@ -77,7 +77,12 @@ USBH_HID_vendor_nintendo_switch_pro(USBH_HandleTypeDef *phost,
         npos = 0;
         printf("END\n");
 
-        /* Override HID report descriptor settings */
+        /*
+         * Override HID report descriptor settings
+         *
+         * For mapping convenience, the buttons are placed in the same order
+         * as those of the XBOX-360 controller.
+         */
         HID_RDescTypeDef *rd = &HID_Handle->HID_RDesc;
         memset(rd, 0, sizeof (*rd));
         rd->usage = HID_USAGE_GAMEPAD;
@@ -89,18 +94,21 @@ USBH_HID_vendor_nintendo_switch_pro(USBH_HandleTypeDef *phost,
         rd->pos_y          = 60;  // Left Joystick U/D
         rd->pos_ac_pan     = 72;  // Right Joystick L/R
         rd->pos_wheel      = 84;  // Right Joystick U/D
-        rd->pos_button[0]  = 24;  // Blue
-        rd->pos_button[1]  = 25;  // Yellow
-        rd->pos_button[2]  = 26;  // Green
-        rd->pos_button[3]  = 27;  // Red
-        rd->pos_button[4]  = 47;  // Left Trigger
-        rd->pos_button[5]  = 31;  // Right Trigger
-        rd->pos_button[6]  = 46;  // Left Button
-        rd->pos_button[7]  = 30;  // Right Button
-        rd->pos_button[8]  = 32;  // Back
-        rd->pos_button[9]  = 33;  // Start
-        rd->pos_button[10] = 36;  // Center button
-        rd->num_buttons    = 11;
+        rd->pos_button[0]  = 27;  // Button B Red
+        rd->pos_button[1]  = 26;  // Button A Green
+        rd->pos_button[2]  = 25;  // Button Y Yellow
+        rd->pos_button[3]  = 24;  // Button X Blue
+        rd->pos_button[4]  = 33;  // Start
+        rd->pos_button[5]  = 36;  // Center button (select?)
+        rd->pos_button[6]  = 35;  // Left joystick center depressed
+        rd->pos_button[7]  = 34;  // Right joystick center depressed
+        rd->pos_button[8]  = 46;  // Left top Button
+        rd->pos_button[9]  = 30;  // Right top Button
+        rd->pos_button[10] = 37;  // Turbo button
+        rd->pos_button[11] = 47;  // Left Trigger
+        rd->pos_button[12] = 31;  // Right Trigger
+        rd->pos_button[13] = 32;  // Back
+        rd->num_buttons    = 14;
         rd->pos_jpad[0]    = 41;  // Pad Up
         rd->pos_jpad[1]    = 40;  // Pad Down
         rd->pos_jpad[2]    = 43;  // Pad Left

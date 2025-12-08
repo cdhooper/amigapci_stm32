@@ -307,8 +307,8 @@ static const struct {
     { AS_NONE,       AS_NONE, 0x00 },  // 0xee  Media Volume Down
     { AS_NONE,       AS_NONE, 0x00 },  // 0xef  Media Mute
     { AS_NONE,       AS_NONE, 0x00 },  // 0xf0  Media WWW
-    { AS_PREVTRACK,  AS_NONE, 0x00 },  // 0xf1  Media Back
-    { AS_NEXTTRACK,  AS_NONE, 0x00 },  // 0xf2  Media Forward
+    { AS_WHEEL_LEFT, AS_NONE, 0x00 },  // 0xf1  Media Back
+    { AS_WHEEL_RIGHT, AS_NONE, 0x00 }, // 0xf2  Media Forward
     { AS_STOP,       AS_NONE, 0x00 },  // 0xf3  Media Stop
     { AS_NONE,       AS_NONE, 0x00 },  // 0xf4  Media Find
     { AS_WHEEL_UP,   AS_NONE, 0x00 },  // 0xf5  Media Scroll Up
@@ -1105,7 +1105,7 @@ keyboard_put_amiga_stack(uint8_t code)
     }
 
     /* Rotate and invert for send */
-    ak_rb[ak_rb_consumer] = code;
+    ak_rb[new_cons] = code;
     ak_rb_consumer = new_cons;
 }
 
@@ -1507,7 +1507,7 @@ keyboard_usb_input(usb_keyboard_report_t *report)
                           modifier);
 
     if (mouse_buttons_old != mouse_buttons_add)
-        mouse_action(0, 0, 0, 0, 0);  // Inject button / macro expansion change
+        mouse_action_button(0);  // Inject button / macro expansion change
 }
 
 /* Handle multimedia input from USB keyboard */

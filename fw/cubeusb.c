@@ -788,7 +788,8 @@ USBH_XUSB_EventCallback(USBH_HandleTypeDef *phost, XUSB_Handle_t *XUSB_Handle)
                 twheel_y = 0;
             }
             if (mouse_x | mouse_y | wheel_x | wheel_y | buttons) {
-                mouse_action(mouse_x, mouse_y, twheel_y, twheel_x, buttons);
+                mouse_action(mouse_x, mouse_y, twheel_y, twheel_x);
+                mouse_action_button(buttons);
             }
         }
         return;
@@ -835,7 +836,8 @@ USBH_XUSB_EventCallback(USBH_HandleTypeDef *phost, XUSB_Handle_t *XUSB_Handle)
         }
         dprintf(DF_USB_DECODE_MISC, "%d %d %d %d ",
                 mouse_x, mouse_y, twheel_x, twheel_y);
-        mouse_action(mouse_x, mouse_y, twheel_y, twheel_x, buttons);
+        mouse_action(mouse_x, mouse_y, twheel_y, twheel_x);
+        mouse_action_button(buttons);
         last_was_joypad = 0;
     }
     dprintf(DF_USB_DECODE_MISC, "\n");
@@ -869,8 +871,8 @@ USBH_HID_EventCallback(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle)
             uint8_t left  = info.jpad & BIT(2);
             uint8_t right = info.jpad & BIT(3);
             if (config.flags & CF_GAMEPAD_MOUSE) {
-                mouse_action(info.x, info.y, -info.wheel, info.ac_pan,
-                             info.buttons);
+                mouse_action(info.x, info.y, -info.wheel, info.ac_pan);
+                mouse_action_button(info.buttons);
             } else {
                 up    |= (info.y < 0);
                 down  |= (info.y > 0);
@@ -879,8 +881,8 @@ USBH_HID_EventCallback(USBH_HandleTypeDef *phost, HID_HandleTypeDef *HID_Handle)
             }
             joystick_action(up, down, left, right, info.buttons);
         } else {
-            mouse_action(info.x, info.y, -info.wheel, info.ac_pan,
-                         info.buttons);
+            mouse_action(info.x, info.y, -info.wheel, info.ac_pan);
+            mouse_action_button(info.buttons);
             keyboard_usb_input_mm(info.mm_key, ARRAY_SIZE(info.mm_key));
             keyboard_usb_input_sysctl(info.sysctl);
         }

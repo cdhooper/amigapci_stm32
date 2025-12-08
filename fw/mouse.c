@@ -20,6 +20,8 @@
 #include "timer.h"
 #include "utils.h"
 #include "keyboard.h"
+#include "amiga_kbd_codes.h"
+#include "hid_kbd_codes.h"
 #include "hiden.h"
 
 #define B0_GPIO ADDR32(BND_IO(FIRE_PORT + GPIO_ODR_OFFSET, low_bit(FIRE_PIN)))
@@ -67,52 +69,63 @@ uint8_t mouse_asserted;
  *  >15 Keyboard macro (up to 4 keys may be sent)
  */
 void
-mouse_put_macro(uint32_t macro, uint is_pressed, uint was_pressed)
+mouse_put_macro(uint32_t tcode, uint is_pressed, uint was_pressed)
 {
-    switch (macro) {
-        case 0:
-            *B0_GPIO = !is_pressed;
-            break;
-        case 1:
-            *B1_GPIO = !is_pressed;
-            break;
-        case 2:
-            *B2_GPIO = !is_pressed;
-            break;
-        case 3:
-            if (was_pressed != is_pressed)
-                keyboard_put_macro(NM_BUTTON_FOURTH, is_pressed);
-            break;
-        case 4:
-            if (was_pressed != is_pressed)
-                keyboard_put_macro(NM_BUTTON_FIFTH, is_pressed);
-            break;
-        case 6:  // Joystick up
-            *BACK_GPIO = !is_pressed;
-            break;
-        case 7:  // Joystick down
-            *FORWARD_GPIO = !is_pressed;
-            break;
-        case 8:  // Joystick left
-            *LEFT_GPIO = !is_pressed;
-            break;
-        case 9:  // Joystick right
-            *RIGHT_GPIO = !is_pressed;
-            break;
-        default:
-            if ((macro >= 0x10) && (was_pressed != is_pressed)) {
-                /* Button mapped to between one and four Keystrokes */
-                keyboard_put_macro(macro, is_pressed);
+    for (; tcode != 0; tcode >>= 8) {
+        uint8_t code = (uint8_t) tcode;
+        if (code & 0x80) {
+            switch (code) {
+                case ASE_BUTTON_0:
+                    *B0_GPIO = !is_pressed;
+                    break;
+                case ASE_BUTTON_1:
+                    *B1_GPIO = !is_pressed;
+                    break;
+                case ASE_BUTTON_2:
+                    *B2_GPIO = !is_pressed;
+                    break;
+                case ASE_BUTTON_3:
+                    if (was_pressed != is_pressed)
+                        keyboard_put_macro(NM_BUTTON_FOURTH, is_pressed);
+                    break;
+                case ASE_BUTTON_4:
+                    if (was_pressed != is_pressed)
+                        keyboard_put_macro(NM_BUTTON_FIFTH, is_pressed);
+                    break;
+                case ASE_JOYSTICK_UP:     // Joystick up
+                    *BACK_GPIO = !is_pressed;
+                    break;
+                case ASE_JOYSTICK_DOWN:   // Joystick down
+                    *FORWARD_GPIO = !is_pressed;
+                    break;
+                case ASE_JOYSTICK_LEFT:   // Joystick left
+                    *LEFT_GPIO = !is_pressed;
+                    break;
+                case ASE_JOYSTICK_RIGHT:  // Joystick right
+                    *RIGHT_GPIO = !is_pressed;
+                    break;
             }
-    }
-    if (config.debug_flag & (DF_USB_MOUSE | DF_AMIGA_MOUSE |
-                             DF_AMIGA_JOYSTICK)) {
-        if (macro < 10) {
-            if (was_pressed)
-                putchar('-');
-            if (macro < 6)
-                putchar('B');
-            putchar("012345UDLR"[macro]);
+            if (config.debug_flag & (DF_USB_MOUSE | DF_AMIGA_MOUSE |
+                                     DF_AMIGA_JOYSTICK)) {
+                if (was_pressed)
+                    putchar('-');
+                if ((code >= ASE_JOYSTICK_UP) &&
+                           (code <= ASE_JOYSTICK_RIGHT)) {
+                    putchar("UDLR"[code - ASE_JOYSTICK_UP]);
+                } else {
+                    uint bnum = code - ASE_BUTTON_0;
+                    putchar('B');
+                    if (bnum >= 10) {
+                        putchar('0' + bnum / 10);
+                        bnum %= 10;
+                    }
+                    putchar('0' + bnum);
+                }
+            }
+        } else {
+            /* Pass macro to keyboard processing */
+            if (was_pressed != is_pressed)
+                keyboard_put_macro(code, is_pressed);
         }
     }
 }
@@ -124,12 +137,10 @@ mouse_put_macro(uint32_t macro, uint is_pressed, uint was_pressed)
  * @param [in]  off_y     - Y movement of the mouse (< 0 is up)
  * @param [in]  off_wheel - Wheel movement of the mouse (< 0 is up)
  * @param [in]  off_pan   - Left-right movement of the mouse (< 0 is left)
- * @param [in]  buttons   - Bits representing buttno state (1 = pressed)
  */
 void
-mouse_action(int off_x, int off_y, int off_wheel, int off_pan, uint32_t buttons)
+mouse_action(int off_x, int off_y, int off_wheel, int off_pan)
 {
-    static uint32_t last_buttons;
     static int last_wheel;
     static int last_pan;
     uint32_t macro;
@@ -183,13 +194,13 @@ mouse_action(int off_x, int off_y, int off_wheel, int off_pan, uint32_t buttons)
 
     /* Up/down wheel */
     if (off_wheel != last_wheel) {
-        macro = config.scrollmap[0] ? config.scrollmap[0] : NM_WHEEL_UP;
+        macro = config.keymap[HS_MEDIA_S_UP];
         if (last_wheel < 0)
             mouse_put_macro(macro, 0, 1);
         if (off_wheel < 0)
             mouse_put_macro(macro, 1, 0);
 
-        macro = config.scrollmap[1] ? config.scrollmap[1] : NM_WHEEL_DOWN;
+        macro = config.keymap[HS_MEDIA_S_DOWN];
         if (last_wheel > 0)
             mouse_put_macro(macro, 0, 1);
         if (off_wheel > 0)
@@ -209,13 +220,13 @@ mouse_action(int off_x, int off_y, int off_wheel, int off_pan, uint32_t buttons)
 
     /* Left/right pan */
     if (off_pan != last_pan) {
-        macro = config.scrollmap[2] ? config.scrollmap[2] : NM_WHEEL_LEFT;
+        macro = config.keymap[HS_MEDIA_BACK];
         if (last_pan < 0)
             mouse_put_macro(macro, 0, 1);
         if (off_pan < 0)
             mouse_put_macro(macro, 1, 0);
 
-        macro = config.scrollmap[3] ? config.scrollmap[3] : NM_WHEEL_RIGHT;
+        macro = config.keymap[HS_MEDIA_FWD];
         if (last_pan > 0)
             mouse_put_macro(macro, 0, 1);
         if (off_pan > 0)
@@ -227,6 +238,22 @@ mouse_action(int off_x, int off_y, int off_wheel, int off_pan, uint32_t buttons)
         change = 1;
     }
 
+    if (change)
+        hiden_set(1);
+}
+
+/*
+ * mouse_action() converts USB Mouse button input to Amiga actions
+ *
+ * @param [in]  buttons   - Bits representing buttno state (1 = pressed)
+ */
+void
+mouse_action_button(uint32_t buttons)
+{
+    static uint32_t last_buttons;
+    uint32_t        macro;
+    uint            change = 0;
+
     buttons |= mouse_buttons_add;
 
     if (buttons != last_buttons) {
@@ -236,7 +263,7 @@ mouse_action(int off_x, int off_y, int off_wheel, int off_pan, uint32_t buttons)
             uint     was_pressed = (last_buttons & BIT(bit)) ? 1 : 0;
             macro = config.buttonmap[bit];
             if (macro == 0)
-                macro = bit;  // Not reassigned: default this button to itself
+                macro = 0x80 + bit;  // Not reassigned: default to self
             else if (macro <= 4)
                 macro--;
             if (is_pressed != was_pressed)
@@ -246,6 +273,7 @@ mouse_action(int off_x, int off_y, int off_wheel, int off_pan, uint32_t buttons)
         mouse_asserted = !!buttons;
         change = 1;
     }
+
     if (change)
         hiden_set(1);
 }

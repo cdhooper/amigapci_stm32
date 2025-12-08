@@ -144,4 +144,17 @@
 #define AS_POWER_DONE  (0xfe)  // Keyboard powerup done key stream
 #define AS_NONE        (0xff)  // Not a valid keycode
 
+/* Pseudo-scancodes for mouse buttons and joystick directions */
+#define ASE_BUTTON_0       (0x80)  // Left mouse button
+#define ASE_BUTTON_1       (0x81)  // Right mouse button
+#define ASE_BUTTON_2       (0x82)  // Middle mouse button
+#define ASE_BUTTON_3       (0x83)  // Extra mouse button
+#define ASE_BUTTON_4       (0x84)  // Extra mouse button
+#define ASE_UNUSED_1       (0x85)  // Button range: start of unused
+#define ASE_UNUSED_2       (0x9b)  // Button range: end of unused
+#define ASE_JOYSTICK_UP    (0x9c)  // Joystick up
+#define ASE_JOYSTICK_DOWN  (0x9d)  // Joystick down
+#define ASE_JOYSTICK_LEFT  (0x9e)  // Joystick left
+#define ASE_JOYSTICK_RIGHT (0x9f)  // Joystick right
+
 #endif /* _AMIGA_KBD_CODES_H */

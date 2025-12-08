@@ -18,6 +18,7 @@
 #include "hiden.h"
 #include "printf.h"
 #include "utils.h"
+#include "amiga_kbd_codes.h"
 
 #define B0_GPIO ADDR32(BND_IO(FIRE_PORT + GPIO_ODR_OFFSET, low_bit(FIRE_PIN)))
 #define B1_GPIO ADDR32(BND_IO(PotY_PORT + GPIO_ODR_OFFSET, low_bit(PotY_PIN)))
@@ -46,25 +47,25 @@ joystick_action(uint up, uint down, uint left, uint right, uint32_t buttons)
     joystick_asserted = up | down | left | right || !!buttons;
 
     if (last_up != up) {
-        macro = config.jdirectmap[0] ? config.jdirectmap[0] : 6;
+        macro = ASE_JOYSTICK_UP;
         mouse_put_macro(macro, up, last_up);
         last_up = up;
         change = 1;
     }
     if (last_down != down) {
-        macro = config.jdirectmap[1] ? config.jdirectmap[1] : 7;
+        macro = ASE_JOYSTICK_DOWN;
         mouse_put_macro(macro, down, last_down);
         last_down = down;
         change = 1;
     }
     if (last_left != left) {
-        macro = config.jdirectmap[2] ? config.jdirectmap[2] : 8;
+        macro = ASE_JOYSTICK_LEFT;
         mouse_put_macro(macro, left, last_left);
         last_left = left;
         change = 1;
     }
     if (last_right != right) {
-        macro = config.jdirectmap[3] ? config.jdirectmap[3] : 9;
+        macro = ASE_JOYSTICK_RIGHT;
         mouse_put_macro(macro, right, last_right);
         last_right = right;
         change = 1;
@@ -79,7 +80,7 @@ joystick_action(uint up, uint down, uint left, uint right, uint32_t buttons)
             uint     was_pressed = (last_buttons & BIT(bit)) ? 1 : 0;
             macro = config.jbuttonmap[bit];
             if (macro == 0)
-                macro = bit;  // Not reassigned: default this button to itself
+                macro = 0x80 + bit;  // Not reassigned: default to self
             else if (macro <= 4)
                 macro--;
             if (is_pressed != was_pressed) {

@@ -643,22 +643,25 @@ USBH_XUSB_DecodeReport(USBH_HandleTypeDef *phost, XUSB_Handle_t *XUSB_Handle,
     report_info->joypad = readbits(report_data, 16, 4, 0);
 
     /*
-     * Bit 0 = Button B
-     * Bit 1 = Button A
-     * Bit 2 = Button Y
-     * Bit 3 = Button X
+     * Bit 0 = Button B Red
+     * Bit 1 = Button A Green
+     * Bit 2 = Button Y Yellow
+     * Bit 3 = Button X Blue
      * Bit 4 = Start
      * Bit 5 = Select
-     * Bit 6 = Left top button
-     * Bit 7 = Right top button
-     * Bit 8 = Left bottom button
-     * Bit 9 = Right bottom button
+     * Bit 6 = Left joystick center depressed
+     * Bit 7 = Right joystick center depressed
+     * Bit 8 = Left top button
+     * Bit 9 = Right top button
+     * Bit 10 = Right checker pattern button
+     * Bit 11 = Left bottom button "trigger"
+     * Bit 12 = Right bottom button "trigger"
      */
     report_info->buttons = readbits(report_data, 28, 4, 0) |
-                           (readbits(report_data, 20, 2, 0) << 4) |
-                           (readbits(report_data, 24, 2, 0) << 6) |
-                           (readbits(report_data, 32, 1, 0) << 8) |
-                           (readbits(report_data, 40, 1, 0) << 9);
+                           (readbits(report_data, 20, 4, 0) << 4) |
+                           (readbits(report_data, 24, 3, 0) << 8) |
+                           (readbits(report_data, 32, 1, 0) << 11) |
+                           (readbits(report_data, 40, 1, 0) << 12);
 }
 
 static uint32_t xusb_rx_report_buf[2][XUSB_QUEUE_SIZE * 4];

@@ -107,6 +107,7 @@ static const keysize_t amiga_keywidths[] = {
     { PLAIN,  2 * U,     1 * U },  // 10: Keypad 0
     { PLAIN,  1 * U,     1 * U },  // 11: Extra keys (ISO layout)
     { SHADED, 1.5 * U, 2.1 * U },  // 12: Enter key
+    { PLAIN,  0.6 * U, 1.2 * U },  // 13: Mouse buttons
 };
 
 typedef struct {
@@ -226,6 +227,15 @@ static const keypos_t amiga_keypos[] = {
     { AS_RIGHTALT,    2, 30994, 15537, "Alt" },
     { AS_KP_0,       10, 43121, 15537, C('0') },
     { AS_KP_DOT,      0, 45966, 15537, C('.') },
+    { 0x80,          13,  5000, 18560, C('1') },  // Mouse button 1
+    { 0x81,          13,  6200, 18560, C('2') },  // Mouse button 2
+    { 0x82,          13,  7400, 18560, C('3') },  // Mouse button 3
+    { AS_BUTTON_4,   13,  8600, 18560, C('4') },  // Mouse button 4
+    { AS_BUTTON_5,   13,  9800, 18560, C('5') },  // Mouse button 5
+    { AS_WHEEL_UP,    0, 12000, 18560, "WU" },    // Mouse wheel up
+    { AS_WHEEL_DOWN,  0, 14000, 18560, "WD" },    // Mouse wheel down
+    { AS_WHEEL_LEFT,  0, 16000, 18560, "WL" },    // Mouse wheel left
+    { AS_WHEEL_RIGHT, 0, 18000, 18560, "WR" },    // Mouse wheel right
 };
 
 
@@ -302,6 +312,11 @@ static const keypos_t hid_keypos[] = {
     { HS_PRTSCN,      1, 34613,  5050, "PrtSc" },
     { HS_SCROLL_LOCK, 1, 36518,  5050, "ScrLk" },
     { HS_PAUSE,       1, 38423,  5050, "Pause" },
+
+    { HS_MEDIA_S_UP,   0, 41000, 5050, "WU" },    // Mouse wheel up
+    { HS_MEDIA_S_DOWN, 0, 43000, 5050, "WD" },    // Mouse wheel down
+    { HS_MEDIA_BACK,   0, 45000, 5050, "WL" },    // Mouse wheel left
+    { HS_MEDIA_FWD,    0, 47000, 5050, "WR" },    // Mouse wheel right
 
     { HS_BACKTICK,    1,  5086,  7917, C('`') },
     { HS_1,           0,  6991,  7917, C('1') },
@@ -419,9 +434,9 @@ static const char cmd_options[] =
     "   amiga        default to capture Amiga scancodes (-a)\n"
     "   debug        show debug output (-d)\n"
     "   esc          disable ESC key for program exit (-e)\n"
+    "   live         Just live keys (not mapped keys) (-l)\n"
     "   mapamiga     Amiga key mapping mode (-m)\n"
     "   maphid       HID key mapping mode (-h)\n"
-    "   mapped       Live keys plus mapped keys (-p)\n"
     "   iso          present ISO style keyboard (-i)\n"
     "";
 
@@ -435,6 +450,7 @@ static const long_to_short_t long_to_short_main[] = {
     { "-e", "esc" },
     { "-h", "maphid" },
     { "-i", "iso" },
+    { "-l", "live" },
     { "-m", "mapamiga" },
     { "-p", "mapped" },
 };
@@ -1133,7 +1149,7 @@ draw_amiga_key(uint cur, uint pressed)
     if (is_ansi_layout && (scancode == AS_LEFTSHIFT)) {
         ke_x += 1905 / 2;  // Increase width of ANSI left shift
     }
-    if (amiga_keywidths[ktype].y > 1 * U) {
+    if (amiga_keywidths[ktype].y > 1.5 * U) {
         ke_y += 1905 / 2;  // Fixup center for tall keys
     }
 
@@ -2465,6 +2481,20 @@ draw_win(void)
         editbox_y_max[cur] = editbox_y_min[cur] + font_pixels_y + 4;
     }
 
+    {
+        const char mousestr[] = "Mouse Buttons";
+        const uint mouselen = sizeof (mousestr) - 1;
+        SHORT which_box = ARRAY_SIZE(amiga_key_bbox) - 1;
+        SHORT ycenter = (amiga_key_bbox[which_box].y_min +
+                         amiga_key_bbox[which_box].y_max) / 2;
+        SHORT ypos = ycenter + font_pixels_y / 2 - 1;
+        SHORT xpos = amiga_key_bbox[which_box].x_max + font_pixels_x;
+        SetAPen(rp, pen_cap_white);
+        SetBPen(rp, pen_cap_shaded);
+        Move(rp, xpos, ypos);
+        Text(rp, mousestr, mouselen);
+    }
+
     editbox_draw_titles();
     editbox_draw();
 
@@ -2473,21 +2503,20 @@ draw_win(void)
 }
 
 static void
-amiga_rawkey(uint8_t code)
+amiga_rawkey(uint8_t scancode, uint released)
 {
-    uint scancode = code & ~0x80;
-    uint released = code & 0x80;
     uint cur = amiga_scancode_to_capnum[scancode];
 
-//  printf("amiga_rawkey %x\n", code);
+//  printf("amiga_rawkey %x\n", scancode | released);
     if (edit_key_mapping_mode) {
-        editbox_key_command(code);
+        if (!released)
+            editbox_key_command(scancode);
         return;
     }
 
     if (!released) {
         if (enable_esc_exit && !released)
-            handle_esc_key(code == RAWKEY_ESC);
+            handle_esc_key(scancode == RAWKEY_ESC);
         amiga_cur_capnum = cur;
         amiga_cur_scancode = scancode;
         if (key_mapping_mode != KEY_MAPPING_MODE_HID_TO_AMIGA)
@@ -2539,6 +2568,12 @@ static void
 hid_rawkey(uint8_t scancode, uint released)
 {
     uint cur = hid_scancode_to_capnum[scancode];
+
+    if ((scancode == 0x80) &&
+        (mouse_cur_selection != MOUSE_CUR_SELECTION_NONE)) {
+        /* Ignore left mouse button if mouse is hovering over a button */
+        return;
+    }
 
 //  printf("hid_rawkey %x %x\n", scancode, released);
     if (edit_key_mapping_mode) {
@@ -2608,8 +2643,7 @@ mouse_button_press(uint button_down)
         case MOUSE_CUR_SELECTION_AMIGA: // Amiga
             if (mouse_cur_capnum == 0xff)
                 return;  // Not over keyboard button
-            amiga_rawkey(amiga_keypos[mouse_cur_capnum].scancode |
-                         (button_down ? 0x00 : 0x80));
+            amiga_rawkey(amiga_keypos[mouse_cur_capnum].scancode, !button_down);
             break;
         case MOUSE_CUR_SELECTION_HID: // HID
             if (mouse_cur_capnum == 0xff)
@@ -2678,10 +2712,12 @@ remove_single_key_mappings(void)
         }
         amiga_key_mapped[capnum] = 0;
         draw_amiga_key(capnum, 0);
-        if ((key_mapping_mode == 2) || (key_mapping_mode == 3))
+        if ((key_mapping_mode == KEY_MAPPING_MODE_LIVEKEYS) ||
+            (key_mapping_mode == KEY_MAPPING_MODE_LIVEKEYS_MAPPED)) {
             enter_leave_amiga_scancode(amiga_scancode, 0, 1);
-        else
+        } else {
             enter_leave_amiga_scancode(amiga_scancode, 1, 1);
+        }
     } else {
         /* Remove all Amiga mappings to this HID scancode */
         uint8_t hid_scancode = scancode;
@@ -2694,10 +2730,12 @@ remove_single_key_mappings(void)
 
         hid_key_mapped[capnum] = 0;
         draw_hid_key(capnum, 0);
-        if ((key_mapping_mode == 2) || (key_mapping_mode == 3))
+        if ((key_mapping_mode == KEY_MAPPING_MODE_LIVEKEYS) ||
+            (key_mapping_mode == KEY_MAPPING_MODE_LIVEKEYS_MAPPED)) {
             enter_leave_hid_scancode(hid_scancode, 0, 1);
-        else
+        } else {
             enter_leave_hid_scancode(hid_scancode, 1, 1);
+        }
     }
 }
 
@@ -3316,7 +3354,8 @@ set_menu_checked:
                                         }
                                         break;
                                     case MENU_MODE_AMIGA_TO_HID:
-                                        key_mapping_mode = 0;
+                                        key_mapping_mode =
+                                                KEY_MAPPING_MODE_AMIGA_TO_HID;
                                         if (!checked) {
                                             /* Force it to remain checked */
                                             chk_item = ITEMNUM_AMIGA_TO_HID;
@@ -3324,7 +3363,8 @@ set_menu_checked:
                                         }
                                         break;
                                     case MENU_MODE_HID_TO_AMIGA:
-                                        key_mapping_mode = 1;
+                                        key_mapping_mode =
+                                                KEY_MAPPING_MODE_HID_TO_AMIGA;
                                         if (!checked) {
                                             /* Force it to remain checked */
                                             chk_item = ITEMNUM_HID_TO_AMIGA;
@@ -3332,7 +3372,8 @@ set_menu_checked:
                                         }
                                         break;
                                     case MENU_MODE_LIVE_KEYS:
-                                        key_mapping_mode = 2;
+                                        key_mapping_mode =
+                                                KEY_MAPPING_MODE_LIVEKEYS;
                                         if (!checked) {
                                             /* Force it to remain checked */
                                             chk_item = ITEMNUM_LIVEKEYS;
@@ -3340,7 +3381,8 @@ set_menu_checked:
                                         }
                                         break;
                                     case MENU_MODE_LIVE_KEYS_MAP:
-                                        key_mapping_mode = 3;
+                                        key_mapping_mode =
+                                            KEY_MAPPING_MODE_LIVEKEYS_MAPPED;
                                         if (!checked) {
                                             /* Force it to remain checked */
                                             chk_item = ITEMNUM_LIVEKEYS_MAP;
@@ -3415,7 +3457,14 @@ set_menu_checked:
 //                  EndRefresh(window, TRUE);
                     break;
                 case IDCMP_RAWKEY:
-                    amiga_rawkey(icode);
+                    amiga_rawkey(icode & ~0x80, icode & 0x80);
+                    if ((icode == AS_WHEEL_UP) ||
+                        (icode == AS_WHEEL_DOWN) ||
+                        (icode == AS_WHEEL_LEFT) ||
+                        (icode == AS_WHEEL_RIGHT)) {
+                        /* Mouse wheel scancodes don't issue "key up" */
+                        amiga_rawkey(icode, 0x80);
+                    }
                     break;
                 case IDCMP_REFRESHWINDOW:
                     BeginRefresh(window);
@@ -3447,7 +3496,7 @@ main(int argc, char *argv[])
 {
     uint8_t flag_mapamiga = 0;
     uint8_t flag_maphid = 0;
-    uint8_t flag_mapped = 0;
+    uint8_t flag_livekeys = 0;
 
     generate_scancode_to_capnum();
     if (argc > 0) {
@@ -3475,11 +3524,11 @@ main(int argc, char *argv[])
                         case 'i':  // iso
                             is_ansi_layout = 0;
                             break;
+                        case 'l':  // mapped
+                            flag_livekeys = 1;
+                            break;
                         case 'm':  // mapamiga
                             flag_mapamiga = 1;
-                            break;
-                        case 'p':  // mapped
-                            flag_mapped = 1;
                             break;
                         default:
                             err_printf("Unknown argument %s\n", ptr);
@@ -3499,13 +3548,13 @@ main(int argc, char *argv[])
         (void) wbs;
     }
     if (flag_maphid)
-        key_mapping_mode = 1;
+        key_mapping_mode = KEY_MAPPING_MODE_HID_TO_AMIGA;
     else if (flag_mapamiga)
-        key_mapping_mode = 0;
-    else if (flag_mapped)
-        key_mapping_mode = 3;
+        key_mapping_mode = KEY_MAPPING_MODE_AMIGA_TO_HID;
+    else if (flag_livekeys)
+        key_mapping_mode = KEY_MAPPING_MODE_LIVEKEYS;
     else
-        key_mapping_mode = 2;
+        key_mapping_mode = KEY_MAPPING_MODE_LIVEKEYS_MAPPED;
 
     if (OpenAmigaLibraries()) {
         window = OpenAWindow();
