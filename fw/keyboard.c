@@ -24,6 +24,7 @@
 #include "usb.h"
 #include "gpio.h"
 #include "mouse.h"
+#include "irq.h"
 #include "hid_kbd_codes.h"
 #include <libopencm3/stm32/gpio.h>
 #include "amiga_kbd_codes.h"
@@ -34,9 +35,6 @@
 #else
 #define DPRINTF(x...) do { } while (0)
 #endif
-
-#define KEYCAP_DOWN 0x0000
-#define KEYCAP_UP   0x0100
 
 /* Keyboard-to-Amiga ring buffer */
 static uint    ak_rb_producer;
@@ -51,7 +49,7 @@ uint8_t  amiga_keyboard_lost_sync;
 /* Keyboard scancode capture globals */
 volatile uint8_t keyboard_cap_src_req;  // New capture source
 static uint8_t   keyboard_cap_src;      // Capture source (0 = None, 1 = HID)
-uint64_t         keyboard_cap_timeout;  // Capture timeout
+volatile uint64_t keyboard_cap_timeout;  // Capture timeout
 static uint8_t   keyboard_cap_prod;
 static uint8_t   keyboard_cap_cons;
 static uint16_t  keyboard_cap_buf[64];
@@ -246,7 +244,7 @@ static const struct {
     { AS_NONE,       AS_NONE, 0x00 },  // 0xb1  Keypad 000
     { AS_COMMA,      AS_NONE, 0x00 },  // 0xb2  Thousands Separator
     { AS_DOT,        AS_NONE, 0x00 },  // 0xb3  Decimal Separator
-    { AS_4,          AS_NONE, 0x01 },  // 0xb4  Currency Unit
+    { AS_NONE,       AS_NONE, 0x00 },  // 0xb4  Currency Unit ($ etc)
     { AS_NONE,       AS_NONE, 0x00 },  // 0xb5  Currency Sub-unit
     { AS_KP_LPAREN,  AS_NONE, 0x00 },  // 0xb6  Keypad '('
     { AS_KP_RPAREN,  AS_NONE, 0x00 },  // 0xb7  Keypad ')'
@@ -770,10 +768,10 @@ keyboard_terminal_put(uint ascii, uint conv)
 }
 
 /*
- * keyboard_get_defaults() returns default HID-to-Amiga key mappings.
+ * keyboard_get_default_keys() returns default HID-to-Amiga key mappings.
  */
 void
-keyboard_get_defaults(uint start, uint count, uint8_t *buf)
+keyboard_get_default_keys(uint start, uint count, uint8_t *buf)
 {
     while (count-- > 0)
         *(buf++) = scancode_to_amiga[start++].sa_amiga;
@@ -818,13 +816,13 @@ convert_scancode_to_amiga(uint8_t keycode, uint8_t modifier,
     return (code);
 }
 
-static uint8_t
+uint8_t
 capture_scancode(uint16_t keycode)
 {
     uint next;
     if (keyboard_cap_src == 0)
         return (keycode);
-    if ((keycode & 0xff) == 0)
+    if (((keycode & 0xff) == 0xff) || ((keycode & (0xff | KEYCAP_BUTTON)) == 0))
         return (keycode);
 
     /* Add captured input to buffer */
@@ -1460,9 +1458,6 @@ keyboard_usb_input(usb_keyboard_report_t *report)
     uint8_t        modifier = report->modifier;
     uint32_t       mouse_buttons_old = mouse_buttons_add;
 
-    if ((keyboard_cap_src != 0) && timer_tick_has_elapsed(keyboard_cap_timeout))
-        keyboard_cap_src_req = 0;
-
     if (keyboard_cap_src != keyboard_cap_src_req) {
         /* Capture mode switch: Release any keys which were asserted */
         memset(cur_mods, 0, sizeof (cur_mods));
@@ -1903,6 +1898,20 @@ keyboard_poll(void)
     if (usb_keyboard_count == 0) {
         amiga_keyboard_sent_wake = 0;  // No USB keyboard
         return;
+    }
+
+    disable_irq();
+    uint64_t ckto = keyboard_cap_timeout;
+    enable_irq();
+    if ((keyboard_cap_src != 0) && timer_tick_has_elapsed(ckto)) {
+        keyboard_cap_src_req = 0;
+    }
+
+    if (keyboard_cap_src != keyboard_cap_src_req) {
+        mouse_action_button(0);  // release buttons
+        usb_keyboard_report_t report;
+        memset(&report, 0, sizeof (report));
+        keyboard_usb_input(&report);
     }
 
     if (recursive == 0) {

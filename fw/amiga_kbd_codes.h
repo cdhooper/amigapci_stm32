@@ -54,7 +54,7 @@
 #define AS_L           (0x28)  // 'L' and 'l'
 #define AS_SEMICOLON   (0x29)  // ';' and ':'
 #define AS_APOSTROPHE  (0x2a)  // ''' and '"'
-#define AS_EXTRA1      (0x2b)  // Key next to Return
+#define AS_EXTRA1      (0x2b)  // Key next to Enter
 #define AS_POWER_BTN   (0x2c)  // Power button (AmigaPCI power button)
 #define AS_KP_4        (0x2d)  // Keypad '4'
 #define AS_KP_5        (0x2e)  // Keypad '5'
@@ -115,6 +115,9 @@
 #define AS_RIGHTALT    (0x65)  // Right Alt
 #define AS_LEFTAMIGA   (0x66)  // Left Amiga
 #define AS_RIGHTAMIGA  (0x67)  // Right Amiga
+// undefined           (0x68)
+// undefined           (0x69)
+// undefined           (0x6a)
 #define AS_MENU        (0x6b)  // Menu         (not on classic keyboards)
 // undefined           (0x6c)
 #define AS_PRINTSCR    (0x6d)  // Print screen (not on classic keyboards)
@@ -129,6 +132,7 @@
 #define AS_SHUFFLE     (0x76)  // Shuffle      (CDTV & CD32)  Random Play
 #define AS_REPEAT      (0x77)  // Repeat       (CDTV & CD32)
 #define AS_RESET_WARN  (0x78)  // Reset warning
+// undefined           (0x79)
 #define AS_WHEEL_UP    (0x7a)  // Mouse Wheel Up    (NM_WHEEL_UP)
 #define AS_WHEEL_DOWN  (0x7b)  // Mouse Wheel Down  (NM_WHEEL_DOWN)
 #define AS_WHEEL_LEFT  (0x7c)  // Mouse Wheel Left  (NM_WHEEL_LEFT)

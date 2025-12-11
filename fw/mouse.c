@@ -105,29 +105,25 @@ mouse_put_macro(uint32_t tcode, uint is_pressed, uint was_pressed)
                     *RIGHT_GPIO = !is_pressed;
                     break;
             }
-            if (config.debug_flag & (DF_USB_MOUSE | DF_AMIGA_MOUSE |
-                                     DF_AMIGA_JOYSTICK)) {
-                if (was_pressed)
-                    putchar('-');
-                if ((code >= ASE_JOYSTICK_UP) &&
-                           (code <= ASE_JOYSTICK_RIGHT)) {
-                    putchar("UDLR"[code - ASE_JOYSTICK_UP]);
-                } else {
-                    uint bnum = code - ASE_BUTTON_0;
-                    putchar('B');
-                    if (bnum >= 10) {
-                        putchar('0' + bnum / 10);
-                        bnum %= 10;
-                    }
-                    putchar('0' + bnum);
-                }
-            }
         } else {
             /* Pass macro to keyboard processing */
             if (was_pressed != is_pressed)
                 keyboard_put_macro(code, is_pressed);
         }
     }
+}
+
+/*
+ * mouse_put_scancode() will either capture a scancode or send it for
+ *                      macro processing.
+ */
+void
+mouse_put_scancode(uint8_t code, uint is_pressed, uint was_pressed)
+{
+    code = capture_scancode(code | (is_pressed ? KEYCAP_DOWN : KEYCAP_UP));
+    if (code != 0xff)
+        return;
+    mouse_put_macro(config.keymap[code], is_pressed, was_pressed);
 }
 
 /*
@@ -143,7 +139,6 @@ mouse_action(int off_x, int off_y, int off_wheel, int off_pan)
 {
     static int last_wheel;
     static int last_pan;
-    uint32_t macro;
     uint     change = 0;
 
     if (config.debug_flag & DF_USB_MOUSE) {
@@ -194,17 +189,15 @@ mouse_action(int off_x, int off_y, int off_wheel, int off_pan)
 
     /* Up/down wheel */
     if (off_wheel != last_wheel) {
-        macro = config.keymap[HS_MEDIA_S_UP];
         if (last_wheel < 0)
-            mouse_put_macro(macro, 0, 1);
+            mouse_put_scancode(HS_MEDIA_S_UP, 0, 1);
         if (off_wheel < 0)
-            mouse_put_macro(macro, 1, 0);
+            mouse_put_scancode(HS_MEDIA_S_UP, 1, 0);
 
-        macro = config.keymap[HS_MEDIA_S_DOWN];
         if (last_wheel > 0)
-            mouse_put_macro(macro, 0, 1);
+            mouse_put_scancode(HS_MEDIA_S_DOWN, 0, 1);
         if (off_wheel > 0)
-            mouse_put_macro(macro, 1, 0);
+            mouse_put_scancode(HS_MEDIA_S_DOWN, 1, 0);
 
         /*
          * Update last_wheel if we want keystroke-like behavior
@@ -220,17 +213,15 @@ mouse_action(int off_x, int off_y, int off_wheel, int off_pan)
 
     /* Left/right pan */
     if (off_pan != last_pan) {
-        macro = config.keymap[HS_MEDIA_BACK];
         if (last_pan < 0)
-            mouse_put_macro(macro, 0, 1);
+            mouse_put_scancode(HS_MEDIA_BACK, 0, 1);
         if (off_pan < 0)
-            mouse_put_macro(macro, 1, 0);
+            mouse_put_scancode(HS_MEDIA_BACK, 1, 0);
 
-        macro = config.keymap[HS_MEDIA_FWD];
         if (last_pan > 0)
-            mouse_put_macro(macro, 0, 1);
+            mouse_put_scancode(HS_MEDIA_FWD, 0, 1);
         if (off_pan > 0)
-            mouse_put_macro(macro, 1, 0);
+            mouse_put_scancode(HS_MEDIA_FWD, 1, 0);
 
         /* Update last_pan if we want keystroke-like behavior */
         if (config.flags & CF_MOUSE_KEYUP_WP)
@@ -266,8 +257,22 @@ mouse_action_button(uint32_t buttons)
                 macro = 0x80 + bit;  // Not reassigned: default to self
             else if (macro <= 4)
                 macro--;
-            if (is_pressed != was_pressed)
+            if (is_pressed != was_pressed) {
+                if (config.debug_flag & (DF_USB_MOUSE | DF_AMIGA_MOUSE)) {
+                    uint bnum = bit;
+                    if (!is_pressed)
+                        putchar('-');
+                    putchar('B');
+                    if (bnum >= 10) {
+                        putchar('0' + bnum / 10);
+                        bnum %= 10;
+                    }
+                    putchar('0' + bnum);
+                }
+                capture_scancode(bit | KEYCAP_BUTTON |
+                                 (is_pressed ? KEYCAP_DOWN : KEYCAP_UP));
                 mouse_put_macro(macro, is_pressed, was_pressed);
+            }
         }
         last_buttons = buttons;
         mouse_asserted = !!buttons;
@@ -278,16 +283,52 @@ mouse_action_button(uint32_t buttons)
         hiden_set(1);
 }
 
+static const uint8_t default_button_to_amiga[] = {
+/* Mouse buttons */
+    ASE_BUTTON_0, ASE_BUTTON_1, ASE_BUTTON_2, AS_BUTTON_4,
+        AS_BUTTON_5, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0,
+/* Joystick directions */
+        ASE_JOYSTICK_UP, ASE_JOYSTICK_DOWN,
+        ASE_JOYSTICK_LEFT, ASE_JOYSTICK_RIGHT,
+/* Joystick buttons */
+    ASE_BUTTON_0, ASE_BUTTON_1, ASE_BUTTON_2, AS_BUTTON_4,
+        AS_BUTTON_5, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+};
+
 void
 mouse_set_defaults(void)
 {
+    uint cur;
+
     config.mouse_mul_x = 0;
     config.mouse_mul_y = 0;
     config.mouse_div_x = 0;
     config.mouse_div_y = 0;
-    memset(config.buttonmap, 0, sizeof (config.buttonmap));    // Mouse
-    memset(config.jbuttonmap, 0, sizeof (config.jbuttonmap));  // Joystick
+    for (cur = 0; cur < ARRAY_SIZE(config.buttonmap); cur++)
+        config.buttonmap[cur] = default_button_to_amiga[cur];
 }
+
+/*
+ * mouse_get_default_buttons() returns default HID Button-to-Amiga key mappings.
+ */
+void
+mouse_get_default_buttons(uint start, uint count, uint8_t *buf)
+{
+    uint val;
+    while (count-- > 0) {
+        val = default_button_to_amiga[start++];
+        if (val == 0)
+            val = 0xff;
+        *(buf++) = val;
+    }
+}
+
 
 static void
 move_x(int dir)

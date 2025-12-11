@@ -33,18 +33,19 @@ void keyboard_usb_input(usb_keyboard_report_t *report);  // USB keyboard input
 void keyboard_usb_input_mm(uint16_t *ch, uint count);    // USB multimedia input
 void keyboard_usb_input_sysctl(uint16_t buttons);        // USB system ctl key
 void keyboard_term(void);  // ASCII terminal input to Amiga
-void keyboard_get_defaults(uint start, uint count, uint8_t *buf);
+void keyboard_get_default_keys(uint start, uint count, uint8_t *buf);
 void keyboard_set_defaults(void);
 uint keyboard_reset_warning(void);
 uint keyboard_get_capture(uint maxcount, uint16_t *buf);
 void keyboard_poll(void);
 void keyboard_init(void);
+uint8_t capture_scancode(uint16_t keycode);
 
 extern uint8_t  amiga_keyboard_sent_wake;
 extern uint8_t  amiga_keyboard_has_sync;
 extern uint8_t  amiga_keyboard_lost_sync;
 extern uint8_t  keyboard_raw_mode;
-extern uint64_t keyboard_cap_timeout;
+extern volatile uint64_t keyboard_cap_timeout;
 extern volatile uint8_t  keyboard_cap_src_req;
 
 /* Newmouse keycodes */
@@ -54,5 +55,10 @@ extern volatile uint8_t  keyboard_cap_src_req;
 #define NM_WHEEL_RIGHT    (0x7D)
 #define NM_BUTTON_FOURTH  (0x7E)
 #define NM_BUTTON_FIFTH   (0x7F)
+
+#define KEYCAP_DOWN   0x0000  // Key pressed
+#define KEYCAP_UP     0x0100  // Key released
+#define KEYCAP_BUTTON 0x0200  // Key is actually a mouse or joystick button
+
 
 #endif /* _KEYBOARD_H */

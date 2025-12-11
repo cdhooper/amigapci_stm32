@@ -13,6 +13,7 @@
 #include "main.h"
 #include "config.h"
 #include "joystick.h"
+#include "keyboard.h"
 #include "mouse.h"
 #include "gpio.h"
 #include "hiden.h"
@@ -33,6 +34,11 @@
 
 uint8_t joystick_asserted;
 
+#define BUTTON_CODE_UP    (0x1c | KEYCAP_BUTTON)
+#define BUTTON_CODE_DOWN  (0x1d | KEYCAP_BUTTON)
+#define BUTTON_CODE_LEFT  (0x1e | KEYCAP_BUTTON)
+#define BUTTON_CODE_RIGHT (0x1f | KEYCAP_BUTTON)
+
 void
 joystick_action(uint up, uint down, uint left, uint right, uint32_t buttons)
 {
@@ -47,43 +53,60 @@ joystick_action(uint up, uint down, uint left, uint right, uint32_t buttons)
     joystick_asserted = up | down | left | right || !!buttons;
 
     if (last_up != up) {
-        macro = ASE_JOYSTICK_UP;
-        mouse_put_macro(macro, up, last_up);
+        capture_scancode(BUTTON_CODE_UP | (up ? KEYCAP_DOWN : KEYCAP_UP));
+        mouse_put_macro(ASE_JOYSTICK_UP, up, last_up);
         last_up = up;
         change = 1;
+        dprintf(DF_AMIGA_JOYSTICK, "%sJ%c", up ? "" : "-", 'U');
     }
     if (last_down != down) {
-        macro = ASE_JOYSTICK_DOWN;
-        mouse_put_macro(macro, down, last_down);
+        capture_scancode(BUTTON_CODE_DOWN | (down ? KEYCAP_DOWN : KEYCAP_UP));
+        mouse_put_macro(ASE_JOYSTICK_DOWN, down, last_down);
         last_down = down;
         change = 1;
+        dprintf(DF_AMIGA_JOYSTICK, "%sJ%c", down ? "" : "-", 'D');
     }
     if (last_left != left) {
-        macro = ASE_JOYSTICK_LEFT;
-        mouse_put_macro(macro, left, last_left);
+        capture_scancode(BUTTON_CODE_LEFT | (left ? KEYCAP_DOWN : KEYCAP_UP));
+        mouse_put_macro(ASE_JOYSTICK_LEFT, left, last_left);
         last_left = left;
         change = 1;
+        dprintf(DF_AMIGA_JOYSTICK, "%sJ%c", left ? "" : "-", 'L');
     }
     if (last_right != right) {
-        macro = ASE_JOYSTICK_RIGHT;
-        mouse_put_macro(macro, right, last_right);
+        capture_scancode(BUTTON_CODE_RIGHT | (right ? KEYCAP_DOWN : KEYCAP_UP));
+        mouse_put_macro(ASE_JOYSTICK_RIGHT, right, last_right);
         last_right = right;
         change = 1;
+        dprintf(DF_AMIGA_JOYSTICK, "%sJ%c", right ? "" : "-", 'R');
     }
 
     buttons |= mouse_buttons_add;
 
     if (buttons != last_buttons) {
         uint bit;
-        for (bit = 0; bit < ARRAY_SIZE(config.jbuttonmap); bit++) {
+        for (bit = 0; bit < 32; bit++) {
             uint     is_pressed  = (buttons & BIT(bit)) ? 1 : 0;
             uint     was_pressed = (last_buttons & BIT(bit)) ? 1 : 0;
-            macro = config.jbuttonmap[bit];
+            macro = config.buttonmap[bit + 32];
             if (macro == 0)
                 macro = 0x80 + bit;  // Not reassigned: default to self
             else if (macro <= 4)
                 macro--;
             if (is_pressed != was_pressed) {
+                if (config.debug_flag & DF_AMIGA_JOYSTICK) {
+                    uint bnum = bit;
+                    if (!is_pressed)
+                        putchar('-');
+                    putchar('B');
+                    if (bnum >= 10) {
+                        putchar('0' + bnum / 10);
+                        bnum %= 10;
+                    }
+                    putchar('0' + bnum);
+                }
+                capture_scancode((bit + 0x20) | KEYCAP_BUTTON |
+                                 (is_pressed ? KEYCAP_DOWN : KEYCAP_UP));
                 mouse_put_macro(macro, is_pressed, was_pressed);
             }
         }

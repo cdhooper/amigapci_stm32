@@ -6,6 +6,7 @@
 #include "msg.h"
 #include "amigartc.h"
 #include "keyboard.h"
+#include "mouse.h"
 #include "config.h"
 #include "crc32.h"
 #include "keyboard.h"
@@ -162,6 +163,7 @@ msg_set_map_reply(bec_keymap_t *req, void *buf, uint maxcount, uint esize)
             *(bufptr++) = 0;
         data += maxkeys;
     }
+    config_updated();
     msg_reply(BEC_STATUS_OK, 0, NULL, 0, NULL);
 }
 
@@ -241,17 +243,12 @@ msg_process_slow(void)
                                       ARRAY_SIZE(config.buttonmap),
                                       sizeof (config.buttonmap[0]));
                     break;
-                case BKM_WHICH_JBUTTONMAP:
-                    msg_get_map_reply(req, &config.jbuttonmap[start],
-                                      ARRAY_SIZE(config.jbuttonmap),
-                                      sizeof (config.jbuttonmap[0]));
-                    break;
                 case BKM_WHICH_DEF_KEYMAP:
                     if (count > ARRAY_SIZE(config.keymap) - start)
                         count = ARRAY_SIZE(config.keymap) - start;
                     if (count > ARRAY_SIZE(buf))
                         count = ARRAY_SIZE(buf);
-                    keyboard_get_defaults(start, count, buf);
+                    keyboard_get_default_keys(start, count, buf);
                     req->bkm_len   = 1;
                     req->bkm_count = count;
                     msg_reply(BEC_STATUS_OK, sizeof (*req), req, count, buf);
@@ -259,18 +256,13 @@ msg_process_slow(void)
                 case BKM_WHICH_DEF_BUTTONMAP:
                     if (count > ARRAY_SIZE(config.buttonmap) - start)
                         count = ARRAY_SIZE(config.buttonmap) - start;
-send_empty_defmap:
                     if (count > ARRAY_SIZE(buf))
                         count = ARRAY_SIZE(buf);
-                    memset(buf, 0, count);
+                    mouse_get_default_buttons(start, count, buf);
                     req->bkm_len   = 1;
                     req->bkm_count = count;
                     msg_reply(BEC_STATUS_OK, sizeof (*req), req, count, buf);
                     break;
-                case BKM_WHICH_DEF_JBUTTONMAP:
-                    if (count > ARRAY_SIZE(config.jbuttonmap) - start)
-                        count = ARRAY_SIZE(config.jbuttonmap) - start;
-                    goto send_empty_defmap;
                 default:
 bad_arg:
                     msg_reply(BEC_STATUS_BADARG, 0, NULL, 0, NULL);
@@ -292,11 +284,6 @@ bad_arg:
                     msg_set_map_reply(req, &config.buttonmap[start],
                                       ARRAY_SIZE(config.buttonmap),
                                       sizeof (config.buttonmap[0]));
-                    break;
-                case BKM_WHICH_JBUTTONMAP:
-                    msg_set_map_reply(req, &config.jbuttonmap[start],
-                                      ARRAY_SIZE(config.jbuttonmap),
-                                      sizeof (config.jbuttonmap[0]));
                     break;
                 default:
                     goto bad_arg;
