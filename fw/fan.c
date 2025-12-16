@@ -106,10 +106,11 @@ fan_get_rpm(void)
             buckets++;
         }
 
-    if (total == 0)
+    if (total < 10000)  // Bad value
         rpm = 0;
     else
         rpm = timer_clocks_per_rpm * buckets / total;
+
     return (rpm);
 }
 

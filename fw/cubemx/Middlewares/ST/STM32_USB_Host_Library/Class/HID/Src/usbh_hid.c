@@ -1773,7 +1773,7 @@ is_mouse:
             }
         } else if ((rd->id_sysctl != 0) && (rd->id_sysctl == id)) {
             report_info->sysctl = readbits(report_data,
-                                           rd->pos_sysctl, rd->bits_sysctl, 1);
+                                           rd->pos_sysctl, rd->bits_sysctl, 0);
             dprintf(DF_USB_DECODE_MISC, "Sysctl %x", report_info->sysctl);
         } else if ((rd->id_mouse == 0) && (rd->usage == HID_USAGE_MOUSE)) {
             goto is_mouse;
