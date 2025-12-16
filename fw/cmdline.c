@@ -33,7 +33,7 @@
 #ifdef EMBEDDED_CMD
 #include "pcmds.h"
 #else
-#include "sfile.h"
+#include "file_access.h"
 #endif
 
 typedef struct {
@@ -55,10 +55,7 @@ static const cmd_t cmd_list[] = {
                         "[bwlqoh] <saddr> <daddr> <len>", "copy memory" },
     { cmd_comp,    "comp",    2, cmd_comp_help,
                         "[bwlqoh] <addr1> <addr2> <len>", "compare memory" },
-#ifdef EMBEDDED_CMD
-    { cmd_cpu,     "cpu",     2, cmd_cpu_help,
-                        " regs|fault", "CPU information" },
-#endif
+    { cmd_cpu,     "cpu",     2, cmd_cpu_help, "", "CPU operations" },
     { cmd_c,       "c",       1, cmd_c_help,
                         "[bwlqohS] <addr> <value...>", "change memory" },
     { cmd_delay,   "delay",   2, NULL, "<time> [s|ms|us]", "delay for time" },
@@ -119,11 +116,12 @@ static const cmd_t cmd_list[] = {
 };
 
 static const char *do_not_eval_cmds[] = {
+    "history",
 #ifdef EMBEDDED_CMD
     "pld",
     "set",
-    "time",
 #endif
+    "time",
 };
 
 static uint
@@ -182,10 +180,11 @@ cmd_help(int argc, char * const *argv)
             if ((strcmp(argv[arg], cl_name) == 0) ||
                 ((cl_len != 0) && (strncmp(argv[arg], cl_name, cl_len) == 0))) {
                 if (cmd_list[cur].cl_help_desc == NULL) {
+                    /* Hidden command */
                     size_t ccur;
                     for (ccur = 0; ccur < ARRAY_SIZE(cmd_list); ccur++) {
                         if (cur == ccur)
-                            continue;
+                            continue;  // skip this command
                         if (cmd_list[cur].cl_func == cmd_list[ccur].cl_func) {
                             printf("%s is an alias for %s\n",
                                    cl_name, cmd_list[ccur].cl_name);
@@ -194,7 +193,7 @@ cmd_help(int argc, char * const *argv)
                         }
                     }
                     printf("%s is a hidden command\n", cl_name);
-                    return (RC_SUCCESS);  // hidden command
+                    return (RC_SUCCESS);
                 }
 show_alias:
                 printf("%s%s - %s\n", cl_name,
@@ -796,7 +795,7 @@ invalid_arg1:
                     int pocket_need;
                     int pocket_len = epos - spos + 1;
                     char echar = str[epos];
-#ifdef AMIGA
+#ifdef _DCC
                     /* DICE does not have snprintf */
                     char temp_buf[32];
                     pocket_need = sprintf(temp_buf, "%llx", result);
@@ -976,7 +975,7 @@ cmdline(void)
 
         if ((strcmp(sline, "q") == 0) || (strcmp(sline, "quit") == 0)) {
             *line = '\0';
-            return (0);
+            return (1);
         }
 
         led_busy(1);

@@ -37,7 +37,7 @@
 #include <unistd.h>
 #endif
 #ifndef EMBEDDED_CMD
-#include "sfile.h"
+#include "file_access.h"
 #endif
 #include "cmds.h"
 #include "readline.h"
@@ -233,13 +233,13 @@ data_read(uint64_t space, uint64_t addr, uint width, void *buf)
         case SPACE_PROM:
             return (prom_read((uint32_t)addr, width, buf));
 #endif
-#ifdef HAVE_SPACE_FLASH
-        case SPACE_FLASH:
-            return (stm32flash_read((uintptr_t)addr, width, buf));
-#endif
 #ifdef HAVE_SPACE_FILE
         case SPACE_FILE:
             return (file_read(space, addr, width, buf));
+#endif
+#ifdef HAVE_SPACE_FLASH
+        case SPACE_FLASH:
+            return (stm32flash_read((uintptr_t)addr, width, buf));
 #endif
 #ifdef HAVE_SPACE_I2C
         case SPACE_I2C: {
@@ -267,14 +267,14 @@ data_write(uint64_t space, uint64_t addr, uint width, void *buf)
         case SPACE_PROM:
             return (prom_write((uint32_t)addr, width, buf));
 #endif
+#ifdef HAVE_SPACE_FILE
+        case SPACE_FILE:
+            return (file_write(space, addr, width, buf));
+#endif
 #ifdef HAVE_SPACE_FLASH
         case SPACE_FLASH:
             return (stm32flash_write((uintptr_t)addr, width, buf,
                                      STM32FLASH_FLAG_AUTOERASE));
-#endif
-#ifdef HAVE_SPACE_FILE
-        case SPACE_FILE:
-            return (file_write(space, addr, width, buf));
 #endif
 #ifdef HAVE_SPACE_I2C
         case SPACE_I2C: {
@@ -308,11 +308,6 @@ print_addr(uint64_t space, uint64_t addr)
             printf("%06x", (int)addr);
             break;
 #endif
-#ifdef HAVE_SPACE_FLASH
-        case SPACE_FLASH:
-            printf("%05x", (int)addr);
-            break;
-#endif
 #ifdef HAVE_SPACE_FILE
         case SPACE_FILE: {
             int awidth = 16;
@@ -327,6 +322,11 @@ print_addr(uint64_t space, uint64_t addr)
                    file_track[slot].filename, awidth, (long long)addr);
             break;
         }
+#endif
+#ifdef HAVE_SPACE_FLASH
+        case SPACE_FLASH:
+            printf("%05x", (int)addr);
+            break;
 #endif
 #ifdef HAVE_SPACE_I2C
         case SPACE_I2C:
@@ -380,26 +380,11 @@ parse_addr(char * const **arg, int *argc, uint64_t *space, uint64_t *addr)
     if (*argc < 1) {
         printf("<addr> argument required\n");
         return (RC_USER_HELP);
-    } else
+    }
+
 #ifdef HAVE_SPACE_PROM
     if (strcmp(argp, "prom") == 0) {
         *space = SPACE_PROM;
-        if (strchr(argp, ':') != NULL) {
-            argp += 6;
-        } else {
-            (*arg)++;
-            (*argc)--;
-            if (*argc < 1) {
-                printf("<addr> argument required\n");
-                return (RC_USER_HELP);
-            }
-            argp = **arg;
-        }
-    } else
-#endif
-#ifdef HAVE_SPACE_FLASH
-    if (strcmp(argp, "flash") == 0) {
-        *space = SPACE_FLASH;
         if (strchr(argp, ':') != NULL) {
             argp += 6;
         } else {
@@ -445,6 +430,22 @@ parse_addr(char * const **arg, int *argc, uint64_t *space, uint64_t *addr)
             if (len == 0)
                 return (RC_FAILURE);
 
+            (*arg)++;
+            (*argc)--;
+            if (*argc < 1) {
+                printf("<addr> argument required\n");
+                return (RC_USER_HELP);
+            }
+            argp = **arg;
+        }
+    } else
+#endif
+#ifdef HAVE_SPACE_FLASH
+    if (strcmp(argp, "flash") == 0) {
+        *space = SPACE_FLASH;
+        if (strchr(argp, ':') != NULL) {
+            argp += 6;
+        } else {
             (*arg)++;
             (*argc)--;
             if (*argc < 1) {
@@ -539,11 +540,25 @@ parse_addr(char * const **arg, int *argc, uint64_t *space, uint64_t *addr)
         return (RC_SUCCESS);
     } else
 #endif
+    { }
+
+#ifdef AMIGA
+    {
+        long int val;
+        if ((sscanf(argp, "%lx%n", &val, &pos) != 1) ||
+            ((argp[pos] != '\0') && (argp[pos] != ' '))) {
+            printf("Invalid address \"%s\"\n", argp);
+            return (RC_FAILURE);
+        }
+        x = val;
+    }
+#else
     if ((sscanf(argp, "%llx%n", &x, &pos) != 1) ||
         ((argp[pos] != '\0') && (argp[pos] != ' '))) {
         printf("Invalid address \"%s\"\n", argp);
         return (RC_FAILURE);
     }
+#endif
     *addr = x;
     (*arg)++;
     (*argc)--;
@@ -989,6 +1004,7 @@ cmd_d(int argc, char * const *argv)
     uint8_t  buf[MAX_TRANSFER];
     uint64_t addr;
     uint64_t space;
+    uint     count = 0;
     bool_t   flag_A  = FALSE;  /* Don't show ASCII */
     bool_t   flag_N  = FALSE;  /* Don't print */
     bool_t   flag_R  = FALSE;  /* Raw (only data values) */
@@ -1092,7 +1108,8 @@ cmd_d(int argc, char * const *argv)
             return (rc);
         }
         if (flag_N) {
-            if (input_break_pending()) {
+            if (((count++ < 100) || ((count & 0xffff) == 0)) &&
+                input_break_pending()) {
                 printf("^C\n");
                 return (RC_USR_ABORT);
             }
@@ -1113,6 +1130,11 @@ cmd_d(int argc, char * const *argv)
         if (!flag_A) {
             cmd_d_conv_printable(charbuf + charpos, buf, width, flag_SS);
             charpos += width;
+        }
+        if (((count++ < 100) || ((count & 0x007f) == 0)) &&
+            input_break_pending()) {
+            printf("^C\n");
+            return (RC_USR_ABORT);
         }
     }
     if (!flag_N && !flag_A && (offset != 0)) {
@@ -1324,7 +1346,7 @@ cmd_delay(int argc, char * const *argv)
     int  pos   = 0;
     int  count;
     char *ptr;
-    char restore = '\0';
+    char  restore = '\0';
 
     if (argc <= 1) {
         printf("This command requires an argument: <time>\n");
@@ -1844,14 +1866,16 @@ cmd_version(int argc, char * const *argv)
     return (RC_SUCCESS);
 }
 
+#ifdef EMBEDDED_CMD
 rc_t
 cmd_what(int argc, char * const *argv)
 {
     uart_replay_output();
     return (RC_SUCCESS);
 }
+#endif
 
-#ifdef AMIGA
+#ifdef AMIGAOS
 /* XXX: this should go in cmds_amiga.c */
 #include <time.h>
 #include <clib/timer_protos.h>
@@ -1882,7 +1906,6 @@ diff_dstamp(struct DateStamp *ds1, struct DateStamp *ds2)
 rc_t
 cmd_time(int argc, char * const *argv)
 {
-    uint64_t time_diff;
     struct DateStamp stime;
     struct DateStamp etime;
     rc_t     rc;
@@ -1897,7 +1920,6 @@ cmd_time(int argc, char * const *argv)
     DateStamp(&stime);
     rc = cmd_exec_argv(argc, argv);
     DateStamp(&etime);
-    time_diff = diff_dstamp(&etime, &stime);
     printf("%lld ms\n", diff_dstamp(&etime, &stime));
     if (rc == RC_USER_HELP)
         rc = RC_FAILURE;

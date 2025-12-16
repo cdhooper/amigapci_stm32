@@ -196,6 +196,16 @@ timer_test(void)
     uint64_t start;
     uint64_t diff;
     uint     errs = 0;
+    uint     count;
+
+    start = timer_tick_get();
+    for (count = 1000; count > 0; count--)
+        if (timer_tick_get() != start)
+            break;
+    if (count == 0) {
+        printf("Timer tick is not advancing\n");
+        return (RC_FAILURE);
+    }
 
     start = timer_tick_get();
     timer_delay_ticks(0);
@@ -761,6 +771,34 @@ match_bits(const char *const *bits, const char *name)
     return (bit);
 }
 
+static void
+merge_args(char *buf, uint buflen, uint argc, char * const *argv)
+{
+    uint arg;
+    uint len;
+
+    buflen--;  // Save space for ending '\0'
+    for (arg = 0; arg < argc; arg++) {
+        if (buflen == 0)
+            break;
+        if (arg != 0) {
+            *(buf++) = ' ';
+            buflen--;
+            if (buflen == 0)
+                break;
+        }
+        len = strlen(argv[arg]);
+        if (len > buflen)
+            len = buflen;
+        memcpy(buf, argv[arg], len);
+        buf    += len;
+        buflen -= len;
+        if (buflen == 0)
+            break;
+    }
+    *buf = '\0';
+}
+
 #define CFOFF(x) offsetof(config_t, x), sizeof (config.x)
 
 #define MODE_DEC          0       // Show value in decimal
@@ -898,7 +936,7 @@ cmd_set(int argc, char * const *argv)
                    "specify all bit numbers or names\n");
             for (bit = 0; bit < 32; bit++)
                 if (debug_flag_bits[bit][0] != '\0')
-                    printf("  %c %x  %s\n",
+                    printf("  %c %2x  %s\n",
                            config.debug_flag & BIT(bit) ? '*' : ' ',
                            bit, debug_flag_bits[bit]);
             printf("Current debug %08lx  ", config.debug_flag);
@@ -1103,7 +1141,13 @@ cmd_set(int argc, char * const *argv)
         if (do_save)
             config_updated();
     } else if (strcmp(argv[1], "name") == 0) {
-        config_name((argc < 2) ? NULL : argv[2]);
+        if (argc <= 2) {
+            config_name(NULL);
+        } else {
+            char name[32];
+            merge_args(name, sizeof (name), argc - 2, argv + 2);
+            config_name(name);
+        }
         return (RC_SUCCESS);
     } else if (strcmp(argv[1], "pson") == 0) {
         if (argc <= 2)
