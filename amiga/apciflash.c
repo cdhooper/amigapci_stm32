@@ -17,13 +17,21 @@ const char *version = "\0$VER: apciflash "VERSION" ("BUILD_DATE") © Chris Hooper
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <ctype.h>
 #include <string.h>
-#include <clib/dos_protos.h>
 #include <fcntl.h>
 #include <exec/execbase.h>
 #include <exec/memory.h>
+#include <clib/dos_protos.h>
+#include <proto/exec.h>
+#include <inline/mmu.h>
+#include <mmu/mmubase.h>
+#include <mmu/context.h>
+#include <mmu/config.h>
+#include <mmu/mmutags.h>
 #include "cpu_control.h"
+
 
 #define STATUS_OK               0
 #define STATUS_FAIL             1
@@ -87,6 +95,7 @@ static const char cmd_write_options[] =
 //  "   dump         save hex/ASCII instead of binary (-d)\n"
     "   file <name>  file from which to read (-f)\n"
     "   len <hex>    length to program in bytes (-l)\n"
+    "   noremap      skip automatic MMU remapping of ROM to RAM (-n)\n"
     "   swap <mode>  byte swap mode (1032, 2301, 3210) (-s)\n"
     "   yes          skip prompt (-y)\n";
 
@@ -105,6 +114,7 @@ static const char cmd_erase_options[] =
     "   addr <hex>   starting address (-a)\n"
     "   bank <num>   flash bank on which to operate (-b)\n"
     "   len <hex>    length to erase in bytes (-l)\n"
+    "   noremap      skip automatic MMU remapping of ROM to RAM (-n)\n"
     "   yes          skip prompt (-y)\n";
 
 typedef struct {
@@ -132,6 +142,7 @@ long_to_short_t long_to_short_erase[] = {
     { "-h", "help" },
     { "-l", "len" },
     { "-l", "length" },
+    { "-n", "noremap" },
     { "-y", "yes" },
 };
 
@@ -145,6 +156,7 @@ long_to_short_t long_to_short_readwrite[] = {
     { "-h", "help" },
     { "-l", "len" },
     { "-l", "length" },
+    { "-n", "noremap" },
     { "-s", "swap" },
     { "-y", "yes" },
     { "-r", "read" },
@@ -975,8 +987,195 @@ get_flash_bsize(const chip_blocks_t *cb, uint flash_addr)
     return (flash_bsize);
 }
 
+static uint
+lib_is_loaded(const char *name)
+{
+    struct List *libs = &SysBase->LibList;
+    struct Library *lib;
+    struct Node *node;
+
+    for (node = libs->lh_Head; node->ln_Succ != NULL; node = node->ln_Succ) {
+        lib = (struct Library *)node;
+        if (strcmp(name, lib->lib_Node.ln_Name) == 0)
+            return (1);
+    }
+    return (0);
+}
+
+/*
+ * Flash memory to RAM remapping code taken from example code by
+ * LIV2 (Matt Harlum).
+ *
+ * These functions are used to prevent an Amiga crash when writing
+ * to flash which has active Amiga code executing from it. The
+ * solution is to first copy that flash to RAM, then use the MMU
+ * to remap the logical flash address to the physical RAM copy.
+ */
+static struct MMUBase *MMUBase;
+
+/*
+ * RelocateRomBank
+ * ---------------
+ * Relocate the specified ROM (flash) address to RAM by allocating a
+ * suitable size block of RAM, copying its current contents and then
+ * configuring the MMU to remap.
+ */
+static bool
+RelocateRomBank(struct MMUContext *ctx, struct MMUContext *sctx, void *src)
+{
+    void *dest;
+    void *phys;
+    ULONG pageSize = GetPageSize(ctx);
+    ULONG size = BANK_SIZE;
+    ULONG psize;
+
+    if (GetProperties(ctx, (ULONG)src, TAG_DONE) & MAPP_REMAPPED)
+        return (true);  // Already re-mapped; do nothing
+
+    dest = AllocAligned(BANK_SIZE, MEMF_REVERSE | MEMF_FAST, pageSize);
+    if (dest == NULL)
+        return (false);
+
+    CopyMemQuick(src, dest, size);
+    phys = dest;
+    psize = size;
+
+    /* Get physical location of mirror */
+    if ((PhysicalLocation(ctx, &phys, &psize) != 0) &&
+        SetProperties(ctx, MAPP_REMAPPED | MAPP_COPYBACK | MAPP_ROM,
+                      -1, (ULONG)src, size,
+                      MAPTAG_DESTINATION, (ULONG)dest,
+                      TAG_DONE) &&
+        SetProperties(ctx, MAPP_ROM, MAPP_ROM, (ULONG)phys, size,
+                      TAG_DONE)) {
+        /* Success */
+        printf("Remapped flash at %08x to RAM\n", (ULONG)src);
+
+        /* Now do the same for Supervisor context */
+        if (GetProperties(sctx, (ULONG)src, TAG_DONE) & MAPP_REMAPPED)
+            return (true);  // Already re-mapped; do nothing
+
+        if ((PhysicalLocation(sctx, &phys, &psize) != 0) &&
+            SetProperties(sctx, MAPP_REMAPPED | MAPP_COPYBACK | MAPP_ROM,
+                          -1, (ULONG)src, size,
+                          MAPTAG_DESTINATION, (ULONG)dest,
+                          TAG_DONE)) {
+            SetProperties(sctx, MAPP_ROM, MAPP_ROM, (ULONG)phys, size,
+                          TAG_DONE);
+        }
+
+        return (true);
+    } else {
+        /* Failure */
+        FreeMem(dest, size);
+        return (false);
+    }
+}
+
+/*
+ * remap_flash_to_ram
+ * ------------------
+ * Remap the specified flash bank to RAM by copying its current contents.
+ */
+static uint
+remap_flash_to_ram(uint bank)
+{
+    uint baseaddr = bank_to_base_addr[bank];
+    char mmu;
+    uint rc = 1;  // default to fail
+    struct MMUContext *ctx;
+    struct MMUContext *sctx;
+    struct MinList *ctxl = NULL;
+    struct MinList *sctxl = NULL;
+
+#define MMU_LIB_MIN_VER 41
+    MMUBase = (struct MMUBase *) OpenLibrary(MMU_NAME, MMU_LIB_MIN_VER);
+    if (MMUBase == NULL) {
+        printf("Failed to open mmu.library %u\n", MMU_LIB_MIN_VER);
+        return (1);
+    }
+
+    mmu = GetMMUType();
+    if (!mmu) {
+        printf("MMU is required for flash remap.\n");
+        goto fail_close_library;
+    }
+    ctx  = DefaultContext();  // User context
+    sctx = SuperContext(ctx); // Supervisor context
+    LockContextList();
+    LockMMUContext(ctx);
+    LockMMUContext(sctx);
+
+    if (((ctxl = GetMapping(ctx)) == NULL) ||
+        ((sctxl = GetMapping(sctx)) == NULL)) {
+        printf("Failed to lock MMU context\n");
+        goto fail_unlock_mmu;
+    }
+
+#if 0
+    if (RelocateRomBank(ctx, (void *) baseaddr) &&
+        RelocateRomBank(sctx, (void *) baseaddr) &&
+        RebuildTree(ctx) &&
+        RebuildTree(sctx)) {
+    } else {
+        SetPropertyList(ctx, ctxl);
+        SetPropertyList(sctx, sctxl);
+    }
+#else
+    if (RelocateRomBank(ctx, sctx, (void *) baseaddr) &&
+        RebuildTree(ctx) &&
+        RebuildTree(sctx)) {
+    } else {
+        SetPropertyList(ctx, ctxl);
+        SetPropertyList(sctx, sctxl);
+    }
+#endif
+
+    rc = 0; // Successfully remapped bank
+
+fail_unlock_mmu:
+    if (sctxl != NULL)
+        ReleaseMapping(sctx, sctxl);
+    if (ctxl != NULL)
+        ReleaseMapping(ctx, ctxl);
+
+    UnlockMMUContext(sctx);
+    UnlockMMUContext(ctx);
+    UnlockContextList();
+
+fail_close_library:
+    CloseLibrary((struct Library *)MMUBase);
+
+    return (rc);
+}
+
+/*
+ * remap_flash_to_ram_check
+ * ------------------------
+ * Verify mmu.library is available for memory remapping
+ */
+static uint
+remap_flash_to_ram_check(uint bank)
+{
+    uint baseaddr = bank_to_base_addr[bank];
+
+    if (!lib_is_loaded("mmu.library")) {
+        printf("mmu.library is required for flash remap.\n"
+               "If you are sure the Amiga is not using flash at %08x,\n"
+               "you may add the noremap (-n) option to skip remapping.\n",
+               baseaddr);
+        return (1);
+    }
+    return (0);
+}
+
+/*
+ * flash_erase
+ * -----------
+ * Erase specified flash bank.
+ */
 static int
-flash_erase(uint bank, uint addr, uint len, uint flag_yes)
+flash_erase(uint bank, uint addr, uint len, uint flag_yes, uint flag_noremap)
 {
     int         rc;
     const chip_blocks_t *cb;
@@ -1037,10 +1236,15 @@ flash_erase(uint bank, uint addr, uint len, uint flag_yes)
         printf("eaddr=%x ebsize=%x\n", flash_end_addr, flash_end_bsize);
     }
 
-    printf("Erase bank=%u addr=%x len=%x\n", bank, addr, len);
-    if ((!flag_yes) && (!are_you_sure("Proceed"))) {
+    if (!flag_noremap && remap_flash_to_ram_check(bank))
         return (1);
-    }
+
+    printf("Erase bank=%u addr=%x len=%x\n", bank, addr, len);
+    if ((!flag_yes) && (!are_you_sure("Proceed")))
+        return (1);
+
+    if (!flag_noremap && remap_flash_to_ram(bank))
+        return (1);
 
     dot_max = (len + MAX_CHUNK - 1) / MAX_CHUNK;
     while (dot_max > 50) {
@@ -1106,7 +1310,7 @@ flash_erase(uint bank, uint addr, uint len, uint flag_yes)
 /*
  * cmd_erase
  * ---------
- * Erase flash
+ * Erase flash (interpret user options and direct erase)
  */
 int
 cmd_erase(int argc, char *argv[])
@@ -1115,6 +1319,7 @@ cmd_erase(int argc, char *argv[])
     uint        addr = VALUE_UNASSIGNED;
     uint        bank = VALUE_UNASSIGNED;
     uint        len  = VALUE_UNASSIGNED;
+    uint        flag_noremap = 0;
     uint        flag_yes = 0;
     uint        rc = 1;
     uint        bank_size = BANK_SIZE;
@@ -1181,6 +1386,9 @@ usage:
                             goto usage;
                         }
                         break;
+                    case 'n':  // noremap
+                        flag_noremap++;
+                        break;
                     case 'y':  // yes
                         flag_yes++;
                         break;
@@ -1224,7 +1432,7 @@ usage:
         return (1);
     }
 
-    return (flash_erase(bank, addr, len, flag_yes));
+    return (flash_erase(bank, addr, len, flag_yes, flag_noremap));
 }
 
 
@@ -1232,6 +1440,8 @@ usage:
  * cmd_readwrite
  * -------------
  * Read from flash and write to file or read from file and write to flash.
+ * This function also performs the verify operation (read from file and
+ * verify flash contents).
  */
 int
 cmd_readwrite(int argc, char *argv[])
@@ -1245,6 +1455,7 @@ cmd_readwrite(int argc, char *argv[])
     int         pos;
     int         bytes;
     uint        flag_dump = 0;
+    uint        flag_noremap = 0;
     uint        flag_yes = 0;
     uint        addr = VALUE_UNASSIGNED;
     uint        bank = VALUE_UNASSIGNED;
@@ -1365,6 +1576,9 @@ usage:
                                    argv[arg], argv[0], ptr);
                             goto usage;
                         }
+                        break;
+                    case 'n':  // noremap
+                        flag_noremap++;
                         break;
                     case 's':  // swap
                         if (++arg >= argc) {
@@ -1506,18 +1720,22 @@ usage:
     }
     if (len > ROM_WINDOW_SIZE) {
         printf("Length %x is larger than bank size %x\n", len, ROM_WINDOW_SIZE);
-        rc = 1;
-        goto fail_end;
+        return (1);
     }
     if ((addr > ROM_WINDOW_SIZE) && addr_to_bank(&addr, &bank)) {
-        rc = 1;
-        goto fail_end;
+        return (1);
     }
+
+    if (!flag_noremap && remap_flash_to_ram_check(bank))
+        return (1);
 
     if ((!flag_yes) && (!file_is_stdio || (flag_dump && (len >= 0x1000))) &&
         (!are_you_sure("Proceed"))) {
         return (1);
     }
+
+    if (!flag_noremap && remap_flash_to_ram(bank))
+        return (1);
 
     buf = AllocMem(MAX_CHUNK, MEMF_PUBLIC);
     if (buf == NULL) {
@@ -1564,7 +1782,7 @@ usage:
 
     if (writemode && (addr == 0)) {
         /* Autoerase */
-        rc = flash_erase(bank, addr, len, 1);
+        rc = flash_erase(bank, addr, len, 1, flag_noremap);
         if (rc != 0)
             goto fail_end;
     }
