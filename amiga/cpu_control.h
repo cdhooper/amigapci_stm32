@@ -467,9 +467,9 @@ swap16(uint16_t val)
 OK_UNUSED static inline uint32_t
 swap32(uint32_t val)
 {
-    __asm__("ror.w #8, %0\n\t"  // Rotate right by 8 bits (ABCD -> DABC)
-            "swap %0\n\t"       // Swap 16-bit halves     (DABC -> BCDA)
-            "ror.w #8, %0\n\t"  // Rotate right by 8 bits (BCDA -> ABCD)
+    __asm__("ror.w #8, %0\n\t"  // Rotate right by 8 bits (ABCD -> ABDC)
+            "swap %0\n\t"       // Swap 16-bit halves     (ABDC -> DCAB)
+            "ror.w #8, %0\n\t"  // Rotate right by 8 bits (DCAB -> DCBA)
             : "=d" (val)        // Output: 'val' is placed in a data register
             : "0" (val) :);     // Input: 'val'; "0" is same register as output
     return (val);

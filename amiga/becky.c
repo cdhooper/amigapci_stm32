@@ -1,8 +1,8 @@
 /*
  * becky
  * -----
- * Utility to manipulate AmigaHIDI keyboard mapping tables stored in BEC
- * (the Board Environment Controller).
+ * Utility to manipulate AmigaPCI HID keyboard mapping tables stored in
+ * BEC (the Board Environment Controller).
  *
  * Copyright 2025 Chris Hooper. This program and source may be used
  * and distributed freely, for any purpose which benefits the Amiga

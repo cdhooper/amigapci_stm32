@@ -5,10 +5,15 @@ libusbhost/
 stutils/
 tinyusb/
 objs
+objs.rom
 bec
+apciaconf
 apciflash
+apcirom
+apciscan
 pci
 becky
 .*.sw?
 .cscope*
+.genromrc
 cscope.out

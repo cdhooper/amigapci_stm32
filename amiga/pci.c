@@ -20,19 +20,9 @@ const char *version = "\0$VER: PCI "VERSION" ("BUILD_DATE") � Chris Hooper";
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
-#include <libraries/expansionbase.h>
 #include <clib/expansion_protos.h>
-#include <inline/exec.h>
-#include <inline/expansion.h>
-#include <proto/dos.h>
-#include <exec/memory.h>
-#include <exec/interrupts.h>
-#include <exec/execbase.h>
-#include <exec/lists.h>
-
-#define ADDR8(x)       (volatile uint8_t *)(x)
-#define ADDR16(x)      (volatile uint16_t *)(x)
-#define ADDR32(x)      (volatile uint32_t *)(x)
+#include "pci_access.h"
+#include "cpu_control.h"
 
 #define ARRAY_SIZE(x)  ((sizeof (x) / sizeof ((x)[0])))
 #define BIT(x)         (1U << (x))
@@ -54,107 +44,16 @@ const char *version = "\0$VER: PCI "VERSION" ("BUILD_DATE") � Chris Hooper";
 
 #define MAYTAY_PCI_ADDR_CONFIG  0x000f0000
 
-#define PCI_OFF_VENDOR          0x00
-#define PCI_OFF_DEVICE          0x02
-#define PCI_OFF_CMD             0x04
-#define PCI_OFF_STATUS          0x06
-#define PCI_OFF_REVISION        0x08
-#define PCI_OFF_INTERFACE       0x09
-#define PCI_OFF_SUBCLASS        0x0a
-#define PCI_OFF_CLASS           0x0b
-#define PCI_OFF_CACHELINESIZE   0x0c
-#define PCI_OFF_LATENCYTIMER    0x0d
-#define PCI_OFF_HEADERTYPE      0x0e
-#define PCI_OFF_BIST            0x0f
-#define PCI_OFF_BAR0            0x10
-#define PCI_OFF_BAR1            0x14
-#define PCI_OFF_BAR2            0x18
-#define PCI_OFF_BAR3            0x1c
-#define PCI_OFF_BAR4            0x20
-#define PCI_OFF_BAR5            0x24
-#define PCI_OFF_SUBSYSTEM_VID   0x2c
-#define PCI_OFF_SUBSYSTEM_DID   0x2e
-#define PCI_OFF_ROM_BAR         0x30
-#define PCI_OFF_CAP_LIST        0x34
-#define PCI_OFF_INT_LINE        0x3c
-#define PCI_OFF_INT_PIN         0x3d
-#define PCI_OFF_MIN_GNT         0x3e
-#define PCI_OFF_MAX_LAT         0x3f
-
-/* Type 1 Configuration Space Header (for PCI bridges) */
-#define PCI_OFF_BR_BAR0         0x10
-#define PCI_OFF_BR_BAR1         0x14
-#define PCI_OFF_BR_PRI_BUS      0x18
-#define PCI_OFF_BR_SEC_BUS      0x19
-#define PCI_OFF_BR_SUB_BUS      0x1a
-#define PCI_OFF_BR_SEC_LATENCY  0x1b
-#define PCI_OFF_BR_IO_BASE      0x1c
-#define PCI_OFF_BR_IO_LIMIT     0x1d
-#define PCI_OFF_BR_SEC_STATUS   0x1e
-#define PCI_OFF_BR_W32_BASE     0x20
-#define PCI_OFF_BR_W32_LIMIT    0x22
-#define PCI_OFF_BR_W64_BASE     0x24
-#define PCI_OFF_BR_W64_LIMIT    0x26
-#define PCI_OFF_BR_W64_BASE_U   0x28
-#define PCI_OFF_BR_W64_LIMIT_U  0x2c
-#define PCI_OFF_BR_IO_BASE_U    0x30
-#define PCI_OFF_BR_IO_LIMIT_U   0x32
-#define PCI_OFF_BR_CAP          0x34
-#define PCI_OFF_BR_ROM          0x38
-#define PCI_OFF_BR_INT_LINE     0x3c
-#define PCI_OFF_BR_INT_PIN      0x3d
-#define PCI_OFF_BR_CONTROL      0x3e
-
-#define PCI_STATUS_HAS_CAPS     0x0010  // Device has capabilities list
-
-#define PCI_CLASS_PCI_BRIDGE    0x0604  // PCI-to-PCI bridge
-
 #define FLAG_DUMP               0x00000001
 #define FLAG_DDUMP              0x00000002
 #define FLAG_VERBOSE            0x00000004
 #define FLAG_NO_TRANSLATE       0x00000008
-
-#ifdef __VBCC__
-uint32_t swap32(__reg("d0")uint32_t) = "\trol.w\t#8,d0\n\tswap\td0\n\trol.w\t#8,d0\n";
-uint16_t swap16(__reg("d0")uint16_t) = "\trol.w\t#8,d0\n";
-#else
-#define swap16(arg)\
- ({uint16_t __arg = (arg);\
-  asm ("ROL.W #8,%0"\
-    :"=d" (__arg)\
-    :"0" (__arg)\
-    :"cc");\
-    __arg;})
-
-/* swap long */
-
-#define swap32(arg)\
- ({uint32_t __arg = (arg);\
-  asm ("ROL.W #8,%0;\
-        SWAP %0;\
-        ROL.W #8,%0"\
-    :"=d" (__arg)\
-    :"0" (__arg)\
-    :"cc");\
-    __arg;})
-#endif
+#define FLAG_SHOW_CADDR         0x00000010
 
 typedef unsigned int uint;
 typedef const char * const bits_t;
 
 extern struct ExecBase *SysBase;
-
-static const char * const expansion_library_name = "expansion.library";
-
-APTR     bridge_pci0_base;
-APTR     bridge_pci1_base;
-APTR     bridge_io_base;
-APTR     bridge_mem_base;
-APTR     bridge_control_reg;
-uint8_t  bridge_is_firestorm = 0;
-uint16_t bridge_zorro_mfg;
-uint16_t bridge_zorro_prod;
-struct ConfigDev *zorro_cdev = NULL;
 
 /* PCI Command (0x4) */
 static bits_t bits_pci_command[] = {
@@ -190,60 +89,6 @@ static bits_t bits_pci_lat_gnt_int[] = {
     NULL, NULL, NULL, "Pin:1=INTA#,2=INTB#,3=INTC#,4=INTD#",
 };
 
-static APTR
-find_zorro_pci_bridge(uint bus)
-{
-    struct Library        *ExpansionBase;
-    struct ConfigDev      *cdev = NULL;
-    APTR                   base = NULL;
-    uint                   curbus = 0;
-
-    if ((ExpansionBase = OpenLibrary(expansion_library_name, 0)) == 0) {
-        printf("Could not open %s\n", expansion_library_name);
-        return (NULL);
-    }
-    bridge_zorro_mfg  = ZORRO_MFG_MATAY;
-    bridge_zorro_prod = ZORRO_PROD_MATAY_BD;
-    for (curbus = 0; curbus < 8; curbus++) {
-        cdev = FindConfigDev(cdev, bridge_zorro_mfg, bridge_zorro_prod);
-        if (cdev == NULL)
-            break;
-        if (curbus == bus) {
-            base = cdev->cd_BoardAddr;
-            bridge_pci0_base = base + MAYTAY_PCI_ADDR_CONFIG;
-            bridge_pci1_base = base + MAYTAY_PCI_ADDR_CONFIG;
-            bridge_io_base = base;
-            bridge_mem_base = base;
-            bridge_control_reg = NULL;
-            bridge_is_firestorm = 0;
-            goto done;
-        }
-    }
-    bridge_zorro_mfg  = ZORRO_MFG_E3B;
-    bridge_zorro_prod = ZORRO_PROD_FIRESTORM;
-    for (; curbus < 8; curbus++) {
-        cdev = FindConfigDev(cdev, bridge_zorro_mfg, bridge_zorro_prod);
-        if (cdev == NULL)
-            break;
-        if (curbus == bus) {
-            base = cdev->cd_BoardAddr;
-            bridge_pci0_base = base + FS_PCI_ADDR_CONFIG0;
-            bridge_pci1_base = base + FS_PCI_ADDR_CONFIG1;
-            bridge_io_base = base + FS_PCI_ADDR_IO;
-            bridge_mem_base = base;
-            bridge_control_reg = base + FS_PCI_ADDR_CONTROL;
-            bridge_is_firestorm++;
-            break;
-        }
-    }
-
-done:
-    zorro_cdev = cdev;
-    CloseLibrary(ExpansionBase);
-
-    return (base);
-}
-
 static void
 zorro_show_mfgprod(void)
 {
@@ -256,56 +101,8 @@ zorro_show_mfgprod(void)
         if (bridge_zorro_prod == ZORRO_PROD_FIRESTORM)
             printf(" Firestorm");
     } else {
-        printf("Unknown\n");
+        printf("Unknown");
     }
-}
-
-static APTR
-pci_cfg_base(uint bus, uint dev, uint func, uint off)
-{
-    if (bus == 0)
-        return (bridge_pci0_base + (0x10000 << dev) + (func << 8) + off);
-    return (bridge_pci1_base + (bus << 16) + (dev << 11) + (func << 8) + off);
-}
-
-uint8_t
-pci_read8(uint bus, uint dev, uint func, uint off)
-{
-    return (*ADDR8(pci_cfg_base(bus, dev, func, off)));
-}
-
-uint16_t
-pci_read16(uint bus, uint dev, uint func, uint off)
-{
-    return (swap16(*ADDR16(pci_cfg_base(bus, dev, func, off))));
-}
-
-uint32_t
-pci_read32(uint bus, uint dev, uint func, uint off)
-{
-    return (swap32(*ADDR32(pci_cfg_base(bus, dev, func, off))));
-}
-
-static void
-pci_write32(uint bus, uint dev, uint func, uint off, uint32_t value)
-{
-    *ADDR32(pci_cfg_base(bus, dev, func, off)) = swap32(value);
-}
-
-uint32_t
-pci_read32v(uint bus, uint dev, uint func, uint off, uint *diffs)
-{
-    APTR     base = pci_cfg_base(bus, dev, func, off);
-    uint32_t rval = *ADDR32(base);
-    uint32_t nval;
-
-    while (rval != (nval = *ADDR32(base))) {
-        rval = nval;
-        (*diffs)++;
-        if (*diffs > 5)
-            break;
-    }
-    return (swap32(rval));
 }
 
 static const struct {
@@ -596,7 +393,7 @@ pci_show_cap(uint bus, uint dev, uint func, uint32_t cap_pos, uint32_t value)
     uint    num_words;
     uint    word;
 
-    printf("      PCI Cap - %02x ", cap);
+    printf("    PCI Cap - %02x ", cap);
     if (cap < ARRAY_SIZE(pci_caps)) {
         printf("%s", pci_caps[cap].name);
         num_words = pci_caps[cap].dwords;
@@ -606,7 +403,7 @@ pci_show_cap(uint bus, uint dev, uint func, uint32_t cap_pos, uint32_t value)
     }
     for (word = 0; word < num_words; word++) {
         if ((word & 0x7) == 0) {
-            printf("\n          [%02x]", word);
+            printf("\n        [%02x]", word);
         }
         if (word > 0)
             value = pci_read32(bus, dev, func, cap_pos + word * 4);
@@ -766,25 +563,22 @@ lspci(uint flags)
     uint    off;
     uint    maxbus = PCI_MAX_BUS;
 
-    if (find_zorro_pci_bridge(0) == NULL)
-        return;
-
     printf("B.D.F Vend.Dev  _BAR_ ____Base____ ____Size____ Description\n");
     printf("%x     %04x.%04x Zorro %12x %12x",
            0, bridge_zorro_mfg, bridge_zorro_prod,
-           (uint32_t) zorro_cdev->cd_BoardAddr,
-           (uint32_t) zorro_cdev->cd_BoardSize);
+           (uint32_t) pci_zorro_cdev->cd_BoardAddr,
+           (uint32_t) pci_zorro_cdev->cd_BoardSize);
     zorro_show_mfgprod();
     printf("\n");
 
     for (bus = 0; bus <= maxbus; bus++) {
-        uint maxdev = 0x1f;
+        uint maxdev = 32;  // PCI supports 32 devs per bus, each with 8 funcs
         if (bus == 0)
-            maxdev = 4;
+            maxdev = 5;  // 5 physical slots
 
         for (dev = 0; dev < maxdev; dev++) {
             uint32_t tbase;
-            if (flags & FLAG_VERBOSE) {
+            if (flags & FLAG_SHOW_CADDR) {
                 if (bus == 0) {
                     if (flags & FLAG_NO_TRANSLATE)
                         tbase = 0;
@@ -803,23 +597,28 @@ lspci(uint flags)
             }
 
             for (func = 0; func < 8; func++) {
-                uint16_t vendor = pci_read16(bus, dev, func, PCI_OFF_VENDOR);
-                uint16_t device = pci_read16(bus, dev, func, PCI_OFF_DEVICE);
+                uint32_t vd = pci_read32v(bus, dev, func, 0);
+                uint16_t vendor;
+                uint16_t device;
                 uint32_t classrev;
+                uint32_t base;
+                uint32_t size;
+                uint     bar_offset;
                 uint     printed;
                 uint     bar;
                 uint     maxbar = 6;
 
-                if (((vendor == 0xffff) && (device == 0xffff)) ||
-                    ((vendor == 0x0000) && (device == 0x0000))) {
-                    if (bus > 0) {
-                        if (func == 0) {
-                            if ((dev == 0) && (maxbus == PCI_MAX_BUS))
-                                maxbus = bus + 1;  // Just probe 1 more bus
-                            dev = maxdev;
-                        }
+                vendor = (uint16_t) vd;
+                device = vd >> 16;
+
+                /* Check Vendor / Device for device presence */
+                if ((vd == 0xffffffff) || (vd == 0x00000000)) {
+                    if (func == 0) {
+                        if ((bus > 0) && (dev == 0) && (maxbus == PCI_MAX_BUS))
+                            maxbus = bus + 1;  // Just probe 1 more bus
+                        break;
                     }
-                    break;
+                    continue;
                 }
 
                 classrev = pci_read32(bus, dev, func, PCI_OFF_REVISION);
@@ -828,23 +627,16 @@ lspci(uint flags)
                 printf("%x.%x.%x %04x.%04x", bus, dev, func, vendor, device);
                 printed = 0;
                 for (bar = 0; bar < maxbar; bar++) {
-                    uint32_t base;
                     uint32_t pbase;
-                    uint32_t size;
-                    uint     diffs = 0;
+                    uint32_t bar_offset;
                     const char *btype;
 
-#if 0
-readXXv function reads up to 5 times until two reads in a row match
-writeXXv function writes then reads back (up to 5 times) until read data matches written
-#endif
-                    base = pci_read32v(bus, dev, func, PCI_OFF_BAR0 + bar * 4,
-                                       &diffs);
+                    bar_offset = PCI_OFF_BAR0 + bar * 4;
+                    base = pci_read32v(bus, dev, func, bar_offset);
                     Disable();  // Disable interrupts
-                    pci_write32(bus, dev, func, PCI_OFF_BAR0 + bar * 4,
-                                0xffffffff);
-                    size = pci_read32(bus, dev, func, PCI_OFF_BAR0 + bar * 4);
-                    pci_write32(bus, dev, func, PCI_OFF_BAR0 + bar * 4, base);
+                    pci_write32(bus, dev, func, bar_offset, 0xffffffff);
+                    size = pci_read32(bus, dev, func, bar_offset);
+                    pci_write32(bus, dev, func, bar_offset, base);
                     Enable();  // Enable interrupts
                     pbase = base;
                     if (pbase & BIT(0)) {
@@ -875,21 +667,22 @@ writeXXv function writes then reads back (up to 5 times) until read data matches
                         uint32_t basehigh;
                         uint32_t sizehigh = 0;
                         bar++;
-                        basehigh = pci_read32(bus, dev, func,
-                                              PCI_OFF_BAR0 + bar * 4);
+                        bar_offset += 4;
+                        basehigh = pci_read32(bus, dev, func, bar_offset);
                         if (size == 0) {
                             Disable();  // Disable interrupts
-                            pci_write32(bus, dev, func, PCI_OFF_BAR0 + bar * 4,
-                                        0xffffffff);
-                            sizehigh = pci_read32(bus, dev, func,
-                                                  PCI_OFF_BAR0 + bar * 4);
-                            pci_write32(bus, dev, func, PCI_OFF_BAR0 + bar * 4,
-                                        basehigh);
+                            pci_write32(bus, dev, func, bar_offset, 0xffffffff);
+                            sizehigh = pci_read32(bus, dev, func, bar_offset);
+                            pci_write32(bus, dev, func, bar_offset, basehigh);
                             Enable();  // Enable interrupts
                             sizehigh &= (0 - sizehigh);
                         }
-                        printf(" %03x:%08x %03x:%08x",
+                        printf(" %3x:%08x",
                                basehigh, base, sizehigh, size);
+                        if (sizehigh == 0)
+                            printf(" %12x", size);
+                        else
+                            printf(" %3x:%08x", sizehigh, size);
                     } else {
                         printf(" %12x %12x", base, size);
                     }
@@ -899,31 +692,34 @@ writeXXv function writes then reads back (up to 5 times) until read data matches
                     }
                     printf("\n");
                 }
-// XXX: Show Expansion ROM
-                if ((classrev >> 16) != PCI_CLASS_PCI_BRIDGE) {
-                    uint32_t base;
-                    uint32_t size;
-                    uint     diffs = 0;
-                    base = pci_read32v(bus, dev, func, PCI_OFF_ROM_BAR, &diffs);
-                    Disable();  // Disable interrupts
-                    pci_write32(bus, dev, func, PCI_OFF_ROM_BAR, 0xffffffff);
-                    size = pci_read32(bus, dev, func, PCI_OFF_ROM_BAR);
-                    pci_write32(bus, dev, func, PCI_OFF_ROM_BAR, base);
-                    Enable();  // Enable interrupts
-                    if (size & 1) {
-                        /* BAR exists */
-                        size &= ~1;
-                        size &= (0 - size);
-                        if ((flags & FLAG_NO_TRANSLATE) == 0)
-                            base += (uint32_t) bridge_mem_base;
-                        if (printed++ != 0)
-                            printf("%15s", "");
-                        if (base & 1)
-                            printf("   ROM %12x %12x\n", base & ~1, size);
-                        else
-                            printf("   ROM %12s %12x\n", "-", size);
-                    }
+
+                /* Show expansion ROM */
+                if ((classrev >> 16) == PCI_CLASS_PCI_BRIDGE)
+                    bar_offset = PCI_OFF_BR_ROM_BAR;
+                else
+                    bar_offset = PCI_OFF_ROM_BAR;
+
+                base = pci_read32v(bus, dev, func, bar_offset);
+                Disable();  // Disable interrupt
+                pci_write32(bus, dev, func, bar_offset, 0xffffffff);
+                size = pci_read32(bus, dev, func, bar_offset);
+                pci_write32(bus, dev, func, bar_offset, base);
+                Enable();  // Enable interrupts
+                if (size & 1) {
+                    /* BAR exists and is enabled */
+                    size &= ~1;
+                    size &= (0 - size);
+                    if ((flags & FLAG_NO_TRANSLATE) == 0)
+                        base += (uint32_t) bridge_mem_base;
+                    if (printed++ != 0)
+                        printf("%15s", "");
+                    if (base & 1)
+                        printf("   ROM %12x %12x\n", base & ~1, size);
+                    else
+                        printf("   ROM %12s %12x\n", "-", size);
                 }
+
+                /* Handle bridge memory and I/O windows */
                 if ((classrev >> 16) == PCI_CLASS_PCI_BRIDGE) {
                     uint32_t temp;
                     uint32_t base;
@@ -944,7 +740,7 @@ writeXXv function writes then reads back (up to 5 times) until read data matches
                             size = limit - base;
                         if ((flags & FLAG_NO_TRANSLATE) == 0)
                             base += (uint32_t) bridge_io_base;
-                        printf("%21s     %08x     %08x\n", "WIO",
+                        printf("%21s     %8x     %8x\n", "WIO",
                                base, size);
                     } else {
                         if (limit <= base)
@@ -965,7 +761,7 @@ writeXXv function writes then reads back (up to 5 times) until read data matches
                         size = limit - base;
                     if ((flags & FLAG_NO_TRANSLATE) == 0)
                         base += (uint32_t) bridge_mem_base;
-                    printf("%21s     %08x     %08x\n", "W32", base, size);
+                    printf("%21s     %8x     %8x\n", "W32", base, size);
 
                     temp = pci_read32(bus, dev, func, PCI_OFF_BR_W64_BASE);
                     base  = ((temp & 0x0000fff0) << 16);
@@ -989,22 +785,31 @@ writeXXv function writes then reads back (up to 5 times) until read data matches
                             base += (uint32_t) bridge_mem_base;
                         if (base < (uint32_t) bridge_mem_base) // wrapped
                             base_u++;
-                        if (limit_u <= base_u)
+                        if (limit_u < base_u) {
                             size_u = 0;
-                        else
+                            printf("%21s            -            -\n", "W64");
+                        } else {
                             size_u = limit_u - base_u;
-                        printf("%21s %03x:%08x %03x:%08x\n",
-                               "W64", base_u, base, size_u, size);
+                            printf("%21s %3x:%08x", "W64", base_u, base);
+                            if (size_u == 0)
+                                printf(" %12x\n", size);
+                            else
+                                printf(" %3x:%08x\n", size_u, size);
+                        }
                     } else {
                         /* 32-bit prefetchable window */
-                        printf("%21s     %08x     %08x\n", "W64",
-                               base, size);
+                        if (limit < base) {
+                            printf("%21s            -            -\n", "W64");
+                        } else {
+                            printf("%21s     %08x     %08x\n", "W64",
+                                   base, size);
+                        }
                     }
                     if ((classrev >> 16) == PCI_CLASS_PCI_BRIDGE) {
                         uint32_t sub = pci_read32(bus, dev, func,
                                                   PCI_OFF_BR_PRI_BUS);
                         if (flags & FLAG_VERBOSE) {
-                            printf("      Bus %02x  SecBus %02x  SubBus %02x\n",
+                            printf("    Bus %02x  SecBus %02x  SubBus %02x\n",
                                (uint8_t) sub, (uint8_t) (sub >> 8),
                                (uint8_t) (sub >> 16));
                         }
@@ -1019,18 +824,18 @@ writeXXv function writes then reads back (up to 5 times) until read data matches
                     uint32_t subsys;
                     subsys = pci_read32(bus, dev, func, PCI_OFF_SUBSYSTEM_VID);
                     if ((subsys != 0) && (subsys != 0xffffffff)) {
-                        printf("      %04x.%04x PCI Subsystem  ",
+                        printf("    %04x.%04x PCI Subsystem  ",
                                (uint16_t) subsys, subsys >> 16);
                         pci_show_vendordevice((uint16_t) subsys, subsys >> 16);
                         printf("\n");
                     }
-                    printf("      CMD       ");
+                    printf("    CMD       ");
                     print_bits(pci_read16(bus, dev, func, PCI_OFF_CMD),
                                2, 2, bits_pci_command);
-                    printf("      STATUS    ");
+                    printf("    STATUS    ");
                     status = pci_read16(bus, dev, func, PCI_OFF_STATUS);
                     print_bits(status, 2, 2, bits_pci_status_primary);
-                    printf("      Interrupt ");
+                    printf("    Interrupt ");
                     print_bits(pci_read32(bus, dev, func, PCI_OFF_INT_LINE),
                                2, 2, bits_pci_lat_gnt_int);
 
@@ -1044,7 +849,7 @@ writeXXv function writes then reads back (up to 5 times) until read data matches
                         omax = 256;
                     for (off = 0; off < omax; off++) {
                         if ((off & 0x0f) == 0)
-                            printf("      [%02x]", off);
+                            printf("    [%02x]", off);
                         printf(" %02x", pci_read8(bus, dev, func, off));
                         if ((off & 0x0f) == 0x0f)
                             printf("\n");
@@ -1057,36 +862,6 @@ writeXXv function writes then reads back (up to 5 times) until read data matches
                         break;  // Not a multifunction device
                 }
             }
-        }
-    }
-}
-
-#define FLAG_ZBRIDGE_RESET 0x01
-
-static void
-pci_zbridge_control(int pci_reset_bus, uint flags)
-{
-    int bus;
-    for (bus = 0; bus < PCI_MAX_BUS; bus++) {
-        if ((pci_reset_bus != -1) && (pci_reset_bus != bus))
-            continue;
-        if (find_zorro_pci_bridge(bus) == NULL) {
-            if (pci_reset_bus != -1)
-                printf("Could not find bus %d\n", pci_reset_bus);
-            break;
-        }
-        if (bridge_control_reg == NULL) {
-            if (pci_reset_bus != -1)
-                printf("Bus %d does not have reset capability\n",
-                       pci_reset_bus);
-            continue;
-        }
-        if (flags & FLAG_ZBRIDGE_RESET) {
-            *ADDR32(bridge_control_reg) &= ~FS_PCI_CONTROL_NO_RESET;
-            Delay(1);
-            *ADDR32(bridge_control_reg) |= FS_PCI_CONTROL_NO_RESET |
-                                           FS_PCI_CONTROL_EN_INTS;
-            Delay(1);
         }
     }
 }
@@ -1107,6 +882,9 @@ main(int argc, char **argv)
         if (*ptr == '-') {
             while (*(++ptr) != '\0') {
                 switch (*ptr) {
+                    case 'c':
+                        flags |= FLAG_SHOW_CADDR;
+                        break;
                     case 'd':
                         if (flags & FLAG_DUMP)
                             flags |= FLAG_DDUMP;
@@ -1141,6 +919,7 @@ usage:
             printf("Options:\n"
 //                 "pci enable [bus] - enable Zorro-PCI bridge\n"
                    "pci ls           - show all PCI devices\n"
+                   "pci ls -c        - show config space addresses\n"
                    "pci ls -d        - show raw config space bytes\n"
                    "pci ls -n        - "
                         "do not translate shown addresses to be CPU-relative\n"
@@ -1151,7 +930,7 @@ usage:
             exit(1);
         }
     }
-    if (find_zorro_pci_bridge(0) == 0) {
+    if (pci_bridge_is_present() == 0) {
         printf("Could not find Zorro-PCI Bridge\n");
         exit(1);
     }
@@ -1161,7 +940,7 @@ usage:
     if (flag_pci_ls)
         lspci(flags);
     if (flag_pci_reset)
-        pci_zbridge_control(pci_reset_bus_num, FLAG_ZBRIDGE_RESET);
+        pci_bridge_control(pci_reset_bus_num, FLAG_BRIDGE_RESET);
 
     exit(0);
 }
