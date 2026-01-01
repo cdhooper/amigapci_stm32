@@ -70,10 +70,10 @@ pci_discover(uint8_t bus, pci_dev_t *parent_dev)
     uint32_t    vd;
     pci_dev_t  *cur;
     pci_dev_t **parent_next = &parent_dev->pd_child;
-    uint        maxdev = (bus == 0) ? 5 : 32;  // 5 physical slots
+    uint        maxdev = (bus == 0) ? PCI_MAX_PHYS_SLOT : PCI_MAX_DEV;
 
     for (dev = 0; dev < maxdev; dev++) {
-        for (func = 0; func < 8; func++) {
+        for (func = 0; func < PCI_MAX_FUNC; func++) {
             vd = pci_read32v(bus, dev, func, PCI_OFF_VENDOR);
 
             /* Check Vendor / Device for device presence */
@@ -104,7 +104,10 @@ pci_discover(uint8_t bus, pci_dev_t *parent_dev)
             uint is_bridge = (cur->pd_htype & 0x7F) == 1;
             uint max_bars = is_bridge ? 3 : 7;  // Bridge has only two BARs
 
-            /* device's PCI latency timer to 0x80 because of Zorro III design */
+            /*
+             * Set device's PCI latency timer to 0x80 because of
+             * Zorro III design.  XXX: Research if this is optimal.
+             */
             pci_write8(bus, dev, func, PCI_OFF_LATENCYTIMER, 0x80);
 
             /* Determine BAR size */
@@ -134,8 +137,8 @@ pci_discover(uint8_t bus, pci_dev_t *parent_dev)
                     else
                         cur->pd_bar_type[bar] = size_mask & 0xf;
                     total_size += size;
-                    printf("  [%u] size %08x type %x %x off=%x\n", bar, size,
-                           cur->pd_bar_type[bar], size_mask, bar_offset);
+                    printf("  [%u] size %08x type %02x\n", bar, size,
+                           cur->pd_bar_type[bar]);
                     if ((size_mask & (BIT(0) | BIT(1) | BIT(2))) == BIT(2)) {
                         /* 64-bit memory BAR */
                         // XXX: Need to handle 64-bit size here??
@@ -146,15 +149,23 @@ pci_discover(uint8_t bus, pci_dev_t *parent_dev)
 
             /* Bridge Detection & Recursive Scan */
             if ((header & 0x7F) == 1) {  // Type 1 is a Bridge
-                uint8_t sec_bus = ++pci_max_bus;
+                uint8_t sec_bus = pci_max_bus + 1;
+                uint8_t latency = 0x80;
+                uint32_t bus_value;
+                if (sec_bus == 0)
+                    break;  // No more buses available
+                pci_max_bus = sec_bus;
 
-                pci_write8(bus, dev, func, PCI_OFF_BR_PRI_BUS, bus);
-                pci_write8(bus, dev, func, PCI_OFF_BR_SEC_BUS, sec_bus);
-                pci_write8(bus, dev, func, PCI_OFF_BR_SUB_BUS, 0xff);
+                bus_value = bus | (sec_bus << 8) | (0xff << 16) |
+                            (latency << 24);
+                pci_write32(bus, dev, func, PCI_OFF_BR_PRI_BUS, bus_value);
 
                 printf("  Child Bus %02x\n", sec_bus);
                 pci_discover(sec_bus, cur);
-                pci_write8(bus, dev, func, PCI_OFF_BR_SUB_BUS, pci_max_bus);
+
+                bus_value = bus | (sec_bus << 8) | (pci_max_bus << 16) |
+                            (latency << 24);
+                pci_write32(bus, dev, func, PCI_OFF_BR_PRI_BUS, bus_value);
 
                 /* Round up to next 1 MB boundary */
                 cur->pd_size = ALIGN_UP(cur->pd_size, SIZE_1MB);
@@ -167,6 +178,30 @@ pci_discover(uint8_t bus, pci_dev_t *parent_dev)
                 break; // Not multi-function
         }
     }
+}
+
+static uint32_t
+get_next_mem_base(uint barsize)
+{
+    uint32_t next = ALIGN_UP(pci_alloc_mem_base, barsize);
+    if (next <= pci_alloc_mem_max) {
+        pci_alloc_mem_base = next;
+        return (next);
+    }
+    /* Can not allocate this device */
+    return (0xffffffff);
+}
+
+static uint32_t
+get_next_io_base(uint barsize)
+{
+    uint32_t next = ALIGN_UP(pci_alloc_io_base, barsize);
+    if (next <= pci_alloc_io_max) {
+        pci_alloc_io_base = next;
+        return (next);
+    }
+    /* Can not allocate this device */
+    return (0xffffffff);
 }
 
 /*
@@ -223,6 +258,8 @@ pci_allocate(pci_dev_t *parent_dev)
             pci_alloc_io_base  = ALIGN_UP(pci_alloc_io_base, SIZE_4KB);
             uint32_t start_mem = pci_alloc_mem_base;
             uint32_t start_io  = pci_alloc_io_base;
+            uint32_t end_mem;
+            uint32_t end_io;
             printf("Bridge\n", start_mem, start_io);
 
             pci_allocate(maxdev);
@@ -230,37 +267,41 @@ pci_allocate(pci_dev_t *parent_dev)
             /* Align allocators to bridge alignment requirement */
             pci_alloc_mem_base = ALIGN_UP(pci_alloc_mem_base, SIZE_1MB);
             pci_alloc_io_base  = ALIGN_UP(pci_alloc_io_base, SIZE_4KB);
+            end_mem = pci_alloc_mem_base;
+            end_io  = pci_alloc_io_base;
             printf("      %x.%x.%x MEMW=%x-%x  IOW=%x-%x\n",
                    maxdev->pd_bus, maxdev->pd_dev, maxdev->pd_func,
-                   start_mem, pci_alloc_mem_base,
-                   start_io, pci_alloc_io_base);
+                   start_mem, end_mem, start_io, end_io);
 
-            if (start_mem == pci_alloc_mem_base) {
+            if (start_mem == end_mem) {
                 /* No downstream memory space */
                 start_mem = 0xffffffff;
+                end_mem = 0;
+            } else {
+                end_mem -= SIZE_1MB;
             }
-            if (start_io == pci_alloc_io_base) {
+            if (start_io == end_io) {
                 /* No downstream I/O space */
                 start_io = 0xffffffff;
+                end_io = 0;
+            } else {
+                end_io -= SIZE_4KB;
             }
             /* Handle I/O window */
             pci_write8(maxdev->pd_bus, maxdev->pd_dev, maxdev->pd_func,
                        PCI_OFF_BR_IO_BASE, (start_io >> 8) & 0xf0);
             pci_write8(maxdev->pd_bus, maxdev->pd_dev, maxdev->pd_func,
-                       PCI_OFF_BR_IO_LIMIT,
-                       ((pci_alloc_io_base - SIZE_4KB) >> 8) & 0xf0);
+                       PCI_OFF_BR_IO_LIMIT, (end_io >> 8) & 0xf0);
             pci_write16(maxdev->pd_bus, maxdev->pd_dev, maxdev->pd_func,
                         PCI_OFF_BR_IO_BASE_U, start_io >> 16);
             pci_write16(maxdev->pd_bus, maxdev->pd_dev, maxdev->pd_func,
-                        PCI_OFF_BR_IO_LIMIT_U,
-                        (pci_alloc_io_base - SIZE_4KB) >> 16);
+                        PCI_OFF_BR_IO_LIMIT_U, end_io >> 16);
 
             /* Handle memory window */
             pci_write16(maxdev->pd_bus, maxdev->pd_dev, maxdev->pd_func,
                         PCI_OFF_BR_W32_BASE, start_mem >> 16);
             pci_write16(maxdev->pd_bus, maxdev->pd_dev, maxdev->pd_func,
-                        PCI_OFF_BR_W32_LIMIT,
-                        (pci_alloc_mem_base - SIZE_1MB) >> 16);
+                        PCI_OFF_BR_W32_LIMIT, end_mem >> 16);
 
             /* Disable 64-bit pre-fetchable memory window */
             pci_write16(maxdev->pd_bus, maxdev->pd_dev, maxdev->pd_func,
@@ -290,9 +331,9 @@ pci_allocate(pci_dev_t *parent_dev)
              */
             if (bartype & BIT(7)) {
                 /* ROM BAR */
-                if (pci_alloc_mem_base < pci_alloc_mem_max)
-                pci_alloc_mem_base = ALIGN_UP(pci_alloc_mem_base, barsize);
-                printf("ROM      base=%08x", maxbar, pci_alloc_mem_base);
+                if (get_next_mem_base(barsize) == 0xffffffff)
+                    goto can_not_map_bar;
+                printf("ROM      base=%08x", pci_alloc_mem_base);
                 maxdev->pd_bar[maxbar] = pci_alloc_mem_base;
                 uint is_bridge = (maxdev->pd_htype & 0x7F) == 1;
                 bar_offset = is_bridge ? PCI_OFF_BR_ROM_BAR : PCI_OFF_ROM_BAR;
@@ -302,7 +343,8 @@ pci_allocate(pci_dev_t *parent_dev)
                 pci_alloc_mem_base += barsize;
             } else if (bartype & BIT(0)) {
                 /* I/O space BAR */
-                pci_alloc_io_base = ALIGN_UP(pci_alloc_io_base, barsize);
+                if (get_next_io_base(barsize) == 0xffffffff)
+                    goto can_not_map_bar;
                 printf("BAR%u IO  base=%08x", maxbar, pci_alloc_io_base);
                 maxdev->pd_bar[maxbar] = pci_alloc_io_base;
                 pci_write32(maxdev->pd_bus, maxdev->pd_dev, maxdev->pd_func,
@@ -310,7 +352,8 @@ pci_allocate(pci_dev_t *parent_dev)
                 pci_alloc_io_base += barsize;
             } else {
                 /* Memory space BAR */
-                pci_alloc_mem_base = ALIGN_UP(pci_alloc_mem_base, barsize);
+                if (get_next_mem_base(barsize) == 0xffffffff)
+                    goto can_not_map_bar;
                 printf("BAR%u MEM base=%08x", maxbar, pci_alloc_mem_base);
                 maxdev->pd_bar[maxbar] = pci_alloc_mem_base;
                 pci_write32(maxdev->pd_bus, maxdev->pd_dev, maxdev->pd_func,
@@ -324,6 +367,7 @@ pci_allocate(pci_dev_t *parent_dev)
                 pci_alloc_mem_base += barsize;
             }
             printf(" size=%08x\n", barsize);
+can_not_map_bar:
             maxdev->pd_allocated |= BIT(maxbar);
         }
     }
@@ -335,16 +379,31 @@ pci_enable(pci_dev_t *parent_dev)
     pci_dev_t *cur;
     for (cur = parent_dev->pd_child; cur != NULL; cur = cur->pd_next) {
         uint is_bridge = (cur->pd_htype & 0x7F) == 1;
-        /* Enable I/O space, Memory space, and Bus Mastering */
-        pci_write16(cur->pd_bus, cur->pd_dev, cur->pd_func, PCI_OFF_CMD,
-                    BIT(0) |  // I/O Space
-                    BIT(1) |  // Memory Space
-                    BIT(2) |  // Bus Master
-                    BIT(7) |  // Parity
-                    BIT(9));  // SERR#
         if (is_bridge) {
             pci_enable(cur);
+
+            /* Enable bridge secondary side error reporting */
+            pci_write16(cur->pd_bus, cur->pd_dev, cur->pd_func,
+                        PCI_OFF_BR_CONTROL,
+                        BIT(0) |  // Enable parity
+                        BIT(1) |  // Enable SERR#
+//                      BIT(5) |  // Enable Master Abort reporting
+                        BIT(11) | // Enable SERR# on timer expiration
+                        0);
+            /*
+             * XXX: Master Abort reporting slows down PCI scan for commands
+             *      such as "pci ls"
+             *      I'm not sure whether this should be enabled by default
+             */
         }
+
+        /* Enable I/O space, Memory space, Bus Mastering, and error reporting */
+        pci_write16(cur->pd_bus, cur->pd_dev, cur->pd_func, PCI_OFF_CMD,
+                    BIT(0) |  // Enable I/O Space
+                    BIT(1) |  // Enable Memory Space
+                    BIT(2) |  // Enable Bus Master
+                    BIT(6) |  // Enable Parity
+                    BIT(8));  // Enable SERR#
     }
 }
 
@@ -365,11 +424,11 @@ pci_scan(void)
         printf("No PCI bridge located\n");
         return;
     }
+    pci_bridge_control(0, FLAG_BRIDGE_RESET);
     pci_alloc_mem_base = 0x00000000;
     pci_alloc_mem_max  = 0x1fc00000;  // Firestorm config space starts here
     pci_alloc_io_base  = 0x00000000;
     pci_alloc_io_max   = 0x00200000;  // Firestorm (0x20000000 - 0x1fe00000)
-    pci_bridge_control(0, FLAG_BRIDGE_RESET);
     pci_discover(0, &pci_root_dev);
     pci_allocate(&pci_root_dev);
     pci_enable(&pci_root_dev);
@@ -405,8 +464,8 @@ print_pci_tree(pci_dev_t *cur, uint indent)
     while (cur != NULL) {
         uint rindent = 0;
         uint bar;
-        if (indent < 6)
-            rindent = 6 - indent;
+        if (indent < 10)
+            rindent = 10 - indent;
         printf("%*s%x.%x.%x %*s%04x.%04x",
                indent, "" , cur->pd_bus, cur->pd_dev, cur->pd_func,
                rindent, "", cur->pd_vendor, cur->pd_device);
@@ -440,7 +499,7 @@ print_pci_tree(pci_dev_t *cur, uint indent)
             printf(" Bridge");
         printf("\n");
         if (cur->pd_child != NULL)
-            print_pci_tree(cur, indent + 1);
+            print_pci_tree(cur, indent + 2);
         cur = cur->pd_next;
     }
 }

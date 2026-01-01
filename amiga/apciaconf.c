@@ -47,8 +47,13 @@ int main()
 //      cd->cd_Rom.er_Reserved0f   = 0x00;
 
         cd->cd_Flags     = CDF_CONFIGME;
+#ifdef PROMETHEUS
+        cd->cd_BoardAddr = (APTR)0x40000000;
+        cd->cd_BoardSize = 512 << 20; // 512 MB
+#else  /* AmigaPCI */
         cd->cd_BoardAddr = (APTR)0x80000000;
-        cd->cd_BoardSize = 512 << 10; // 512 KB
+        cd->cd_BoardSize = 2016 << 20; // 2016 MB (2 GB - 16 MB)
+#endif
 //      cd->cd_SlotAddr  = 0x0000;
 //      cd->cd_SlotSize  = 0x0000;
 //      cd->cd_Driver    = NULL;

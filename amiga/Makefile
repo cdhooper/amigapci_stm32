@@ -27,7 +27,7 @@ ACONF_SRCS   := apciaconf.c
 ACONF_HDRS   :=
 ASCAN_SRCS   := apciscan.c pci_access.c
 ASCAN_HDRS   := pci_access.h
-PCI_SRCS     := pci.c pci_access.c
+PCI_SRCS     := pci.c pci_access.c strtox.c
 PCI_HDRS     := pci_access.h
 APCIROM_SRCS := apcirom.c my_createtask.c apcibanner.c printf.c rom_end.c
 APCIROM_HDRS :=
@@ -35,7 +35,7 @@ APCIROM_HDRS :=
 CC      := m68k-amigaos-gcc
 STRIP   := m68k-amigaos-strip
 CFLAGS  := -Wall -Wextra -Wno-pointer-sign -Wno-format -Wno-strict-aliasing
-CFLAGS  += -Wno-sign-compare -fomit-frame-pointer -I../fw -mcpu=68060
+CFLAGS  += -Wno-sign-compare -fomit-frame-pointer -I../fw -mcpu=68060 -DAMIGAOS
 CFLAGS_ROM := -DAPCIROM -fbaserel -resident -mcpu=68060
 LDFLAGS = -Xlinker -Map=$(OBJDIR)/$@.map -Wa,-a > $(OBJDIR)/$@.lst -mcrt=clib2 -lgcc -lc -lamiga
 LDFLAGS_ROM = -nostdlib -lgcc -lc -lamiga -Xlinker --verbose -Tapcirom.ld -mcrt=clib2 -fbaserel

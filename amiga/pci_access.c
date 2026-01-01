@@ -11,7 +11,6 @@
 #include "cpu_control.h"
 #include "pci_access.h"
 
-
 #define ZORRO_MFG_MATAY         0xad47
 #define ZORRO_PROD_MATAY_BD     0x0001
 #define ZORRO_MFG_E3B           0x0e3b
@@ -37,7 +36,7 @@ uint8_t *bridge_pci1_base;
 void    *bridge_io_base;
 void    *bridge_mem_base;
 static void    *bridge_control_reg;
-static uint8_t  bridge_type = BRIDGE_TYPE_UNKNOWN;
+uint8_t  bridge_type = BRIDGE_TYPE_UNKNOWN;
 uint16_t bridge_zorro_mfg;
 uint16_t bridge_zorro_prod;
 struct ConfigDev *pci_zorro_cdev = NULL;
@@ -131,7 +130,7 @@ pci_bridge_is_present(void)
  * Get the base address of configuration space for the specified PCI
  * bus, device, function, and register offset.
  */
-static void *
+void *
 pci_cfg_base(uint bus, uint dev, uint func, uint off)
 {
     if (bus == 0) {
@@ -250,7 +249,7 @@ pci_write32(uint bus, uint dev, uint func, uint off, uint32_t value)
 /*
  * pci_read32v
  * -----------
- * Convenience function to read a 32-bit value from PCI confiuration space,
+ * Convenience function to read a 32-bit value from PCI configuration space,
  * filtering out bad values returned when the previous PCI access timeout
  * is still pending.
  */
@@ -271,12 +270,60 @@ pci_read32v(uint bus, uint dev, uint func, uint off)
 }
 
 /*
+ * pci_read
+ * --------
+ * Function to read any quantity of bytes from PCI configuration space.
+ * This is a convenience function for APIs which just specify a byte count.
+ */
+uint32_t
+pci_read(uint bus, uint dev, uint func, uint offset, uint mode)
+{
+    if (pci_bridge_is_present() == 0)
+        return (0xffffffff);
+
+    switch (mode) {
+        case 1:
+            return (pci_read8(bus, dev, func, offset));
+        case 2:
+            return (pci_read16(bus, dev, func, offset));
+        default:
+        case 4:
+            return (pci_read32(bus, dev, func, offset));
+    }
+}
+
+/*
+ * pci_write
+ * ---------
+ * Function to write any quantity of bytes to PCI configuration space.
+ * This is a convenience function for APIs which just specify a byte count.
+ */
+void
+pci_write(uint bus, uint dev, uint func, uint offset, uint mode, uint32_t value)
+{
+    if (pci_bridge_is_present() == 0)
+        return;
+
+    switch (mode) {
+        case 1:
+            pci_write8(bus, dev, func, offset, value);
+            break;
+        case 2:
+            pci_write16(bus, dev, func, offset, value);
+            break;
+        case 4:
+            pci_write32(bus, dev, func, offset, value);
+            break;
+    }
+}
+
+/*
  * pci_amiga_read
  * --------------
  * Function to read 1, 2, or 4 bytes from Amiga PCI configuration space.
  * This is a convenience function for APIs which just specify a byte count.
  */
-static rc_t
+static void
 pci_amiga_read(uint bus, uint dev, uint func, uint offset, uint mode,
                void *value)
 {
@@ -291,7 +338,6 @@ pci_amiga_read(uint bus, uint dev, uint func, uint offset, uint mode,
             *ADDR32(value) = pci_read32(bus, dev, func, offset);
             break;
     }
-    return (RC_SUCCESS);
 }
 
 /*
@@ -300,7 +346,7 @@ pci_amiga_read(uint bus, uint dev, uint func, uint offset, uint mode,
  * Function to write 1, 2, or 4 bytes to Amiga PCI configuration space.
  * This is a convenience function for APIs which just specify a byte count.
  */
-static rc_t
+static void
 pci_amiga_write(uint bus, uint dev, uint func, uint offset, uint mode,
                 void *value)
 {
@@ -315,17 +361,16 @@ pci_amiga_write(uint bus, uint dev, uint func, uint offset, uint mode,
             pci_write32(bus, dev, func, offset, *ADDR32(value));
             break;
     }
-    return (RC_SUCCESS);
 }
 
 /*
- * pci_read
- * --------
+ * pci_read_buf
+ * ------------
  * Function to read any quantity of bytes from PCI configuration space.
  * This is a convenience function for APIs which just specify a byte count.
  */
 rc_t
-pci_read(uint bus, uint dev, uint func, uint offset, uint width, void *bufp)
+pci_read_buf(uint bus, uint dev, uint func, uint offset, uint width, void *bufp)
 {
     rc_t rc = RC_SUCCESS;
 
@@ -341,9 +386,7 @@ pci_read(uint bus, uint dev, uint func, uint offset, uint width, void *bufp)
         else if (len > 4)
             len = 4;
 
-        rc = pci_amiga_read(bus, dev, func, offset, len, bufp);
-        if (rc != RC_SUCCESS)
-            break;
+        pci_amiga_read(bus, dev, func, offset, len, bufp);
         width  -= len;
         offset += len;
         bufp = (void *)((uintptr_t)bufp + len);
@@ -352,13 +395,14 @@ pci_read(uint bus, uint dev, uint func, uint offset, uint width, void *bufp)
 }
 
 /*
- * pci_write
- * ---------
+ * pci_write_buf
+ * -------------
  * Function to write any quantity of bytes to PCI configuration space.
  * This is a convenience function for APIs which just specify a byte count.
  */
 rc_t
-pci_write(uint bus, uint dev, uint func, uint offset, uint width, void *bufp)
+pci_write_buf(uint bus, uint dev, uint func, uint offset, uint width,
+              void *bufp)
 {
     rc_t rc = RC_SUCCESS;
 
@@ -373,9 +417,7 @@ pci_write(uint bus, uint dev, uint func, uint offset, uint width, void *bufp)
             len = 2;
         else if (len > 4)
             len = 4;
-        rc = pci_amiga_write(bus, dev, func, offset, len, bufp);
-        if (rc != RC_SUCCESS)
-            break;
+        pci_amiga_write(bus, dev, func, offset, len, bufp);
         width  -= len;
         offset += len;
         bufp = (void *)((uintptr_t)bufp + len);
@@ -408,12 +450,15 @@ pci_bridge_control(int pci_bridge, uint flags)
             }
             continue;
         }
+        if (flags & FLAG_BRIDGE_RESET_HOLD) {
+            *ADDR32(bridge_control_reg) &= ~FS_PCI_CONTROL_NO_RESET;
+        }
         if (flags & FLAG_BRIDGE_RESET) {
             *ADDR32(bridge_control_reg) &= ~FS_PCI_CONTROL_NO_RESET;
-            Delay(1);
+            Delay(1);   // 20 ms
             *ADDR32(bridge_control_reg) |= FS_PCI_CONTROL_NO_RESET |
                                            FS_PCI_CONTROL_EN_INTS;
-            Delay(1);
+            Delay(15);  // 300 ms
         }
     }
 }
