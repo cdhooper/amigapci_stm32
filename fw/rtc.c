@@ -764,10 +764,10 @@ utc_to_rtc(uint32_t secs, uint *year, uint *mon, uint *day, uint *hour,
         *year = 1970;
         leap = 0;
     }
-    while (days >= 365 + leap) {
-        days -= 365 + leap;
-        leap = is_leap_year(*year) ? 1 : 0;
+    while (days > 365 + leap) {
+        days -= (365 + leap);
         (*year)++;
+        leap = is_leap_year(*year) ? 1 : 0;
     }
     leap = is_leap_year(*year);
 

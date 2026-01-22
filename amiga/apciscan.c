@@ -14,6 +14,7 @@
  * OR MISUSE OF THIS UTILITY OR INFORMATION REPORTED BY THIS UTILITY.
  */
 #include <stdio.h>
+#include <stdlib.h>
 #include <proto/exec.h>
 #include <proto/expansion.h>
 #include "pci_access.h"
@@ -50,8 +51,11 @@ static pci_dev_t *pci_root = &pci_root_dev;
 static uint8_t    pci_max_bus = 0;
 static uint32_t   pci_alloc_mem_base;
 static uint32_t   pci_alloc_mem_max;
+static uint32_t   pci_alloc_mem_pre_base;
+static uint32_t   pci_alloc_mem_pre_max;
 static uint32_t   pci_alloc_io_base;
 static uint32_t   pci_alloc_io_max;
+static uint       firestorm_mode = 0;
 
 /*
  * pci_discover
@@ -191,6 +195,20 @@ get_next_mem_base(uint barsize)
     /* Can not allocate this device */
     return (0xffffffff);
 }
+
+#if 0
+static uint32_t
+get_next_mem_pre_base(uint barsize)
+{
+    uint32_t next = ALIGN_UP(pci_alloc_mem_pre_base, barsize);
+    if (next <= pci_alloc_mem_pre_max) {
+        pci_alloc_mem_base = next;
+        return (next);
+    }
+    /* Can not allocate this device */
+    return (0xffffffff);
+}
+#endif
 
 static uint32_t
 get_next_io_base(uint barsize)
@@ -338,8 +356,8 @@ pci_allocate(pci_dev_t *parent_dev)
                 uint is_bridge = (maxdev->pd_htype & 0x7F) == 1;
                 bar_offset = is_bridge ? PCI_OFF_BR_ROM_BAR : PCI_OFF_ROM_BAR;
 
-                pci_write32(maxdev->pd_bus, maxdev->pd_dev, maxdev->pd_func,
-                            bar_offset, pci_alloc_mem_base | BIT(0));
+                pci_write32v(maxdev->pd_bus, maxdev->pd_dev, maxdev->pd_func,
+                             bar_offset, pci_alloc_mem_base | BIT(0));
                 pci_alloc_mem_base += barsize;
             } else if (bartype & BIT(0)) {
                 /* I/O space BAR */
@@ -347,8 +365,8 @@ pci_allocate(pci_dev_t *parent_dev)
                     goto can_not_map_bar;
                 printf("BAR%u IO  base=%08x", maxbar, pci_alloc_io_base);
                 maxdev->pd_bar[maxbar] = pci_alloc_io_base;
-                pci_write32(maxdev->pd_bus, maxdev->pd_dev, maxdev->pd_func,
-                            bar_offset, pci_alloc_io_base);
+                pci_write32v(maxdev->pd_bus, maxdev->pd_dev, maxdev->pd_func,
+                             bar_offset, pci_alloc_io_base);
                 pci_alloc_io_base += barsize;
             } else {
                 /* Memory space BAR */
@@ -356,12 +374,12 @@ pci_allocate(pci_dev_t *parent_dev)
                     goto can_not_map_bar;
                 printf("BAR%u MEM base=%08x", maxbar, pci_alloc_mem_base);
                 maxdev->pd_bar[maxbar] = pci_alloc_mem_base;
-                pci_write32(maxdev->pd_bus, maxdev->pd_dev, maxdev->pd_func,
-                            bar_offset, pci_alloc_mem_base);
+                pci_write32v(maxdev->pd_bus, maxdev->pd_dev, maxdev->pd_func,
+                             bar_offset, pci_alloc_mem_base);
                 if ((bartype & (BIT(2) | BIT(1))) == BIT(2)) {
                     /* 64-bit memory BAR */
-                    pci_write32(maxdev->pd_bus, maxdev->pd_dev,
-                                maxdev->pd_func, bar_offset + 4, 0x00000000);
+                    pci_write32v(maxdev->pd_bus, maxdev->pd_dev,
+                                 maxdev->pd_func, bar_offset + 4, 0x00000000);
                     maxdev->pd_allocated |= BIT(maxbar + 1);
                 }
                 pci_alloc_mem_base += barsize;
@@ -425,8 +443,20 @@ pci_scan(void)
         return;
     }
     pci_bridge_control(0, FLAG_BRIDGE_RESET);
-    pci_alloc_mem_base = 0x00000000;
-    pci_alloc_mem_max  = 0x1fc00000;  // Firestorm config space starts here
+    if (bridge_type != BRIDGE_TYPE_AMIGAPCI)
+        firestorm_mode = 1;
+    if (firestorm_mode) {
+        /* Prometheus / Firestorm */
+        pci_alloc_mem_base = 0x00000000;
+        pci_alloc_mem_max  = 0x1fc00000;
+        /* config space starts after this point */
+    } else {
+        /* AmigaPCI */
+        pci_alloc_mem_base     = 0x80000000;
+        pci_alloc_mem_max      = 0x9fc00000;
+        pci_alloc_mem_pre_base = 0xa0000000;
+        pci_alloc_mem_pre_max  = 0xff000000;
+    }
     pci_alloc_io_base  = 0x00000000;
     pci_alloc_io_max   = 0x00200000;  // Firestorm (0x20000000 - 0x1fe00000)
     pci_discover(0, &pci_root_dev);
@@ -504,11 +534,39 @@ print_pci_tree(pci_dev_t *cur, uint indent)
     }
 }
 
+static void
+usage(void)
+{
+    printf("apciscan options\n"
+           "   -f assign BARs as Firestorm would want them\n");
+}
+
 int
 main(int argc, char *argv[])
 {
+    int arg;
     (void) argc;
     (void) argv;
+    for (arg = 1; arg < argc; arg++) {
+        char *ptr = argv[arg];
+        if (*ptr == '-') {
+            for (++ptr; *ptr != '\0'; ptr++) {
+                switch (*ptr) {
+                    case 'f':  // Firestorm mode
+                        firestorm_mode = 1;
+                        break;
+                    default:
+                        printf("Unknown argument %s\n", ptr);
+                        usage();
+                        exit(1);
+                }
+            }
+        } else {
+            printf("Error: unknown argument %s\n", ptr);
+            usage();
+            exit(1);
+        }
+    }
 
     pci_scan();
 

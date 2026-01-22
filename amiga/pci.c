@@ -102,6 +102,7 @@ typedef unsigned int uint;
 typedef const char * const bits_t;
 
 extern struct ExecBase *SysBase;
+static uint flags;
 
 /* PCI Command (0x4) */
 static bits_t bits_pci_command[] = {
@@ -176,6 +177,7 @@ static const struct {
     { 0x1025, "Acer"          },
     { 0x9004, "Adaptec"       },
     { 0x9005, "Adaptec"       },
+    { 0x1317, "ADMtek"        },
     { 0x12ae, "Alteon"        },
     { 0x1172, "Altera"        },
     { 0x1022, "AMD"           },
@@ -1488,6 +1490,14 @@ pci_vpd_dump(uint bus, uint dev, uint func, uint offset)
     }
 }
 
+static uint32_t
+translate_mem_address(uint32_t addr)
+{
+    if (((addr & 0x80000000) == 0) && ((flags & FLAG_NO_TRANSLATE) == 0))
+        return (addr + (uintptr_t) bridge_mem_base);
+    return (addr);
+}
+
 static void
 pci_show_cap(uint bus, uint dev, uint func, uint32_t cap_pos, uint32_t value)
 {
@@ -1653,7 +1663,7 @@ pci_show_cap(uint bus, uint dev, uint func, uint32_t cap_pos, uint32_t value)
                 uint     bar_offset = PCI_OFF_BAR0 + bir * 4;
                 uint32_t addr = pci_read32(bus, dev, func, bar_offset);
 
-                addr = (addr & ~0xf) + (uintptr_t) bridge_mem_base;
+                addr = translate_mem_address(addr & ~0xf);
                 printf("%08x] ", addr);
             }
             if (dword[1] != 0)
@@ -2386,7 +2396,7 @@ pci_show_device_specific(uint bus, uint dev, uint func,
         uint32_t pvd;
 
         if (cmd & BIT(1)) {
-            cfgbase = (cfgbase & ~0xf) + (uintptr_t) bridge_mem_base;
+            cfgbase = translate_mem_address(cfgbase & ~0xf);
             pvd = pci_mmio_read(cfgbase, PCI_OFF_VENDOR, 4);
             pvendor = (uint16_t) pvd;
             pdevice = pvd >> 16;
@@ -2407,7 +2417,7 @@ pci_show_device_specific(uint bus, uint dev, uint func,
 static rc_t
 pci_check_reg(uint p_bus, uint p_dev, uint p_func,
               const char * const name,
-              uint offset, uint fmode, bits_t bits[], uint flags,
+              uint offset, uint fmode, bits_t bits[],
               uint *errs, uint32_t mask)
 {
     uint     mode = fmode & 0xff;
@@ -2475,19 +2485,19 @@ pci_check_reg(uint p_bus, uint p_dev, uint p_func,
 
 
 static void
-pci_status(uint bus, uint dev, uint func, uint flags, uint classrev)
+pci_status(uint bus, uint dev, uint func, uint classrev)
 {
     uint     errs = 0;
 
     /* Check primary PCI status register */
     if (pci_check_reg(bus, dev, func, "PRI_STAT", PCI_OFF_STATUS, 2,
-                      bits_pci_status_primary, flags, &errs, PCI_STATUS_ERRORS))
+                      bits_pci_status_primary, &errs, PCI_STATUS_ERRORS))
         return;
 
     if ((classrev >> 16) == PCI_CLASS_PCI_BRIDGE) {
         /* Check bridge secondary side registers */
         pci_check_reg(bus, dev, func, "SEC_STAT", PCI_OFF_BR_SEC_STATUS, 2,
-                      bits_pci_status_secondary, flags, &errs,
+                      bits_pci_status_secondary, &errs,
                       PCI_STATUS_ERRORS);
     }
 }
@@ -2514,7 +2524,7 @@ get_bar_size(uint bus, uint dev, uint func, uint bar_offset, uint32_t *base,
     *base = pci_read32v(bus, dev, func, bar_offset);
     pci_write32(bus, dev, func, bar_offset, 0xffffffff);
     size = pci_read32(bus, dev, func, bar_offset);
-    pci_write32(bus, dev, func, bar_offset, *base);
+    pci_write32v(bus, dev, func, bar_offset, *base);
     Enable();  // Enable interrupts
 
     if (interpret_size) {
@@ -2529,7 +2539,7 @@ get_bar_size(uint bus, uint dev, uint func, uint bar_offset, uint32_t *base,
 
 static void
 lspci(uint p_bus, uint p_dev, uint p_func, uint p_vendor, uint p_device,
-      uint p_cap, uint flags)
+      uint p_cap)
 {
     uint    bus;
     uint    dev;
@@ -2544,11 +2554,11 @@ lspci(uint p_bus, uint p_dev, uint p_func, uint p_vendor, uint p_device,
 
     if (flags & ~(FLAG_PCI_STATUS | FLAG_PCI_CLEAR | FLAG_PCI_CAP | FLAG_PCI_ECAP)) {
         /* Regular "ls" listing: show banner and root port */
-        printf("B.D.F Vend.Dev  _BAR_ ____Base____ ____Size____ Description\n");
+        printf("B.D.F  Vend.Dev  _BAR_ ____Base____ ____Size____ Description\n");
         if (((p_bus == 0) || (p_bus == PCI_ANY_ID)) &&
              (p_dev == PCI_ANY_ID) && (p_func == PCI_ANY_ID) &&
              (p_vendor == PCI_ANY_ID) && (p_device == PCI_ANY_ID)) {
-            printf("%x     %04x.%04x %-5s %12x %12x",
+            printf("%x      %04x.%04x %-5s %12x %12x",
                    0, bridge_zorro_mfg, bridge_zorro_prod, bustype,
                    (uint32_t) pci_zorro_cdev->cd_BoardAddr,
                    (uint32_t) pci_zorro_cdev->cd_BoardSize);
@@ -2585,6 +2595,7 @@ lspci(uint p_bus, uint p_dev, uint p_func, uint p_vendor, uint p_device,
                 uint     printed;
                 uint     bar;
                 uint     maxbar = 6;
+                uint32_t cmd;
 
                 if ((p_func != PCI_ANY_ID) && (p_func != func))
                     goto skip_and_check_htype;
@@ -2609,6 +2620,9 @@ lspci(uint p_bus, uint p_dev, uint p_func, uint p_vendor, uint p_device,
                     continue;
                 if ((p_device != PCI_ANY_ID) && (p_device != device))
                     continue;
+                cmd = pci_read32(bus, dev, func, PCI_OFF_CMD);
+                if (cmd == 0xffffffff)
+                    cmd = 0;  // HW failure
 
                 found++;
 
@@ -2617,13 +2631,13 @@ lspci(uint p_bus, uint p_dev, uint p_func, uint p_vendor, uint p_device,
                     maxbar = 2;
 
                 if (flags & (FLAG_PCI_STATUS | FLAG_PCI_CLEAR)) {
-                    pci_status(bus, dev, func, flags, classrev);
+                    pci_status(bus, dev, func, classrev);
                 }
                 if ((flags & ~(FLAG_PCI_STATUS | FLAG_PCI_CLEAR)) == 0) {
                     /* No display options specified, so end here */
                     goto skip_and_check_htype;
                 }
-                printf("%x.%x.%x %04x.%04x", bus, dev, func, vendor, device);
+                printf("%x.%x.%x%s %04x.%04x", bus, dev, func, (dev < 0x10) ? " " : "", vendor, device);
                 printed = 0;
                 if (p_cap != PCI_ANY_ID) {
                     printf("\n");
@@ -2632,13 +2646,13 @@ lspci(uint p_bus, uint p_dev, uint p_func, uint p_vendor, uint p_device,
                 for (bar = 0; bar < maxbar; bar++) {
                     uint32_t pbase;
                     uint32_t bar_offset;
+                    uint     bar_active;
                     const char *btype;
 
                     bar_offset = PCI_OFF_BAR0 + bar * 4;
                     size = get_bar_size(bus, dev, func, bar_offset, &base, 1);
                     if (size == 0)
                         continue;  // Not a writeable BAR
-
                     pbase = base;
                     if (pbase & BIT(0)) {
                         /* I/O space */
@@ -2646,18 +2660,18 @@ lspci(uint p_bus, uint p_dev, uint p_func, uint p_vendor, uint p_device,
                         base &= ~0x3;
                         if ((flags & FLAG_NO_TRANSLATE) == 0)
                             base += (uint32_t) bridge_io_base;
+                        bar_active = cmd & BIT(0);  // I/O space enabled
                     } else {
                         /* Memory space */
                         btype = "M32";
                         if ((pbase & (BIT(2) | BIT(1))) == BIT(2))
                             btype = "M64";
-                        base &= ~0xf;
-                        if ((flags & FLAG_NO_TRANSLATE) == 0)
-                            base += (uint32_t) bridge_mem_base;
+                        base = translate_mem_address(base & ~0xf);
+                        bar_active = cmd & BIT(1);  // Memory Space enabled
                     }
                     if (printed++ != 0)
-                        printf("%15s", "");
-                    printf(" %x %s ", bar, btype);
+                        printf("%16s", "");
+                    printf(" %x %s%c", bar, btype, bar_active ? ' ' : '-');
                     if (((pbase & 1) == 0) &&
                         ((pbase & (BIT(2) | BIT(1))) == BIT(2))) {
                         uint32_t basehigh;
@@ -2695,13 +2709,14 @@ lspci(uint p_bus, uint p_dev, uint p_func, uint p_vendor, uint p_device,
                 size = get_bar_size(bus, dev, func, bar_offset, &base, 0);
                 if (size & 1) {
                     /* BAR exists */
+                    uint bar_active;
                     size &= ~1;
                     size &= (0 - size);
-                    if ((flags & FLAG_NO_TRANSLATE) == 0)
-                        base += (uint32_t) bridge_mem_base;
+                    base = translate_mem_address(base);
                     if (printed++ != 0)
-                        printf("%15s", "");
-                    printf("   ROM ");
+                        printf("%16s", "");
+                    bar_active = cmd & BIT(1);  // Memory Space enabled
+                    printf("   ROM%c", bar_active ? ' ' : '-');
                     if (base & 1) {
                         /* BAR is enabled */
                         printf("%12x %12x", base & ~1, size);
@@ -2738,7 +2753,7 @@ lspci(uint p_bus, uint p_dev, uint p_func, uint p_vendor, uint p_device,
                     if ((flags & FLAG_NO_TRANSLATE) == 0)
                         base += (uint32_t) bridge_io_base;
                     if (printed)
-                        printf("%15s", "");
+                        printf("%16s", "");
                     printf("   WIO ");
                     if (size == 0)
                         printf("%12s %12x", "-", size);
@@ -2761,9 +2776,8 @@ lspci(uint p_bus, uint p_dev, uint p_func, uint p_vendor, uint p_device,
                         limit += SIZE_1MB;
                         size = limit - base;
                     }
-                    if ((flags & FLAG_NO_TRANSLATE) == 0)
-                        base += (uint32_t) bridge_mem_base;
-                    printf("%21s ", "W32");
+                    base = translate_mem_address(base);
+                    printf("%22s ", "W32");
                     if (size == 0)
                         printf("%12s %12x\n", "-", size);
                     else
@@ -2778,7 +2792,7 @@ lspci(uint p_bus, uint p_dev, uint p_func, uint p_vendor, uint p_device,
                         limit += SIZE_1MB;
                         size = limit - base;
                     }
-                    printf("%21s ", "W64");
+                    printf("%22s ", "W64");
                     if (temp & 0x1) {
                         /* 64-bit prefetchable window */
                         uint32_t base_u;
@@ -2788,7 +2802,7 @@ lspci(uint p_bus, uint p_dev, uint p_func, uint p_vendor, uint p_device,
                                             PCI_OFF_BR_W64_BASE_U);
                         limit_u = pci_read32(bus, dev, func,
                                              PCI_OFF_BR_W64_LIMIT_U);
-                        if (base < (uint32_t) bridge_mem_base) { // wrapped
+                        if (base < bridge_map_base) { // wrapped
                             base_u++;
                             limit_u++;
                         }
@@ -2803,8 +2817,7 @@ lspci(uint p_bus, uint p_dev, uint p_func, uint p_vendor, uint p_device,
                             ((limit_u == base_u) && (limit < base))) {
                             printf("%12s %12x\n", "-", 0);
                         } else {
-                            if ((flags & FLAG_NO_TRANSLATE) == 0)
-                                base += (uint32_t) bridge_mem_base;
+                            base = translate_mem_address(base);
                             size_u = limit_u - base_u;
                             printf("%3x:%08x %3x:%08x\n",
                                    base_u, base, size_u, size);
@@ -2814,8 +2827,7 @@ lspci(uint p_bus, uint p_dev, uint p_func, uint p_vendor, uint p_device,
                         if (size == 0) {
                             printf("%12s %12x\n", "-", size);
                         } else {
-                            if ((flags & FLAG_NO_TRANSLATE) == 0)
-                                base += (uint32_t) bridge_mem_base;
+                            base = translate_mem_address(base);
                             printf("%12x %12x\n", base, size);
                         }
                     }
@@ -2898,7 +2910,7 @@ skip_and_check_htype:
 
 static uint
 lspci_tree_r(uint p_bus, uint p_dev, uint p_func, uint p_vendor, uint p_device,
-             uint flags, uint indent)
+             uint indent)
 {
     uint     dev;
     uint     func;
@@ -2985,8 +2997,7 @@ lspci_tree_r(uint p_bus, uint p_dev, uint p_func, uint p_vendor, uint p_device,
                     /* 64-bit BAR -- ignore size if > 4 GB */
                     bar++;
                 }
-                if ((flags & FLAG_NO_TRANSLATE) == 0)
-                    base += (uint32_t) bridge_mem_base;
+                base = translate_mem_address(base);
                 if (size != 0) {
                     if (addr_min > base)
                         addr_min = base;
@@ -3010,8 +3021,7 @@ lspci_tree_r(uint p_bus, uint p_dev, uint p_func, uint p_vendor, uint p_device,
                 size = 0;
             else
                 size = limit - base;
-            if ((flags & FLAG_NO_TRANSLATE) == 0)
-                base += (uint32_t) bridge_mem_base;
+            base = translate_mem_address(base);
 
             if (size == 0) {
                 /* Try the 64-bit window */
@@ -3023,8 +3033,7 @@ lspci_tree_r(uint p_bus, uint p_dev, uint p_func, uint p_vendor, uint p_device,
                 else
                     size = limit - base;
 
-                if ((flags & FLAG_NO_TRANSLATE) == 0)
-                    base += (uint32_t) bridge_mem_base;
+                base = translate_mem_address(base);
                 if (temp & 0x1) {
                     /* 64-bit prefetchable window */
                     uint32_t base_u = pci_read32(p_bus, p_dev, p_func,
@@ -3098,7 +3107,7 @@ lspci_tree_r(uint p_bus, uint p_dev, uint p_func, uint p_vendor, uint p_device,
         for (dev = 0; dev < PCI_MAX_DEV; dev++) {
             for (func = 0; func < PCI_MAX_FUNC; func++) {
                 lspci_tree_r(secbus, dev, func, PCI_ANY_ID, PCI_ANY_ID,
-                             flags, indent + 2);
+                             indent + 2);
             }
         }
     }
@@ -3107,8 +3116,7 @@ lspci_tree_r(uint p_bus, uint p_dev, uint p_func, uint p_vendor, uint p_device,
 }
 
 static void
-lspci_tree(uint bus, uint p_dev, uint p_func, uint p_vendor, uint p_device,
-           uint flags)
+lspci_tree(uint bus, uint p_dev, uint p_func, uint p_vendor, uint p_device)
 {
     uint    dev;
     uint    func;
@@ -3136,7 +3144,7 @@ lspci_tree(uint bus, uint p_dev, uint p_func, uint p_vendor, uint p_device,
             continue;
         for (func = 0; func < PCI_MAX_FUNC; func++) {
             if ((p_func == PCI_ANY_ID) || (p_func == func)) {
-                lspci_tree_r(bus, dev, func, p_vendor, p_device, flags, 0);
+                lspci_tree_r(bus, dev, func, p_vendor, p_device, 0);
             }
             if (func == 0) {
                 if (!is_multifunction_device(bus, dev, func))
@@ -3295,7 +3303,6 @@ main(int argc, char **argv)
     uint flag_pci_ls        = 0;
     uint flag_pci_tree      = 0;
     uint flag_pci_reset     = 0;
-    uint flags              = 0;
     uint bus                = PCI_ANY_ID;
     uint dev                = PCI_ANY_ID;
     uint func               = PCI_ANY_ID;
@@ -3404,9 +3411,9 @@ usage:
         goto usage;
 
     if (flag_pci_tree) {
-        lspci_tree(bus, dev, func, vendor, device, flags);
+        lspci_tree(bus, dev, func, vendor, device);
     } else if (flag_pci_ls) {
-        lspci(bus, dev, func, vendor, device, cap, flags);
+        lspci(bus, dev, func, vendor, device, cap);
     } else if (flag_pci_reset) {
         pci_bridge_control(pci_reset_bus_num, (flag_pci_reset > 1) ?
                            FLAG_BRIDGE_RESET_HOLD : FLAG_BRIDGE_RESET);

@@ -545,10 +545,15 @@ amigartc_copy_time_rp5c01_to_stm32(void)
         (rtc_data[0][9] > 9) ||        // month
         (month < 1) || (month > 12) || // month
         (year < 25) || (year > 30) ||  // year
-        (year != 25) || // DEBUG DEBUG DEBUG DEBUG
         (rtc_data[0][12] > 9) ||       // year
         (rtc_data[0][11] > 9)) {       // year
         printf("Not saving invalid Amiga RTC date\n");
+        printf("%u-%u-%u %u:%u:%u\n", year, month, day, hour, minute, second);
+        for (uint r = 0; r < 2; r++) {
+            for (uint c = 0; c < 13; c++)
+                printf(" %02x", rtc_data[r][c]);
+            printf("\n");
+        }
         return;
     }
 // dprintf(DF_RTC, "%u-%u-%u %u:%u:%u", year, month, day, hour, minute, second);

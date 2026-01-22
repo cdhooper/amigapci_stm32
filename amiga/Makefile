@@ -110,6 +110,7 @@ $(ASCAN_OBJS): $(ASCAN_HDRS)
 $(PCI_OBJS): $(PCI_HDRS)
 $(APCIROM_OBJS): $(APCIROM_HDRS) | $(ROM_OBJDIR)
 $(APCIROM_OBJS):: CFLAGS += $(CFLAGS_ROM) -DNO_DEBUG
+$(ACONF_PROG):: LDFLAGS := -Xlinker -Map=$(OBJDIR)/$@.map -Wa,-a > $(OBJDIR)/$@.lst
 
 $(OBJS): Makefile | $(OBJDIR)
 	@echo Building $@

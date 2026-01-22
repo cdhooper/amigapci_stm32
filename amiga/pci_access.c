@@ -35,6 +35,7 @@ uint8_t *bridge_pci0_base;
 uint8_t *bridge_pci1_base;
 void    *bridge_io_base;
 void    *bridge_mem_base;
+uint32_t bridge_map_base;
 static void    *bridge_control_reg;
 uint8_t  bridge_type = BRIDGE_TYPE_UNKNOWN;
 uint16_t bridge_zorro_mfg;
@@ -69,6 +70,7 @@ pci_find_root_bridge(uint bridge_num)
             break;
         if (cur_bridge == bridge_num) {
             base = cdev->cd_BoardAddr;
+            bridge_map_base = (uintptr_t) base;
             bridge_pci0_base = base + MAYTAY_PCI_ADDR_CONFIG;
             bridge_pci1_base = base + MAYTAY_PCI_ADDR_CONFIG;
             bridge_io_base = base;
@@ -86,15 +88,18 @@ pci_find_root_bridge(uint bridge_num)
             break;
         if (cur_bridge == bridge_num) {
             base = cdev->cd_BoardAddr;
+            bridge_map_base  = (uintptr_t) base;
             bridge_pci0_base = base + FS_PCI_ADDR_CONFIG0;
             bridge_pci1_base = base + FS_PCI_ADDR_CONFIG1;
             bridge_io_base = base + FS_PCI_ADDR_IO;
-            bridge_mem_base = base;
             bridge_control_reg = base + FS_PCI_ADDR_CONTROL;
-            if (base == ADDR8(0x80000000))
+            if (base == ADDR8(0x80000000)) {
                 bridge_type = BRIDGE_TYPE_AMIGAPCI;
-            else
+                bridge_mem_base = 0;
+            } else {
                 bridge_type = BRIDGE_TYPE_FIRESTORM;
+                bridge_mem_base = base;
+            }
             break;
         }
     }
@@ -133,6 +138,8 @@ pci_bridge_is_present(void)
 void *
 pci_cfg_base(uint bus, uint dev, uint func, uint off)
 {
+    if (pci_bridge_is_present() == 0)
+        return (NULL);
     if (bus == 0) {
         if (bridge_pci0_base == NULL)
             return (NULL);
@@ -146,7 +153,7 @@ pci_cfg_base(uint bus, uint dev, uint func, uint off)
             return (bridge_pci0_base);  // Fail with no slot selected
         }
     }
-    if (bridge_pci1_base == NULL)
+    if ((bridge_pci1_base == NULL) || (bus > 15))
         return (NULL);
     return (bridge_pci1_base + (bus << 16) + (dev << 11) + (func << 8) + off);
 }
@@ -188,6 +195,7 @@ uint32_t
 pci_read32(uint bus, uint dev, uint func, uint off)
 {
     void *addr = pci_cfg_base(bus, dev, func, off);
+
     if (addr == NULL)
         return (0xffffffff);
     return (swap32(*ADDR32(addr)));
@@ -256,17 +264,44 @@ pci_write32(uint bus, uint dev, uint func, uint off, uint32_t value)
 uint32_t
 pci_read32v(uint bus, uint dev, uint func, uint off)
 {
-    uint32_t rval = pci_read32(bus, dev, func, off);
+    void    *addr = pci_cfg_base(bus, dev, func, off);
+    uint32_t rval;
     uint32_t nval;
     uint     diffs = 0;
 
-    while (rval != (nval = pci_read32(bus, dev, func, off))) {
+    if (addr == NULL)
+        return (0xffffffff);
+
+    rval = *ADDR32(addr);
+    CacheClearE((void *)addr, 4, CACRF_ClearD);  // Work around 68030 bug
+    while (rval != (nval = *ADDR32(addr))) {
         rval = nval;
-        (diffs)++;
-        if (diffs > 5)
+        if (++diffs > 5)
             break;
+        CacheClearE((void *)addr, 4, CACRF_ClearD);  // Work around 68030 bug
     }
-    return (rval);
+    return (swap32(rval));
+}
+
+/*
+ * pci_write32v
+ * ------------
+ * Convenience function to write a 32-bit value to PCI configuration space,
+ * verifying that the write was successful.
+ */
+void
+pci_write32v(uint bus, uint dev, uint func, uint off, uint32_t wval)
+{
+    void    *addr = pci_cfg_base(bus, dev, func, off);
+    uint     diffs = 0;
+
+    wval = swap32(wval);
+    do {
+        *ADDR32(addr) = wval;
+        CacheClearE((void *)addr, 4, CACRF_ClearD);  // Work around 68030 bug
+        if (*ADDR32(addr) == wval)
+            break;
+    } while (diffs++ < 5);
 }
 
 /*
@@ -461,4 +496,61 @@ pci_bridge_control(int pci_bridge, uint flags)
             Delay(15);  // 300 ms
         }
     }
+}
+
+static uint
+is_multifunction_device(uint bus, uint dev, uint func)
+{
+    uint32_t val;
+    uint8_t htype;
+    val = pci_read32(bus, dev, func, PCI_OFF_HEADERTYPE & ~3);
+    htype = val >> 16;
+    if (((htype & BIT(7)) == 0) || (val == 0xffffffff))
+        return (0);  // Not a multifunction device
+    return (1);
+}
+
+int
+pci_scan_cb(pci_scan_cb_t callback)
+{
+    uint    bus;
+    uint    dev;
+    uint    func;
+    uint    maxbus = PCI_MAX_BUS;
+
+    if (pci_bridge_is_present() == 0)
+        return (1);
+
+    for (bus = 0; bus <= maxbus; bus++) {
+        uint maxdev = PCI_MAX_DEV;  // PCI supports 32 devs per bus
+        if (bus == 0)
+            maxdev = PCI_MAX_PHYS_SLOT;  // 5 physical slots
+
+        for (dev = 0; dev < maxdev; dev++) {
+            for (func = 0; func < PCI_MAX_FUNC; func++) {
+                uint32_t vd;
+                uint16_t vendor;
+                uint16_t device;
+
+                vd = pci_read32v(bus, dev, func, PCI_OFF_VENDOR);
+                if ((vd == 0xffffffff) || (vd == 0x00000000)) {
+                    if (func == 0) {
+                        if ((bus > 0) && (dev == 0) && (maxbus == PCI_MAX_BUS))
+                            maxbus = bus + 1;  // Just probe 1 more bus
+                        break;
+                    }
+
+                    goto skip_and_check_htype;
+                }
+                vendor = (uint16_t) vd;
+                device = vd >> 16;
+                if (callback(bus, dev, func, vendor, device))
+                    return (0);
+skip_and_check_htype:
+                if ((func == 0) && !is_multifunction_device(bus, dev, func))
+                    break;  // Not a multifunction device
+            }
+        }
+    }
+    return (0);
 }

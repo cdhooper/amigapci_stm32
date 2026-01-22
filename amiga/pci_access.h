@@ -140,6 +140,8 @@
 #define PCI_FUNC(devfn)         ((devfn) & 0x07)
 
 typedef unsigned int rc_t;
+typedef int (*pci_scan_cb_t)(uint bus, uint dev, uint func,
+                             uint vendor, uint device);
 
 uint8_t  pci_read8(uint bus, uint dev, uint func, uint off);
 uint16_t pci_read16(uint bus, uint dev, uint func, uint off);
@@ -150,11 +152,13 @@ void     pci_write16(uint bus, uint dev, uint func, uint off, uint16_t value);
 void     pci_write32(uint bus, uint dev, uint func, uint off, uint32_t value);
 void     pci_write(uint bus, uint dev, uint func, uint offset, uint bytes, uint32_t value);
 uint32_t pci_read32v(uint bus, uint dev, uint func, uint off);
+void     pci_write32v(uint bus, uint dev, uint func, uint off, uint32_t wval);
 rc_t     pci_read_buf(uint bus, uint dev, uint func, uint offset, uint bytes, void *bufp);
 rc_t     pci_write_buf(uint bus, uint dev, uint func, uint offset, uint bytes, void *bufp);
 void    *pci_cfg_base(uint bus, uint dev, uint func, uint off);
 void     pci_bridge_control(int pci_bridge, uint flags);
 int      pci_bridge_is_present(void);
+int      pci_scan_cb(pci_scan_cb_t callback);
 
 extern struct ConfigDev *pci_zorro_cdev;
 extern uint8_t  bridge_type;
@@ -164,6 +168,7 @@ extern uint8_t *bridge_pci0_base;
 extern uint8_t *bridge_pci1_base;
 extern void    *bridge_io_base;
 extern void    *bridge_mem_base;
+extern uint32_t bridge_map_base;
 
 #endif
 
