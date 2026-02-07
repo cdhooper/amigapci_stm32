@@ -254,8 +254,8 @@ pci_allocate(pci_dev_t *parent_dev)
                     maxbar  = bar;
                 }
             }
-            if ((maxsize < cur->pd_size) &&
-                ((cur->pd_allocated & BIT(7)) == 0)) {
+            if (is_bridge && ((cur->pd_allocated & BIT(7)) == 0) &&
+                ((maxsize < cur->pd_size) || (maxdev == NULL))) {
                 /* Subordinate bus has larger demand */
                 maxsize = cur->pd_size;
                 maxdev  = cur;
@@ -398,6 +398,12 @@ pci_enable(pci_dev_t *parent_dev)
     for (cur = parent_dev->pd_child; cur != NULL; cur = cur->pd_next) {
         uint is_bridge = (cur->pd_htype & 0x7F) == 1;
         if (is_bridge) {
+#if 0
+            /* Disable bridge secondary side error reporting */
+            pci_write16(cur->pd_bus, cur->pd_dev, cur->pd_func,
+                        PCI_OFF_BR_CONTROL, BIT(0));  // Enable parity
+#endif
+
             pci_enable(cur);
 
             /* Enable bridge secondary side error reporting */
@@ -442,7 +448,7 @@ pci_scan(void)
         printf("No PCI bridge located\n");
         return;
     }
-    pci_bridge_control(0, FLAG_BRIDGE_RESET);
+    pci_bridge_control(0, -1, -1, -1, FLAG_BRIDGE_RESET);
     if (bridge_type != BRIDGE_TYPE_AMIGAPCI)
         firestorm_mode = 1;
     if (firestorm_mode) {

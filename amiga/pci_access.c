@@ -467,9 +467,28 @@ pci_write_buf(uint bus, uint dev, uint func, uint offset, uint width,
  * the downstream devices is supported.
  */
 void
-pci_bridge_control(int pci_bridge, uint flags)
+pci_bridge_control(int pci_bridge, int bus, int dev, int func, uint flags)
 {
     int bridge_num;
+    if ((bus != -1) && (dev != -1) && (func != -1)) {
+        uint32_t val = pci_read32(bus, dev, func, PCI_OFF_REVISION);
+        if ((val >> 16) != PCI_CLASS_PCI_BRIDGE) {
+            printf("PCI %x.%x.%x is not a bridge\n", bus, dev, func);
+            return;
+        }
+        printf("PCI reset subordinate of %x.%x.%x\n", bus, dev, func);
+        val = pci_read16(bus, dev, func, PCI_OFF_BR_CONTROL);
+
+        /* Force reset */
+        val |= PCI_BRIDGE_CTL_BUS_RESET;
+        pci_write16(bus, dev, func, PCI_OFF_BR_CONTROL, val);
+        Delay(1);
+
+        /* Release reset */
+        val &= ~PCI_BRIDGE_CTL_BUS_RESET;
+        pci_write16(bus, dev, func, PCI_OFF_BR_CONTROL, val);
+        return;
+    }
     for (bridge_num = 0; bridge_num < PCI_MAX_BUS; bridge_num++) {
         if ((pci_bridge != -1) && (pci_bridge != bridge_num))
             continue;

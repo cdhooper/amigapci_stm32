@@ -135,6 +135,8 @@
 #define FLAG_BRIDGE_RESET       0x01    // Reset the PCI bridge
 #define FLAG_BRIDGE_RESET_HOLD  0x02    // Put the PCI bridge in reset
 
+#define PCI_BRIDGE_CTL_BUS_RESET 0x40   // Reset downstream of PCI bridge
+
 #define PCI_DEVFN(slot,func)    ((((slot) & 0x1f) << 3) | ((func) & 0x07))
 #define PCI_SLOT(devfn)         (((devfn) >> 3) & 0x1f)
 #define PCI_FUNC(devfn)         ((devfn) & 0x07)
@@ -156,7 +158,7 @@ void     pci_write32v(uint bus, uint dev, uint func, uint off, uint32_t wval);
 rc_t     pci_read_buf(uint bus, uint dev, uint func, uint offset, uint bytes, void *bufp);
 rc_t     pci_write_buf(uint bus, uint dev, uint func, uint offset, uint bytes, void *bufp);
 void    *pci_cfg_base(uint bus, uint dev, uint func, uint off);
-void     pci_bridge_control(int pci_bridge, uint flags);
+void     pci_bridge_control(int pci_bridge, int bus, int dev, int func, uint flags);
 int      pci_bridge_is_present(void);
 int      pci_scan_cb(pci_scan_cb_t callback);
 

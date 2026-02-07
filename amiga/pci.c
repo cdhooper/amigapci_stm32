@@ -471,7 +471,7 @@ static const struct {
     [0x04] = { 0x01, "Slot Identification" },
     [0x05] = { 0x03, "Message Signaled Interrupts (MSI)" },
     [0x06] = { 0x01, "CompactPCI Hotswap" },
-    [0x07] = { 0x01, "PCI-X" },
+    [0x07] = { 0x02, "PCI-X" },
     [0x08] = { 0x01, "HyperTransport" },
     [0x09] = { 0x08, "Vendor-specific" },
     [0x0a] = { 0x01, "Debug Port" },
@@ -580,6 +580,29 @@ static bits_t bits_pm_bse[] = {
     "D3hot:0=Remove power(B3),1=Stop clock(B2)",
     "Bus Power/Clock:0=Disabled,1=Enabled",
     NULL, NULL, NULL, NULL, NULL, NULL, NULL, "Data",
+};
+
+/* PCI-X Command Register (PCI-X capability offset 0x2) */
+static bits_t bits_pcix_cmd[] = {
+    "DParityRecovery", "RelaxedOrdering",
+        NULL, "Max Read:0=512,1=1024,2=2048,3=4096",
+    NULL, NULL, "Max Split:0=1,1=2,2=3,3=4,4=8,5=12,6=16,7=32", "Bit7",
+    "Bit8", "Bit9", "Bit10", "Bit11",
+    "Bit12", "Bit13", "Bit14", "Bit15",
+};
+
+/* PCI-X Status Register (PCI-X capability offset 0x4) */
+static bits_t bits_pcix_status[] = {
+    NULL, NULL, "Func", NULL,
+        NULL, NULL, NULL, "Dev",
+    NULL, NULL, NULL, NULL, NULL, NULL, NULL, "Bus",
+    "64-bit capable", "Max:0=66MHz,1=133MHz",
+        "Split Completion Discard", "Unexpected Split Completion",
+    "Bridge", NULL, "Max Read:0=512,1=1024,2=2048,3=4096", NULL,
+    NULL, "Max Split:0=1,1=2,2=3,3=4,4=8,5=12,6=16,7=32", NULL, NULL,
+    "Max ADQ/CRead:0=8/1KB,1=16/2KB,2=32/4KB,3=64/8KB,"
+    "4=128/16KB,5=256/32KB,6=512/64KB,7=1024/128KB",
+    "Split Completion Error", "Bit30", "Bit31"
 };
 
 /* PCI Express Capabilities (offset 0x2) */
@@ -1125,7 +1148,7 @@ bits_t bits_pcie_link_status[] = {
     "Bit10",
     "Link Training",
     "", // "Same XTAL clocks",
-    "", // "DL_Active",
+    "Active", // "DL_Active",
     "UERR Speed/Width Change",
     "CERR Speed/Width Change",
 };
@@ -1586,8 +1609,11 @@ pci_show_cap(uint bus, uint dev, uint func, uint32_t cap_pos, uint32_t value)
         }
         case PCI_CAP_ID_CHSWP:  // 0x06 CompactPCI HotSwap
             break;
-        case PCI_CAP_ID_PCIX:   // 0x07 PCI-X
+        case PCI_CAP_ID_PCIX: { // 0x07 PCI-X
+            show_bits("02: CMD   ", dword[0] >> 16, 2, bits_pcix_cmd);
+            show_bits("04: STATUS", dword[1], 4, bits_pcix_status);
             break;
+        }
         case PCI_CAP_ID_HT:     // 0x08 HyperTransport
             break;
         case PCI_CAP_ID_VNDR:   // 0x09 Vendor specific
@@ -2580,7 +2606,7 @@ lspci(uint p_bus, uint p_dev, uint p_func, uint p_vendor, uint p_device,
                 continue;
             if (flags & FLAG_SHOW_CADDR) {
                 tbase = (uintptr_t) pci_cfg_base(bus, dev, 0, 0);
-                printf("%26s%08x%13x PCI Config %u.%u.0\n", "",
+                printf("%27s%08x%13x PCI Config %u.%u.0\n", "",
                        tbase, 0x100, bus, dev);
             }
 
@@ -3101,8 +3127,13 @@ lspci_tree_r(uint p_bus, uint p_dev, uint p_func, uint p_vendor, uint p_device,
     pci_show_class(classrev);
     printf("\n");
     if (is_bridge) {
+        uint16_t br_control;
         if ((secbus <= p_bus) || (secbus == 0xff) || (maxbus < secbus))
             return (0);  // Downstream bus has not been configured
+
+        /* Disable bridge secondary side error reporting */
+        br_control = pci_read16(p_bus, p_dev, p_func, PCI_OFF_BR_CONTROL);
+        pci_write16(p_bus, p_dev, p_func, PCI_OFF_BR_CONTROL, BIT(0));
 
         for (dev = 0; dev < PCI_MAX_DEV; dev++) {
             for (func = 0; func < PCI_MAX_FUNC; func++) {
@@ -3110,6 +3141,9 @@ lspci_tree_r(uint p_bus, uint p_dev, uint p_func, uint p_vendor, uint p_device,
                              indent + 2);
             }
         }
+
+        /* Restore bridge secondary side error reporting */
+        pci_write16(p_bus, p_dev, p_func, PCI_OFF_BR_CONTROL, br_control);
     }
 
     return (0);
@@ -3253,19 +3287,19 @@ parse_pci_vendev(const char *arg, uint *p_vendor, uint *p_device)
 
 static const char cmd_options[] =
     "usage: pci <options>\n"
-    "   pci clear        clear PCI status registers (-c)\n"
-    "   pci help         show this help text (-h)\n"
-    "   pci ls [opts]    display PCI devices\n"
-    "       opts: -a     show config space addresses\n"
-    "             -d     show raw config space bytes\n"
-    "             -n     do not translate PCI space addresses to CPU space\n"
-    "             -t     display tree view of buses and devices\n"
-    "             -v     verbose (decode everything)\n"
-    "             b.d.f  specific bus, device, and/or function\n"
-    "             v.d    specific vendor and/or device function\n"
-    "             cap c  specific PCI capability (or ecap x for extended cap)\n"
-    "   pci reset        reset the PCI bridge (-r) or (-rr) to hold in reset\n"
-    "   pci status       show PCI status registers (-s)\n"
+    "pci clear         clear PCI status registers (-c)\n"
+    "pci help          show this help text (-h)\n"
+    "pci ls [opts]     display PCI devices\n"
+    "    opts: -a      show config space addresses\n"
+    "          -d      show raw config space bytes\n"
+    "          -n      do not translate PCI space addresses to CPU space\n"
+    "          -t      display tree view of buses and devices\n"
+    "          -v      verbose (decode everything)\n"
+    "          b.d.f   specific bus, device, and/or function\n"
+    "          v.d     specific vendor and/or device\n"
+    "          cap c   specific PCI capability (or ecap x for extended cap)\n"
+    "pci reset [b.d.f] reset the PCI bridge (-r) or (-rr) to hold in reset\n"
+    "pci status        show PCI status registers (-s)\n"
     "";
 
 typedef struct {
@@ -3366,12 +3400,6 @@ main(int argc, char **argv)
             }
             if (flags & FLAG_PCI_ECAP)
                 cap |= 0x10000;
-        } else if (flag_pci_reset && (pci_reset_bus_num == -1)) {
-            int count = strtox(ptr, 16, (unsigned int *) &pci_reset_bus_num);
-            if ((count < 1) || (ptr[count] != '\0')) {
-                printf("Unknown argument \"%s\"\n", ptr);
-                goto usage;
-            }
         } else {
             /* Attempt to parse bus.dev.func */
             char *tmp;
@@ -3415,7 +3443,8 @@ usage:
     } else if (flag_pci_ls) {
         lspci(bus, dev, func, vendor, device, cap);
     } else if (flag_pci_reset) {
-        pci_bridge_control(pci_reset_bus_num, (flag_pci_reset > 1) ?
+        pci_bridge_control(pci_reset_bus_num, bus, dev, func,
+                           (flag_pci_reset > 1) ?
                            FLAG_BRIDGE_RESET_HOLD : FLAG_BRIDGE_RESET);
     }
 
