@@ -461,7 +461,7 @@ void usb_hp_can_tx_isr(void) __attribute__((alias("unknown_handler")));
 void usb_lp_can_rx0_isr(void) __attribute__((alias("unknown_handler")));
 void can_rx1_isr(void) __attribute__((alias("unknown_handler")));
 void can_sce_isr(void) __attribute__((alias("unknown_handler")));
-void exti9_5_isr(void) __attribute__((alias("unknown_handler")));
+// void exti9_5_isr(void) __attribute__((alias("unknown_handler")));
 void tim1_brk_isr(void) __attribute__((alias("unknown_handler")));
 void tim1_up_isr(void) __attribute__((alias("unknown_handler")));
 void tim1_trg_com_isr(void) __attribute__((alias("unknown_handler")));

@@ -16,5 +16,6 @@ int  msg_process_fast(void);
 void msg_process_slow(void);
 void msg_process(void);
 void msg_init(void);
+extern uint8_t msg_source;
 
 #endif /* _MSG_H */

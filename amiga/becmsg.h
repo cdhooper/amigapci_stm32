@@ -21,5 +21,7 @@ uint send_cmd_retry(uint8_t cmd, void *arg, uint16_t arglen,
 const char *bec_err(uint status);
 
 void cia_spin(unsigned int ticks);
+extern uint8_t bec_msg_interface;
+uint cia_ticks(void);
 
 #endif  /* _BECMSG_H */

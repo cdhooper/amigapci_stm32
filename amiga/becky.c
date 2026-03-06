@@ -5188,6 +5188,9 @@ main(int argc, char *argv[])
                         case 'j':  // justlive
                             flag_livekeys = 1;
                             break;
+                        case 'k':
+                            bec_msg_interface++;
+                            break;
                         case 'l':  // load
                             if (++arg >= argc) {
                                 err_printf("-l option requires an argument, one"

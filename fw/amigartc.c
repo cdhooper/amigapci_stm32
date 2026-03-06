@@ -85,7 +85,7 @@ uint8_t         bec_msg_inbuf[280];
 uint8_t         bec_msg_outbuf[280];
 uint            bec_msg_out_max;    // Message length in nibbles
 uint            bec_msg_out;        // Current send position in nibbles
-static uint     bec_msg_in;         // Current receive position in nibbles
+uint            bec_msg_in;         // Current receive position in nibbles
 static uint64_t bec_msg_in_timeout;
 uint64_t        bec_msg_out_timeout;
 char            bec_errormsg_delayed[80];  // Error message for slow path
@@ -380,6 +380,7 @@ exti0_isr(void)
                                             BEC_MSG_CRC_LEN +
                                             ((bec_msg_inbuf[3] << 8) |
                                              bec_msg_inbuf[4]);
+                            msg_source = 0;
                             if ((bec_msg_in / 2 >= expected) &&
                                 msg_process_fast()) {
                                 bec_msg_in = 0;

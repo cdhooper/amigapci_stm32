@@ -11,6 +11,13 @@
 #include "cpu_control.h"
 #include "pci_access.h"
 
+#ifndef BIT
+#define BIT(x)        (1 << (x))
+#endif
+
+#define swap16(x) __builtin_bswap16(x)
+#define swap32(x) __builtin_bswap32(x)
+
 #define ZORRO_MFG_MATAY         0xad47
 #define ZORRO_PROD_MATAY_BD     0x0001
 #define ZORRO_MFG_E3B           0x0e3b

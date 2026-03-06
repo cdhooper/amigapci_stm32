@@ -234,7 +234,9 @@ get_cpu_serial(char *buf)
 
         if (temp == 0xff)
             continue;
-        if ((temp >= '0') && (temp <= 'Z')) {
+        if (((temp >= '0') && (temp <= '9')) ||
+            ((temp >= 'A') && (temp <= 'Z')) ||
+            ((temp >= 'a') && (temp <= 'z'))) {
             /* Show ASCII directly */
             buf[len++] = (char) temp;
             continue;

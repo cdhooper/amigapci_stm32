@@ -69,7 +69,12 @@ extern struct ExecBase *SysBase;
 #define BIT(x) (1U << (x))
 #define ARRAY_SIZE(x) ((sizeof (x) / sizeof ((x)[0])))
 
+#define BEC_MSG_INTERFACE_UNKNOWN 0  // Need to determine message interface
+#define BEC_MSG_INTERFACE_RTC     1  // Communicate through RTC
+#define BEC_MSG_INTERFACE_KBD     2  // Communicate through keyboard controller
+
 extern uint flag_debug;
+uint8_t bec_msg_interface = BEC_MSG_INTERFACE_UNKNOWN;
 
 /* RTC offsets for Ricoh RP5C01 in AmigaPCI */
 #define RP_ONE_SEC   (0x0 * 4 + 1)  // M0 Second One's
@@ -108,9 +113,6 @@ extern uint flag_debug;
 #define RTC_REG(x) (*((volatile uint8_t *) 0xdc0000 + x))
 
 static const uint8_t bec_magic[] = { 0xc, 0xd, 0x6, 0x8 };
-
-#define CIAA_TBLO        ADDR8(0x00bfe601)
-#define CIAA_TBHI        ADDR8(0x00bfe701)
 
 #define CIA_USEC(x)      (x * 715909 / 1000000)
 #define INTERRUPTS_DISABLE() if (irq_disabled++ == 0) \
@@ -241,9 +243,9 @@ cmd_flush(uint long_flush)
     }
 }
 
-uint
-send_cmd(uint8_t cmd, void *arg, uint16_t arglen,
-         void *reply, uint replymax, uint *replyalen)
+static uint
+send_rtc_cmd(uint8_t cmd, void *arg, uint16_t arglen,
+             void *reply, uint replymax, uint *replyalen)
 {
     uint     pos;
     uint     timeout;
@@ -344,6 +346,239 @@ send_cmd(uint8_t cmd, void *arg, uint16_t arglen,
     }
 
     return (status);
+}
+
+#define CIAA_PRA      VADDR8(0x00bfe001)  // Port Register A
+#define CIAA_PRB      VADDR8(0x00bfe101)  // Port Register B
+#define CIAA_DDRA     VADDR8(0x00bfe201)  // Data Direction Register A
+#define CIAA_DDRB     VADDR8(0x00bfe301)  // Data Direction Register B
+#define CIAA_TALO     VADDR8(0x00bfe401)  // Timer A low byte
+#define CIAA_TAHI     VADDR8(0x00bfe501)  // Timer A high byte
+#define CIAA_TBLO     VADDR8(0x00bfe601)  // Timer B low byte
+#define CIAA_TBHI     VADDR8(0x00bfe701)  // Timer B high byte
+#define CIAA_ELSB     VADDR8(0x00bfe801)  // Event counter bits 0-7
+#define CIAA_EMID     VADDR8(0x00bfe901)  // Event counter bits 8-15
+#define CIAA_EMSB     VADDR8(0x00bfea01)  // Event counter bits 16-23
+#define CIAA_RSVD     VADDR8(0x00bfeb01)  // Unused
+#define CIAA_SDR      VADDR8(0x00bfec01)  // Serial Port Data register (SDR)
+#define CIAA_ICR      VADDR8(0x00bfed01)  // Interrupt Control Register
+#define CIAA_CRA      VADDR8(0x00bfee01)  // Control Register A
+#define CIAA_CRB      VADDR8(0x00bfef01)  // Control Register B
+
+#define CIA_ICR_TA      BIT(0) // Timer A timeout
+#define CIA_ICR_TB      BIT(1) // Timer B timeout
+#define CIA_ICR_ALARM   BIT(2) // Alarm
+#define CIA_ICR_SP      BIT(3) // Shift register full (input) or empty (output)
+#define CIA_ICR_FLAG    BIT(4) // Flag
+#define CIA_ICR_IR      BIT(7) // Interrupt request (read)
+#define CIA_ICR_SET     BIT(7) // 1=Set 0=Clear (write)
+
+#define CIA_CRA_START   BIT(0) // Start timer
+#define CIA_CRA_PBON    BIT(1) // 1=PB6on
+#define CIA_CRA_OUTMODE BIT(2) // 0=pulse, 1=toggle
+#define CIA_CRA_RUNMODE BIT(3) // 0=continuous, 1=one-shot
+#define CIA_CRA_LOAD    BIT(4) // 1=Force load (strobe)
+#define CIA_CRA_INMODE  BIT(5) // 0=clock, 1=CNT
+#define CIA_CRA_SPMOD   BIT(6) // 0=input, 1=output
+#define CIA_CRA_RSVD    BIT(7) // Unused
+
+static uint
+wait_cia_txbuf(void)
+{
+    uint timeout = 0;
+    uint16_t last_tick = cia_ticks();
+    while ((*CIAA_ICR & CIA_ICR_SP) == 0) {
+        uint16_t now_tick = cia_ticks();
+        uint16_t diff = last_tick - now_tick;
+        if (diff < 0x8000) {
+            timeout += diff;
+            if (timeout >= 60000) {  // Should take about 35 usec
+                printf("t", diff);
+                return (1);
+            }
+        }
+    }
+    return (0);
+}
+
+static uint
+send_kbd_byte(uint8_t data)
+{
+    *CIAA_SDR = data;
+    return (wait_cia_txbuf());
+}
+
+static uint
+get_kbd_byte(uint8_t *data)
+{
+    uint     timeout = 0;
+    uint16_t last_tick = cia_ticks();
+    while (1) {
+        uint16_t now_tick = cia_ticks();
+        uint16_t diff = last_tick - now_tick;
+        last_tick = now_tick;
+        if (diff < 0x8000) {
+            timeout += diff;
+            if (timeout >= 100000) {  // 100 ms maximum
+                return (1);
+            }
+        }
+        if (*CIAA_ICR & CIA_ICR_SP) {
+            *data = *CIAA_SDR;
+            return (0);
+        }
+    }
+}
+
+static uint
+send_kbd_cmd(uint8_t cmd, void *arg, uint16_t arglen,
+         void *reply, uint replymax, uint *replyalen)
+{
+    uint8_t *argbuf = arg;
+    uint8_t *replybuf = reply;
+    uint8_t status = BEC_STATUS_TIMEOUT;
+    uint8_t data0;
+    uint8_t data1;
+    uint8_t data2;
+    uint8_t data3;
+    uint8_t got_magic[2];
+    uint32_t got_crc;
+    uint32_t calc_crc;
+    uint16_t msglen;
+    uint     receive_good = 0;
+
+    Disable();
+    uint8_t cra     = *CIAA_CRA;
+    uint8_t ciatalo = *CIAA_TALO;
+    uint8_t ciatahi = *CIAA_TAHI;
+//  *CIAA_TALO = 1;  // About 178 kHz -- BEC FW seems to be able to handle it!
+    *CIAA_TALO = 2;  // About 120 kHz
+//  *CIAA_TALO = 4;  // About 71 kHz
+//  *CIAA_TALO = 8;  // About 39 kHz
+    *CIAA_TAHI = 0;
+
+    /* Set Serial port to output mode */
+    *CIAA_CRA = CIA_CRA_SPMOD | CIA_CRA_OUTMODE | CIA_CRA_START;
+
+    if ((send_kbd_byte(0xcd) == 0) &&
+        (send_kbd_byte(0x68) == 0) &&
+        (send_kbd_byte(cmd) == 0) &&
+        (send_kbd_byte(arglen >> 8) == 0) &&
+        (send_kbd_byte(arglen) == 0)) {
+        uint     pos;
+        uint32_t crc;
+        for (pos = 0; pos < arglen; pos++)
+            if (send_kbd_byte(argbuf[pos]))
+                break;
+        crc = crc32(0, &cmd, 1);
+        crc = crc32(crc, &arglen, 2);
+        crc = crc32(crc, argbuf, arglen);
+        if ((send_kbd_byte(crc >> 24) == 0) &&
+            (send_kbd_byte(crc >> 16) == 0) &&
+            (send_kbd_byte(crc >> 8) == 0) &&
+            (send_kbd_byte(crc) == 0)) {
+        }
+    }
+    cia_spin(10);   // Wait for remaining byte to be sent (relative to TALO)
+
+    *CIAA_TALO = ciatalo;
+    *CIAA_TAHI = ciatahi;
+    *CIAA_CRA  = cra;  // Restore Serial port
+
+    /* Attempt to receive message */
+    if (get_kbd_byte(&got_magic[0]) || get_kbd_byte(&got_magic[1]))
+        goto kbd_receive_fail;
+    if ((got_magic[0] != 0xcd) || (got_magic[1] != 0x68)) {
+        printf("Bad magic %02x %02x\n", got_magic[0], got_magic[1]);
+        status = BEC_STATUS_BADMAGIC;
+drop_reply:
+        while (get_kbd_byte(&data0) == 0)
+            ;
+        goto kbd_receive_fail;
+    }
+    if (get_kbd_byte(&status) || get_kbd_byte(&data0) || get_kbd_byte(&data1))
+        goto kbd_receive_fail;
+    msglen = (data0 << 8) | data1;
+    *replyalen = msglen;
+    if (msglen > 0x110) {
+        printf("Bad msglen %02x\n", msglen);
+        status = BEC_STATUS_REPLYLEN;
+        goto drop_reply;
+    }
+    for (uint pos = 0; pos < msglen; pos++) {
+        if (get_kbd_byte(&data0)) {
+kbd_receive_fail:
+            status = BEC_STATUS_NODATA;
+            goto kbd_receive_end;
+        }
+        if (pos < replymax)
+            replybuf[pos] = data0;
+    }
+
+    /* Get message CRC */
+    if (get_kbd_byte(&data0) || get_kbd_byte(&data1) ||
+        get_kbd_byte(&data2) || get_kbd_byte(&data3)) {
+        goto kbd_receive_fail;
+    }
+    got_crc = (data0 << 24) | (data1 << 16) | (data2 << 8) | data3;
+    receive_good = 1;
+
+kbd_receive_end:
+    *CIAA_CRA = cra;  // Restore Serial port
+    cia_spin(100);
+    (void) *CIAA_SDR;
+    (void) *CIAA_ICR;
+    Enable();
+
+    if (receive_good) {
+        calc_crc = crc32(0, &status, 1);
+        calc_crc = crc32(calc_crc, &msglen, 2);
+        calc_crc = crc32(calc_crc, replybuf, msglen);
+        if (calc_crc != got_crc) {
+            printf("CRC %08x != expected %08x\n", calc_crc, got_crc);
+            status = BEC_STATUS_REPLYCRC;
+            goto drop_reply;
+        }
+    } else {
+        status = BEC_STATUS_FAIL;
+    }
+    return (status);
+}
+
+static uint8_t
+determine_msg_interface(void)
+{
+    uint rc;
+    uint replylen;
+
+    /* Attempt message through RTC */
+    rc = send_rtc_cmd(BEC_CMD_NOP, NULL, 0, NULL, 0, &replylen);
+    if (rc == 0)
+        return (BEC_MSG_INTERFACE_RTC);
+
+    /* Attempt message through keyboard */
+    rc = send_kbd_cmd(BEC_CMD_NOP, NULL, 0, NULL, 0, &replylen);
+    if (rc == 0)
+        return (BEC_MSG_INTERFACE_KBD);
+
+    return (BEC_MSG_INTERFACE_UNKNOWN);
+}
+
+uint
+send_cmd(uint8_t cmd, void *arg, uint16_t arglen,
+         void *reply, uint replymax, uint *replyalen)
+{
+    if (bec_msg_interface == BEC_MSG_INTERFACE_UNKNOWN)
+        bec_msg_interface = determine_msg_interface();
+
+    switch (bec_msg_interface) {
+        case BEC_MSG_INTERFACE_KBD:
+            return (send_kbd_cmd(cmd, arg, arglen, reply, replymax, replyalen));
+        case BEC_MSG_INTERFACE_RTC:
+            return (send_rtc_cmd(cmd, arg, arglen, reply, replymax, replyalen));
+        default:
+            return (BEC_STATUS_FAIL);
+    }
 }
 
 uint

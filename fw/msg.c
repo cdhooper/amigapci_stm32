@@ -29,6 +29,8 @@ static const uint8_t testpatt_reply[] = {
     0xef, 0xdf, 0xbf, 0x7f,
 };
 
+uint8_t msg_source;  // 0 = RTC, 1 = Keyboard
+
 static void
 msg_reply(uint rstatus, uint rlen1, const void *data1,
                         uint rlen2, const void *data2)
@@ -56,8 +58,15 @@ msg_reply(uint rstatus, uint rlen1, const void *data1,
     crc = crc32(0, bec_msg_outbuf + 2, rlen + BEC_MSG_HDR_LEN - 2);
     crc = SWAP32(crc);
     memcpy(&bec_msg_outbuf[BEC_MSG_HDR_LEN + rlen], &crc, BEC_MSG_CRC_LEN);
-    bec_msg_out_max = (rlen + BEC_MSG_HDR_LEN + BEC_MSG_CRC_LEN) * 2;
 
+    if (msg_source == 1) {
+        /* Reply is via keyboard byte sequence */
+        bec_msg_out_max = (rlen + BEC_MSG_HDR_LEN + BEC_MSG_CRC_LEN);
+        keyboard_reply_msg();
+        return;
+    }
+
+    bec_msg_out_max = (rlen + BEC_MSG_HDR_LEN + BEC_MSG_CRC_LEN) * 2;
     bec_msg_out_timeout = timer_tick_plus_msec(1000);
 
     /* Kick off reply by pre-loading first response byte */
@@ -297,6 +306,7 @@ bad_arg:
             switch (req->bkm_source) {
                 case BKM_SOURCE_NONE:
                 case BKM_SOURCE_HID_SCANCODE:
+                case BKM_SOURCE_AMIGA_SCANCODE:
                     break;
                 default:
                     goto bad_arg;

@@ -27,7 +27,12 @@
 #include "irq.h"
 #include "hid_kbd_codes.h"
 #include <libopencm3/stm32/gpio.h>
+#include <libopencm3/stm32/exti.h>
+#include <libopencm3/cm3/nvic.h>
 #include "amiga_kbd_codes.h"
+#include "amigartc.h"
+#include "bec_cmd.h"
+#include "msg.h"
 
 #undef DEBUG_KEYBOARD
 #ifdef DEBUG_KEYBOARD
@@ -45,14 +50,19 @@ static volatile uint8_t ak_ctrl_amiga_amiga;
 uint8_t  amiga_keyboard_sent_wake;
 uint8_t  amiga_keyboard_has_sync;
 uint8_t  amiga_keyboard_lost_sync;
+static uint8_t   amiga_keyboard_ack_expected;
 
 /* Keyboard scancode capture globals */
 volatile uint8_t keyboard_cap_src_req;  // New capture source
 static uint8_t   keyboard_cap_src;      // Capture source (0 = None, 1 = HID)
 volatile uint64_t keyboard_cap_timeout;  // Capture timeout
+static uint64_t   amiga_kbd_msg_in_timeout;  // Message from Amiga timeout
 static uint8_t   keyboard_cap_prod;
 static uint8_t   keyboard_cap_cons;
 static uint16_t  keyboard_cap_buf[64];
+
+static uint8_t  bitcap_buf[sizeof (bec_msg_inbuf)];
+static uint     kbd_msg_rx_cur;
 
 /* sa_flags values */
 #define SAF_ADD_SHIFT 0x01
@@ -816,23 +826,29 @@ convert_scancode_to_amiga(uint8_t keycode, uint8_t modifier,
     return (code);
 }
 
-uint8_t
-capture_scancode(uint16_t keycode)
+static void
+keyboard_cap_add(uint16_t keycode)
 {
-    uint next;
-    if (keyboard_cap_src == 0)
-        return (keycode);
-    if (((keycode & 0xff) == 0xff) || ((keycode & (0xff | KEYCAP_BUTTON)) == 0))
-        return (keycode);
-
     /* Add captured input to buffer */
+    uint next;
     next = keyboard_cap_prod + 1;
     if (next >= ARRAY_SIZE(keyboard_cap_buf))
         next = 0;
     if (next == keyboard_cap_cons)
-        return (0);  // No space
+        return;  // No space
     keyboard_cap_buf[keyboard_cap_prod] = keycode;
     keyboard_cap_prod = next;
+}
+
+uint8_t
+capture_scancode(uint16_t keycode)
+{
+    if (keyboard_cap_src != BKM_SOURCE_HID_SCANCODE)
+        return (keycode);
+    if (((keycode & 0xff) == 0xff) || ((keycode & (0xff | KEYCAP_BUTTON)) == 0))
+        return (keycode);
+
+    keyboard_cap_add(keycode);
     return (0);
 }
 
@@ -893,6 +909,31 @@ get_kbclk_output_value(void)
    return (*ADDR32(BND_IO(KBDATA_PORT + GPIO_ODR_OFFSET, low_bit(KBDATA_PIN))));
 }
 
+static inline void
+kbd_receive_debug(uint which, uint value)
+{
+#if 0
+    uint addr;
+    switch (which) {
+        default:
+        case 0:
+            addr = BND_IO(D16_PORT + GPIO_ODR_OFFSET, low_bit(D16_PIN));
+            break;
+        case 1:
+            addr = BND_IO(D17_PORT + GPIO_ODR_OFFSET, low_bit(D17_PIN));
+            break;
+        case 2:
+            addr = BND_IO(D18_PORT + GPIO_ODR_OFFSET, low_bit(D18_PIN));
+            break;
+        case 3:
+            addr = BND_IO(D19_PORT + GPIO_ODR_OFFSET, low_bit(D19_PIN));
+            break;
+   }
+   *ADDR32(addr) = value;
+#endif
+}
+
+
 static void
 keyboard_power_button_press(void)
 {
@@ -947,12 +988,25 @@ amiga_keyboard_send(void)
     if (ak_rb_consumer == ak_rb_producer)
         return;  // Send buffer is empty
 
+    if ((kbd_msg_rx_cur != 0) || (bec_msg_in != 0))
+        return;  // Message inbound from Amiga
+
+    if (keyboard_cap_src == BKM_SOURCE_AMIGA_SCANCODE) {
+        keyboard_cap_add(ak_rb[ak_rb_consumer]);
+        ak_rb_consumer = ((ak_rb_consumer + 1) % sizeof (ak_rb));
+        return;
+    }
+
     if (get_kbclk() == 0) {
+        if (kbd_msg_rx_cur != 0)
+            return;
         amiga_keyboard_has_sync  = 0;
         amiga_keyboard_lost_sync = 1;
         return;
     }
     if (get_kbdat() == 0) {
+        if (kbd_msg_rx_cur != 0)
+            return;
         if (timer_kbdata_0 == 0) {
             timer_kbdata_0 = timer_tick_plus_msec(10);
             return;
@@ -971,7 +1025,9 @@ amiga_keyboard_send(void)
         code = ak_rb[ak_rb_consumer];
     dprintf(DF_AMIGA_KEYBOARD, "[tx %x]", code);
 
+    /* Rotate and invert for send */
     code = ~((code << 1) | (code >> 7));
+    exti_disable_request(EXTI9);
     for (mask = 0x80; mask != 0; mask >>= 1) {
         if (code & mask)
             set_kbdat_1();
@@ -991,6 +1047,8 @@ amiga_keyboard_send(void)
             timer_delay_usec(19);
             set_kbclk_1();
             timer_kbdata_0 = 0;
+            exti_reset_request(EXTI9);
+            exti_enable_request(EXTI9);
             return;
         }
         timer_delay_usec(20);
@@ -1009,9 +1067,14 @@ amiga_keyboard_send(void)
             amiga_keyboard_has_sync  = 0;
             amiga_keyboard_lost_sync = 1;
             printf("Lsync2");
+            exti_reset_request(EXTI9);
+            exti_enable_request(EXTI9);
             return;
         }
     }
+    amiga_keyboard_ack_expected = 1;
+    exti_reset_request(EXTI9);
+    exti_enable_request(EXTI9);
     timer_kbdata_0 = 0;
 //  printf(",%02x,", code);
 
@@ -1078,7 +1141,7 @@ keyboard_put_amiga(uint8_t code)
         return;
     }
 
-    /* Rotate and invert for send */
+    /* Add to and of ring buffer */
     ak_rb[ak_rb_producer] = code;
     __sync_synchronize();  // Memory barrier
     ak_rb_producer = new_prod;
@@ -1102,7 +1165,7 @@ keyboard_put_amiga_stack(uint8_t code)
         return;
     }
 
-    /* Rotate and invert for send */
+    /* Push to top of ring buffer, so this code is sent next */
     ak_rb[new_cons] = code;
     ak_rb_consumer = new_cons;
 }
@@ -1153,6 +1216,7 @@ amiga_keyboard_sync(void)
         case 1:  // Drive KBCLK low
             if (!timer_tick_has_elapsed(timer_kbsync))
                 return;
+            exti_disable_request(EXTI9);
             timer_kbsync = timer_tick_plus_usec(20);
             set_kbclk_0();
             sync_state++;
@@ -1162,6 +1226,9 @@ amiga_keyboard_sync(void)
                 return;
             timer_kbsync = timer_tick_plus_usec(20);
             set_kbclk_1();
+            amiga_keyboard_ack_expected = 1;
+            exti_reset_request(EXTI9);
+            exti_enable_request(EXTI9);
             sync_state++;
             break;
         case 3:  // Release KBDATA (high)
@@ -1889,11 +1956,157 @@ is_ctrl_amiga_amiga(uint value)
     return (0);
 }
 
+static void
+keyboard_handle_msg_timeout(void)
+{
+    if (kbd_msg_rx_cur != 0) {
+        if (amiga_kbd_msg_in_timeout == 0) {
+            amiga_kbd_msg_in_timeout = timer_tick_plus_msec(1000);
+        } else {
+            if (timer_tick_has_elapsed(amiga_kbd_msg_in_timeout)) {
+                /* Message did not arrive in time */
+#if 0
+                printf("E %x ", kbd_msg_rx_cur);
+                uint max = (kbd_msg_rx_cur + 7) / 8;
+                for (uint pos = 0; pos < max; pos++)
+                    printf(" %02x", bitcap_buf[pos]);
+                printf("\n");
+#endif
+                amiga_kbd_msg_in_timeout = 0;
+                kbd_msg_rx_cur = 0;
+                return;
+            }
+        }
+    }
+}
+
+static void
+keyboard_handle_msg_from_amiga(void)
+{
+    uint rxpos = kbd_msg_rx_cur >> 3;
+    if (rxpos < BEC_MSG_HDR_LEN + BEC_MSG_CRC_LEN)
+        return;  // Minimum message
+    uint expected = BEC_MSG_HDR_LEN + BEC_MSG_CRC_LEN +
+                    ((bitcap_buf[3] << 8) | bitcap_buf[4]);
+    if (rxpos < expected)
+        return;
+    memcpy(bec_msg_inbuf, bitcap_buf, rxpos);
+
+    amiga_kbd_msg_in_timeout = 0;
+    kbd_msg_rx_cur = 0;
+
+    msg_source = 1;
+    if (msg_process_fast() == 0) {
+        /*
+         * bec_msg_in is needed by amigartc_poll() to decide whether
+         * to call msg_process_slow().
+         */
+        bec_msg_in = rxpos * 2;
+    }
+}
+
+void
+exti9_5_isr(void)
+{
+    /*
+     * More than a single EXTI line (5 - 9) share this vector.
+     * If more are mapped, the handler must check the EXTI->PR (pending
+     * register) to determine the EXTI line responsible for the interrupt.
+     */
+    kbd_receive_debug(1, 0);
+    uint16_t clkdat = gpio_get(KBCLK_PORT, KBCLK_PIN | KBDATA_PIN);
+    uint     next;
+    exti_reset_request(EXTI9);
+    if ((clkdat & KBCLK_PIN) == 0) {
+        kbd_receive_debug(1, 1);
+        return;
+    }
+    if (amiga_keyboard_has_sync == 0) {
+        kbd_receive_debug(1, 1);
+        return;
+    }
+#if 0
+    if (amiga_keyboard_ack_expected) {
+        amiga_keyboard_ack_expected = 0;
+        kbd_receive_debug(1, 1);
+        return;
+    }
+#endif
+    next = kbd_msg_rx_cur + 1;
+    if (next >= ARRAY_SIZE(bitcap_buf) * 8) {
+        kbd_receive_debug(1, 1);
+        return;  // No space
+    }
+
+    bitcap_buf[kbd_msg_rx_cur >> 3] <<= 1;
+    if (clkdat & KBDATA_PIN)
+        bitcap_buf[kbd_msg_rx_cur >> 3] |= 1;
+    kbd_msg_rx_cur = next;
+
+    keyboard_handle_msg_from_amiga();
+    kbd_receive_debug(1, 1);
+}
+
+void
+keyboard_reply_msg(void)
+{
+    uint pos;
+    uint mask;
+
+    exti_disable_request(EXTI9);
+    for (pos = 0; pos < bec_msg_out_max; pos++) {
+        uint8_t code = bec_msg_outbuf[pos];
+        for (mask = 0x80; mask != 0; mask >>= 1) {
+            if (code & mask)
+                set_kbdat_1();
+            else
+                set_kbdat_0();
+            timer_delay_usec(19);
+            set_kbclk_0();
+            timer_delay_usec(20);
+            if ((code & mask) && (get_kbdat() == 0)) {
+                timer_delay_usec(10);
+                if (get_kbdat() == 0) {
+                    printf("KBDAT stuck low at %x.%x of %x [%02x]\n",
+                           pos, mask, bec_msg_out_max, code);
+                    set_kbclk_1();
+                    timer_delay_usec(10);
+                    goto send_fail;
+                }
+            }
+            set_kbclk_1();
+            timer_delay_usec(20);
+        }
+        timer_delay_usec(0);
+    }
+send_fail:
+    set_kbdat_1();
+
+    exti_reset_request(EXTI9);
+    exti_enable_request(EXTI9);
+}
+
 void
 keyboard_poll(void)
 {
     static uint8_t last_ctrl_amiga_amiga;
     static uint8_t recursive;
+
+    if (config.debug_flag & 0x10000000) {
+        config.debug_flag &= ~0x10000000;
+        printf("bc prod=%x buf=%02x %02x\n",
+               kbd_msg_rx_cur, bitcap_buf[0], bitcap_buf[1]);
+        printf("bc mit=%lx:%08lx\n",
+               (uint32_t) (amiga_kbd_msg_in_timeout >> 32),
+               (uint32_t) amiga_kbd_msg_in_timeout);
+        for (uint pos = 0; pos < bec_msg_out_max; pos++) {
+            printf(" %02x", bec_msg_outbuf[pos]);
+        }
+        printf("\n");
+    }
+
+    /* Handle incoming BEC message timeout */
+    keyboard_handle_msg_timeout();
 
     if (usb_keyboard_count == 0) {
         amiga_keyboard_sent_wake = 0;  // No USB keyboard
@@ -1936,6 +2149,10 @@ keyboard_poll(void)
 
     if (amiga_in_reset)
         return;
+
+    if (kbd_msg_rx_cur != 0) {
+        return;  // Can't send anything because Amiga initiated a message
+    }
 
     if (amiga_keyboard_has_sync == 0) {
         amiga_keyboard_sync();
@@ -2008,11 +2225,38 @@ void
 keyboard_init(void)
 {
     ak_rb_producer = ak_rb_consumer;
+
+#if 0
+    /* Map KBDATA (PC8) to EXTI8 */
+    exti_select_source(EXTI8, KBDATA_PORT);  // GPIOC
+    exti_set_trigger(EXTI8, EXTI_TRIGGER_BOTH);
+    exti_enable_request(EXTI8);
+    exti_reset_request(EXTI8);
+#endif
+
+    /* Map KBCLK (PC9) to EXTI9 */
+    exti_select_source(EXTI9, KBCLK_PORT);  // GPIOC
+    exti_set_trigger(EXTI9, EXTI_TRIGGER_RISING);
+
+    /* Enable KBCLK interrupt handler */
+    exti_reset_request(EXTI9);
+    exti_enable_request(EXTI9);
+    nvic_clear_pending_irq(NVIC_EXTI9_5_IRQ);
+    nvic_set_priority(NVIC_EXTI9_5_IRQ, 0x30);
+    nvic_enable_irq(NVIC_EXTI9_5_IRQ);
+
 #if 0
     printf("BND KBCLK_IN=%x KBCLK_OUT=%x KBDAT_IN=%x KBDAT_OUT=%x\n",
            BND_IO(KBCLK_PORT + GPIO_IDR_OFFSET, low_bit(KBCLK_PIN)),
            BND_IO(KBCLK_PORT + GPIO_ODR_OFFSET, low_bit(KBCLK_PIN)),
            BND_IO(KBDATA_PORT + GPIO_IDR_OFFSET, low_bit(KBDATA_PIN)),
            BND_IO(KBDATA_PORT + GPIO_ODR_OFFSET, low_bit(KBDATA_PIN)));
+#endif
+
+#if 0
+    printf("GPIO D16 D17 debug\n");
+    gpio_setv(D16_PORT, D16_PIN | D17_PIN, 1);
+    gpio_setmode(D16_PORT, D16_PIN | D17_PIN | D18_PIN | D19_PIN,
+                 GPIO_SETMODE_OUTPUT_25);
 #endif
 }

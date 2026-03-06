@@ -37,6 +37,7 @@ void keyboard_get_default_keys(uint start, uint count, uint8_t *buf);
 void keyboard_set_defaults(void);
 uint keyboard_reset_warning(void);
 uint keyboard_get_capture(uint maxcount, uint16_t *buf);
+void keyboard_reply_msg(void);
 void keyboard_poll(void);
 void keyboard_init(void);
 uint8_t capture_scancode(uint16_t keycode);

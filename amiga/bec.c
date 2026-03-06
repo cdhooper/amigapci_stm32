@@ -28,6 +28,9 @@ const char *version = "\0$VER: bec "VERSION" ("BUILD_DATE") \xA9 Chris Hooper";
 #include <inline/dos.h>
 #include <exec/execbase.h>
 #include <exec/memory.h>
+#include <devices/inputevent.h>
+#include <devices/input.h>
+#include "amiga_kbd_codes.h"
 #include "../fw/bec_cmd.h"
 #include "becmsg.h"
 #include "crc32.h"
@@ -92,7 +95,7 @@ static const char cmd_options[] =
     "   quiet        minimize test output\n"
     "   set <n> <v>  set BEC value <n>=\"name\" and <v> is string (-s)\n"
     "   term         open BEC firmware terminal [-T]\n"
-    "   test[01234]  do interface test (-t)\n";
+    "   test[0123]   do interface test (-t)\n";
 
 typedef struct {
     const char *const short_name;
@@ -876,6 +879,132 @@ cmd_set_usage:
 }
 
 /*
+ * update_qualifier
+ * ----------------
+ * Handle Amiga scancodes for shift, control, alt, etc to update the
+ * qualifier field which must be presented to input.librayr in the
+ * injected scancode input.
+ */
+static void
+update_qualifier(uint scancode, UWORD *qualifier)
+{
+    uint key_up = scancode & 0x80;
+    uint mask = 0;
+    switch (scancode & 0x7f) {
+        case AS_LEFTSHIFT:
+            mask = IEQUALIFIER_LSHIFT;
+            break;
+        case AS_RIGHTSHIFT:
+            mask = IEQUALIFIER_RSHIFT;
+            break;
+        case AS_CAPSLOCK:
+            mask = IEQUALIFIER_CAPSLOCK;
+            break;
+        case AS_CTRL:
+            mask = IEQUALIFIER_CONTROL;
+            break;
+        case AS_LEFTALT:
+            mask = IEQUALIFIER_LALT;
+            break;
+        case AS_RIGHTALT:
+            mask = IEQUALIFIER_RALT;
+            break;
+        case AS_LEFTAMIGA:
+            mask = IEQUALIFIER_LCOMMAND;
+            break;
+        case AS_RIGHTAMIGA:
+            mask = IEQUALIFIER_RCOMMAND;
+            break;
+        default:
+            return;
+    }
+    if (key_up)
+        *qualifier &= ~mask;
+    else
+        *qualifier |= mask;
+}
+
+/*
+ * inject_key_scancode
+ * -------------------
+ * Inject the specified keyboard scancode into the Amiga input stream.
+ */
+static void
+inject_key_scancode(uint scancode)
+{
+    struct IOStdReq *ir;
+    struct InputEvent ie;
+    struct MsgPort *iport;
+    static UWORD qualifier;
+
+    iport = CreateMsgPort();
+    if (iport == 0)
+        return;  // Failed to create message port
+    ir = (struct IOStdReq *)CreateIORequest(iport, sizeof(struct IOStdReq));
+    if (OpenDevice("input.device", 0, (struct IORequest *)ir, 0) != 0) {
+        DeleteMsgPort(iport);
+        return;  // Failed to open device
+    }
+
+    update_qualifier(scancode, &qualifier);
+    ie.ie_NextEvent          = 0;
+    ie.ie_Class              = IECLASS_RAWKEY;
+    ie.ie_SubClass           = 0;
+    ie.ie_Code               = scancode;
+    ie.ie_Qualifier          = qualifier;
+    ie.ie_position.ie_addr   = 0;
+    ie.ie_TimeStamp.tv_secs  = 0;
+    ie.ie_TimeStamp.tv_micro = 0;
+
+    ir->io_Command = IND_WRITEEVENT;
+    ir->io_Data    = &ie;
+    ir->io_Length  = sizeof (ie);
+    DoIO((struct IORequest *) ir);
+    CloseDevice((struct IORequest *) ir);
+    DeleteIORequest(ir);
+    DeleteMsgPort(iport);
+}
+
+/*
+ * poll_bec_for_amiga_scancodes
+ * ----------------------------
+ * Requests captured scancodes from BEC firmware. These scancodes are
+ * normally automatically sent through the Amiga keyboard port. They
+ * are instead received through the BEC protocol and injected into the
+ * Amiga input stream. This is done so that keystrokes which normally
+ * flow asynchronously over the keyboard serial port do not collide with
+ * BEC messages sent from the Amiga, such as BEC_CMD_CONS_OUTPUT, which
+ * is rapidly polled by bec_term() to capture BEC console output.
+ */
+static uint
+poll_bec_for_amiga_scancodes(void)
+{
+    uint            rc;
+    uint            rlen;
+    uint8_t         replybuf[48];
+    uint            pos;
+    bec_poll_t      req;
+    bec_poll_t     *rep = (bec_poll_t *)replybuf;
+    uint8_t        *data;
+
+    req.bkm_source  = BKM_SOURCE_AMIGA_SCANCODE;
+    req.bkm_count   = 16;
+    req.bkm_timeout = 500;  // msec timeout if not polling_for_scancodes again
+
+    rep->bkm_count = 0;
+    rc = send_cmd(BEC_CMD_POLL_INPUT, &req, sizeof (req),
+                  replybuf, sizeof (replybuf), &rlen);
+    if ((rc != 0) || (rep->bkm_count == 0))
+        return (0);
+
+    data = (uint8_t *) (rep + 1);
+    for (pos = 0; pos < rep->bkm_count * 2; pos += 2)
+        inject_key_scancode(data[pos]);
+
+    return (0);
+}
+
+/*
  * cmd_term
  * --------
  * Open a KickSmash terminal.
@@ -884,6 +1013,7 @@ static int
 cmd_term(int argc, char *argv[])
 {
     int ch;
+    int arg;
     uint rlen;
     uint rc = 0;
     uint fail_count = 0;
@@ -892,19 +1022,43 @@ cmd_term(int argc, char *argv[])
     ULONG ihandle = Input();
     __attribute__((aligned(4))) uint8_t buf[64];
     uint8_t maxlen = sizeof (buf) - 4;
+    uint poll_delay = 0;
+    uint poll_count = 0;
+    uint interactive;
+    uint tick_last = 0;
+    uint tick_count = 0;
+    uint tick_now;
 
-    (void) argc;
-    (void) argv;
-
-    printf("Press ^X to exit\n");
+    if (argc > 1) {
+        interactive = 0;
+        buf[0] = 'U' - '@';  // ^U
+        buf[1] = '\n';       // ^M Return
+        if (send_cmd_retry(BEC_CMD_CONS_INPUT, buf, 2, NULL, 0, &rlen) != 0)
+            return (1);
+        buf[0] = ' ';  // ^M Return
+        for (arg = 1; arg < argc; arg++) {
+            if (send_cmd_retry(BEC_CMD_CONS_INPUT, argv[arg],
+                               strlen(argv[arg]), NULL, 0, &rlen) != 0) {
+                return (1);
+            }
+            if (arg == argc - 1)
+                buf[0] = '\n';  // ^M Return
+            if (send_cmd_retry(BEC_CMD_CONS_INPUT, buf, 1, NULL, 0, &rlen) != 0)
+                return (1);
+        }
+    } else {
+        interactive = 1;
+        printf("Press ^X to exit\n");
+        SetMode(Input(), 1);
+    }
     setvbuf(stdout, NULL, _IONBF, 0);  // Raw output mode
-    SetMode(Input(), 1);
     SetMode(Output(), 1);
 
 #define KEY_CTRL_X 0x18
+    tick_last = cia_ticks();
     while (fail_count < 10) {
         /* Poll for keystroke input */
-        if (WaitForChar(ihandle, 0)) {
+        if (interactive && WaitForChar(ihandle, 0)) {
             if (Read(ihandle, buf, 1) == 0) {
                 setvbuf(stdout, NULL, _IOLBF, 0);  // Line output mode
                 printf("\nRead fail\n");
@@ -922,11 +1076,25 @@ cmd_term(int argc, char *argv[])
             } else {
                 if (fail_count > 0)
                     fail_count--;
+                poll_delay = 0;
             }
         }
 
-        if ((count++ & 0xf) != 0)
+        /* Poll BEC for raw keystroke input */
+        if (poll_bec_for_amiga_scancodes())
+            break;
+
+        tick_now = cia_ticks();  // CIA counts downward
+        tick_count += (uint16_t) (tick_last - tick_now);
+        tick_last = tick_now;
+        if ((count++ & 0x7) != 0)
             continue;  // Poll infrequently for BEC output
+
+        if (poll_count < poll_delay) {
+            poll_count++;
+            continue;
+        }
+        poll_count = 0;
 
         /* Poll for BEC Controler output */
         maxlen = sizeof (buf) - 2;
@@ -949,18 +1117,27 @@ cmd_term(int argc, char *argv[])
             if (fail_count > 0)
                 fail_count--;
         }
-        if (rlen > 0)
+        if (rlen > 0) {
             count = 0;  // Got output -- poll again right away
-
-        if ((rlen > 0) && Write(Output(), buf, rlen) == 0) {
-            setvbuf(stdout, NULL, _IOLBF, 0);  // Line output mode
-            printf("\nWrite fail\n");
-            break;
+            poll_delay = 0;
+            tick_count = 0;
+            if (Write(Output(), buf, rlen) == 0) {
+                setvbuf(stdout, NULL, _IOLBF, 0);  // Line output mode
+                printf("\nWrite fail\n");
+                break;
+            }
+        } else {
+            poll_delay++;
+            if (!interactive && (tick_count > 800000)) {
+                /* More than 1 second with no additional output */
+                break;
+            }
         }
     }
 
     /* Restore cooked mode */
-    SetMode(Input(), 0);
+    if (interactive)
+        SetMode(Input(), 0);
     SetMode(Output(), 0);
     setvbuf(stdout, NULL, _IOLBF, 0);  // Line output mode
 
@@ -1110,6 +1287,9 @@ main(int argc, char *argv[])
                         break;
                     case 'i':  // inquiry
                         flag_inquiry++;
+                        break;
+                    case 'k':
+                        bec_msg_interface++;
                         break;
                     case 'l':  // loop count
                         if (++arg >= argc) {
