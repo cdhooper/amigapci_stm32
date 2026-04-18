@@ -723,7 +723,7 @@ static const char *const debug_flag_bits[] = {
     "RTC", "AmigaKeyboard", "AmigaMouse", "AmigaJoystick",
         "USB", "USBConn", "USBKeyboard", "USBMouse",
     "USBReport", "DecodeMisc", "DecodeMouse", "DecodeJoystick",
-        "DecodeKeyboard", "HIDEN", "Fan", "Unused",
+        "DecodeKeyboard", "HIDEN", "Fan", "BECMsg",
     "I2C", "I2CLL", "", "",
         "", "", "", "",
     "", "", "", "",

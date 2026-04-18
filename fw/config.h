@@ -26,6 +26,7 @@
 #define DF_USB_DECODE_JOY   0x00000800  // USB HID decode joystick
 #define DF_USB_DECODE_KBD   0x00001000  // USB HID decode keyboard
 #define DF_HIDEN            0x00002000  // HIDEN enable/disable
+#define DF_BECMSG           0x00001000  // BEC messages
 #define DF_FAN              0x00004000  // Fan limit changes
 #define DF_UNUSED           0x00008000  // Not yet used
 #define DF_I2C              0x00010000  // I2C operations

@@ -102,10 +102,6 @@
 #define VMON3V3_PIN             GPIO2  // PA2 3.3V
 #define VMON1V2_PORT        GPIOA
 #define VMON1V2_PIN             GPIO3  // PA3 1.2V
-#define VMONx_PORT          GPIOA
-#define VMONx_PIN               GPIO6  // PA6
-#define VMONy_PORT          GPIOA
-#define VMONy_PIN               GPIO7  // PA7
 #define VMON12_PORT         GPIOC
 #define VMON12_PIN              GPIO4  // PC4 12V
 #define VMONNEG12_PORT      GPIOC

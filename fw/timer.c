@@ -23,7 +23,7 @@
 
 /*
  * STM32F205 timer usage
- *   TIM1     - (maybe) power LED
+ *   TIM1     - Power LED MAYBE (TIM1_CH1)
  *   TIM2     - bits 0-31 of tick timer (bits 32-63 are in global timer_high)
  *   TIM4     - Fan speed measurement (TIM4_CH4 AF2)
  *   TIM8     - _RTCEN (TIM8_CN2N)

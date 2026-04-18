@@ -4,6 +4,7 @@ libopencm3/
 libusbhost/
 stutils/
 tinyusb/
+usb_notes/
 objs
 objs.rom
 bec
@@ -13,7 +14,7 @@ apcirom
 apciscan
 pci
 becky
-.*.sw?
+*.sw?
 .cscope*
 .genromrc
 cscope.out

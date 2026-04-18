@@ -161,8 +161,8 @@ tim4_isr(void)
 
     timer_clear_flag(TIM4, flags);
 
-    if (TIM_SR(TIM3) & TIM_OC4) {
-        printf("o");
+    if (TIM_SR(TIM4) & TIM_OC4) {
+//      printf("o");
         over_cap = TRUE;
         timer_clear_flag(TIM4, TIM_OC4);
     }

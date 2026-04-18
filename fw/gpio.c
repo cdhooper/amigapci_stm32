@@ -268,8 +268,6 @@ static const gpio_names_t gpio_names[] = {
     { "PotY",       GPIO_A, 5 },
     { "Button1",    GPIO_A, 5 },
     { "RMB",        GPIO_A, 5 },
-    { "VMONx",      GPIO_A, 6 },
-    { "VMONy",      GPIO_A, 7 },
     { "VMON12",     GPIO_C, 4 },
     { "VMON-12",    GPIO_C, 5 },
     { "RTCEN",      GPIO_B, 0 },
@@ -831,7 +829,7 @@ gpio_init(void)
                  GPIO_SETMODE_OUTPUT_ODRAIN_25 | GPIO_SETMODE_PU);
 
     gpio_setmode(VMON5_PORT, VMON5_PIN | VMON5SB_PIN | VMON3V3_PIN |
-                 VMON1V2_PIN | VMONx_PIN | VMONy_PIN, GPIO_SETMODE_INPUT);
+                 VMON1V2_PIN, GPIO_SETMODE_INPUT);
     gpio_setmode(VMON12_PORT, VMON12_PIN | VMONNEG12_PIN, GPIO_SETMODE_INPUT);
 
     gpio_setv(I2C_SCL_PORT, I2C_SCL_PIN | I2C_SDA_PIN, 1);
