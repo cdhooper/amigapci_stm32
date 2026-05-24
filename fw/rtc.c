@@ -29,11 +29,6 @@
 #define RTC_TIMEOUT_SHORT    0x00001000  // Simple loop timeout (~2ms)
 #define RTC_TIMEOUT_MS       25          // Long timeout
 
-
-/* Define one of these only for test purposes */
-#undef RTC_USE_LSI
-#define RTC_USE_LSE  // Note external clock source must be attached
-
 /* Divisor limits for RTC_HSE from HSE */
 #define RTC_HSE_DIV_MIN      2
 #define RTC_HSE_DIV_MAX      31
@@ -380,11 +375,20 @@ rtc_set_datetime(uint year, uint mon, uint day, uint hour, uint min, uint sec)
     (void) rtc_init_mode(FALSE);
 }
 
+static uint
+wait_for_osc_ready(enum rcc_osc osc)
+{
+    uint timeout = 1000000;
+    while (!rcc_is_osc_ready(osc))
+        if (timeout-- == 0)
+            return (1);
+    return (0);
+}
+
 /**
  * rtc_clock_config() configures and enables the RTC clock.  The RTC clock
  *                    is driven by one of three clock sources (LSI, LSE,
- *                    or HSE).  For DSSD, the expected driver will be HSE
- *                    unless the device is defective.
+ *                    or HSE).
  *
  * @param [in]  clk_source   - The clock source to use, which is one of:
  *                             RCC_BDCR_RTCSEL_HSE - High Speed External clock.
@@ -426,7 +430,10 @@ rtc_clock_config(uint clk_source, uint *prediv_async, uint *prediv_sync)
 
             /* Enable LSE and wait until it is ready */
             rcc_osc_on(RCC_LSE);
-            rcc_wait_for_osc_ready(RCC_LSE);
+            if (wait_for_osc_ready(RCC_LSE)) {
+                printf("RTC LSE clock failed to come ready\n");
+                return (RC_FAILURE);
+            }
             break;
 
         case RCC_BDCR_RTCSEL_LSI:
@@ -1114,21 +1121,17 @@ rtc_init(void)
     rc_t rc;
     uint prediv_async;
     uint clk_source;
+    uint backup_source;
 
     /* Verify the HSE is enabled and stable */
     if ((RCC_CR & RCC_CR_HSEON) && (RCC_CR & RCC_CR_HSERDY)) {
-        clk_source = RCC_BDCR_RTCSEL_HSE;
+        backup_source = RCC_BDCR_RTCSEL_HSE;
     } else {
         /* Fall back to LSI for the RTC source if the HSE is not stable */
-        clk_source = RCC_BDCR_RTCSEL_LSI;
+        backup_source = RCC_BDCR_RTCSEL_LSI;
     }
 
-    /* Allow override of clock source */
-#if defined(RTC_USE_LSE)
     clk_source = RCC_BDCR_RTCSEL_LSE;
-#elif defined(RTC_USE_LSI)
-    clk_source = RCC_BDCR_RTCSEL_LSI;
-#endif
 
     /*
      * After a reset, the backup domain (RTC registers, RTC backup data
@@ -1145,6 +1148,8 @@ rtc_init(void)
 
     /* Configure and enable RTC clock */
     rc = rtc_clock_config(clk_source, &prediv_async, &rtc_prediv_sync);
+    if (rc != RC_SUCCESS)
+        rc = rtc_clock_config(backup_source, &prediv_async, &rtc_prediv_sync);
     if (rc != RC_SUCCESS)
         return;
 

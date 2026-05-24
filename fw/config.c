@@ -20,6 +20,7 @@
 #include "stm32flash.h"
 #include "utils.h"
 #include "keyboard.h"
+#include "mouse.h"
 
 CC_ASSERT_SIZE(config_t, 2048);
 
@@ -116,10 +117,17 @@ config_set_defaults(void)
     config.fan_temp_max = 40;         // Temperature (C) for maximum fan speed
     config.fan_temp_min = 21;         // Temperature (C) for minimum fan speed
     config.fan_rpm_max = 2200;        // Fan maximum RPM
+#define AMIGAPCI
+#ifdef AMIGAPCI
     config.board_rev = 6;             // Current version of AmigaPCI
-    config.board_type = 1;            // AmigaPCI
-//  config.board_type = 2;            // STM32Dev
+    config.board_type = BOARD_TYPE_AMIGAPCI; // AmigaPCI
+#else
+    config.board_rev = 1;             // Current version of KeyJam
+    config.board_type = BOARD_TYPE_KEYJAM;   // Amiga KeyJam
+//  config.board_type = BOARD_TYPE_APCIDEV;  // AmigaPCI STM32Dev
+#endif
     keyboard_set_defaults();
+    mouse_set_defaults();
     config_updated();
 }
 

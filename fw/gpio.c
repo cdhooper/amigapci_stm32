@@ -790,10 +790,13 @@ gpio_init_early(void)
     rcc_periph_clock_enable(RCC_GPIOD);
     rcc_periph_clock_enable(RCC_GPIOH);
 
-    gpio_setmode(PSON_PORT, PSON_PIN, GPIO_SETMODE_INPUT);
-    psoff = gpio_get(PSON_PORT, PSON_PIN); // Attempt to capture previous state
-    gpio_setv(PSON_PORT, PSON_PIN, psoff ? 1 : 0);
-    gpio_setmode(PSON_PORT, PSON_PIN, GPIO_SETMODE_OUTPUT_2);
+    if (config.board_type == BOARD_TYPE_AMIGAPCI) {
+        /* Attempt to capture previous state */
+        gpio_setmode(PSON_PORT, PSON_PIN, GPIO_SETMODE_INPUT);
+        psoff = gpio_get(PSON_PORT, PSON_PIN);
+        gpio_setv(PSON_PORT, PSON_PIN, psoff ? 1 : 0);
+        gpio_setmode(PSON_PORT, PSON_PIN, GPIO_SETMODE_OUTPUT_2);
+    }
 }
 
 /*
@@ -804,6 +807,30 @@ gpio_init_early(void)
 void
 gpio_init(void)
 {
+    if (config.board_type == BOARD_TYPE_KEYJAM) {
+        /* Mouse/Joystick Port 0 */
+        gpio_setv(GPIOC, GPIO0 | GPIO1 | GPIO2 | GPIO3 | GPIO6, 1);  // P0 DULRF
+        gpio_setmode(GPIOC, GPIO0 | GPIO1 | GPIO2 | GPIO3 | GPIO6,
+                     GPIO_SETMODE_OUTPUT_ODRAIN_25 | GPIO_SETMODE_PU);
+
+        /* Joystick Port 1 */
+        gpio_setv(GPIOB, GPIO0 | GPIO1 | GPIO2 | GPIO4 | GPIO5 |     // P1 FLRUD
+                  GPIO6 | GPIO7 | GPIO8 | GPIO9, 1);        // P1 PxPy, P0 PxP7
+        gpio_setmode(GPIOB, GPIO0 | GPIO1 | GPIO2 | GPIO4 | GPIO5 |
+                     GPIO6 | GPIO7 | GPIO8 | GPIO9,
+                     GPIO_SETMODE_OUTPUT_ODRAIN_25 | GPIO_SETMODE_PU);
+
+        /* Keyboard port */
+        gpio_setv(KBRST_PORT, KBRST_PIN | KBDATA_PIN | KBCLK_PIN, 1);
+        gpio_setmode(KBRST_PORT, KBRST_PIN | KBDATA_PIN | KBCLK_PIN,
+                     GPIO_SETMODE_OUTPUT_ODRAIN_25 | GPIO_SETMODE_PU);
+
+        /* USB power power enables */
+        gpio_setv(GPIOA, GPIO9 | GPIO10, 0);  // active high
+        gpio_setmode(GPIOA, GPIO9 | GPIO10, GPIO_SETMODE_OUTPUT_2);
+
+        return;
+    }
     gpio_setmode(PWRSW_PORT, PWRSW_PIN, GPIO_SETMODE_INPUT_PU);  // Power button
 
     gpio_setmode(FANTACH_PORT, FANTACH_PIN,
@@ -847,7 +874,8 @@ gpio_init(void)
     gpio_setmode(A2_PORT, A2_PIN | A3_PIN | A4_PIN | A5_PIN,
                  GPIO_SETMODE_INPUT_PU);
 
-    if (config.board_type == 2) { // AmigaPCI STM32 dev board has this backwards
+    if (config.board_type == BOARD_TYPE_APCIDEV) {
+        // AmigaPCI STM32 dev board has this backwards
         /* USB_ENABLE needs to be open drain on dev board to fully turn off */
         gpio_setv(USB_ENABLE_PORT, USB_ENABLE_PIN, 1);  // active low
         gpio_setmode(USB_ENABLE_PORT, USB_ENABLE_PIN,

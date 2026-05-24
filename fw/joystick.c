@@ -21,17 +21,6 @@
 #include "utils.h"
 #include "amiga_kbd_codes.h"
 
-#define B0_GPIO ADDR32(BND_IO(FIRE_PORT + GPIO_ODR_OFFSET, low_bit(FIRE_PIN)))
-#define B1_GPIO ADDR32(BND_IO(PotY_PORT + GPIO_ODR_OFFSET, low_bit(PotY_PIN)))
-#define B2_GPIO ADDR32(BND_IO(PotX_PORT + GPIO_ODR_OFFSET, low_bit(PotX_PIN)))
-
-#define BACK_GPIO ADDR32(BND_IO(BACK_PORT + GPIO_ODR_OFFSET, low_bit(BACK_PIN)))
-#define RIGHT_GPIO ADDR32(BND_IO(RIGHT_PORT + GPIO_ODR_OFFSET, \
-                          low_bit(RIGHT_PIN)))
-#define FORWARD_GPIO ADDR32(BND_IO(FORWARD_PORT + GPIO_ODR_OFFSET, \
-                                   low_bit(FORWARD_PIN)))
-#define LEFT_GPIO ADDR32(BND_IO(LEFT_PORT + GPIO_ODR_OFFSET, low_bit(LEFT_PIN)))
-
 uint8_t joystick_asserted;
 
 #define BUTTON_CODE_UP    (0x1c | KEYCAP_BUTTON)

@@ -35,6 +35,7 @@
 #include "version.h"
 #include <libopencm3/stm32/rcc.h>
 #include <libopencm3/stm32/gpio.h>
+#include <libopencm3/stm32/syscfg.h>
 
 static void
 reset_periphs(void)
@@ -44,6 +45,9 @@ reset_periphs(void)
     RCC_APB2RSTR = 0xffffffff;  // Reset APB2
     RCC_APB1RSTR = 0x00000000;  // Release APB1 reset
     RCC_APB2RSTR = 0x00000000;  // Release APB2 reset
+
+    rcc_periph_clock_enable(RCC_SYSCFG);
+    SYSCFG_MEMRM = 0; // Flash
 }
 
 void
@@ -73,7 +77,6 @@ main(void)
     timer_init();
 //  timer_delay_msec(500);  // Just for development purposes
     uart_init();
-    gpio_init();            // Needs UART for debug
     led_init();
     led_power(1);
 
@@ -82,10 +85,12 @@ main(void)
     identify_cpu();
     show_reset_reason();
     config_read();
+    gpio_init();            // Needs UART for debug
     sensor_init();          // also starts adc_init()
     rtc_init();
     amigartc_init();
     keyboard_init();
+    mouse_init();
     fan_init();
     usb_init();
     i2c_init();

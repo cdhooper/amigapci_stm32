@@ -268,6 +268,8 @@ fan_init_tach(void)
 void
 fan_init(void)
 {
+    if (config.board_type == BOARD_TYPE_KEYJAM)
+        return;  // No fan
     fan_init_tach();   // Set up FANTACH input
     fan_init_pwm();    // Set up FANPWM output
 
@@ -282,6 +284,8 @@ void
 fan_poll(void)
 {
     uint percent;
+    if (config.board_type == BOARD_TYPE_KEYJAM)
+        return;  // No fan
     if (fan_auto) {
         /* Adjust fan_percent based on temperature input */
         uint value;

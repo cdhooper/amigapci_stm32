@@ -24,24 +24,28 @@
 #include "hid_kbd_codes.h"
 #include "hiden.h"
 
-#define B0_GPIO ADDR32(BND_IO(FIRE_PORT + GPIO_ODR_OFFSET, low_bit(FIRE_PIN)))
-#define B1_GPIO ADDR32(BND_IO(PotY_PORT + GPIO_ODR_OFFSET, low_bit(PotY_PIN)))
-#define B2_GPIO ADDR32(BND_IO(PotX_PORT + GPIO_ODR_OFFSET, low_bit(PotX_PIN)))
-
-#define BACK_GPIO ADDR32(BND_IO(BACK_PORT + GPIO_ODR_OFFSET, low_bit(BACK_PIN)))
-#define RIGHT_GPIO ADDR32(BND_IO(RIGHT_PORT + GPIO_ODR_OFFSET, \
-                          low_bit(RIGHT_PIN)))
-#define FORWARD_GPIO ADDR32(BND_IO(FORWARD_PORT + GPIO_ODR_OFFSET, \
-                                   low_bit(FORWARD_PIN)))
-#define LEFT_GPIO ADDR32(BND_IO(LEFT_PORT + GPIO_ODR_OFFSET, low_bit(LEFT_PIN)))
+static uint32_t *p0_b0_gpio;
+static uint32_t *p0_b1_gpio;
+static uint32_t *p0_b2_gpio;
+static uint32_t *p0_u_gpio;
+static uint32_t *p0_d_gpio;
+static uint32_t *p0_l_gpio;
+static uint32_t *p0_r_gpio;
+static uint32_t *p1_b0_gpio;
+static uint32_t *p1_b1_gpio;
+static uint32_t *p1_b2_gpio;
+static uint32_t *p1_u_gpio;
+static uint32_t *p1_d_gpio;
+static uint32_t *p1_l_gpio;
+static uint32_t *p1_r_gpio;
 
 /* X is Down/Right */
-#define QX0_GPIO BACK_GPIO
-#define QX1_GPIO RIGHT_GPIO
+#define QX0_GPIO p0_u_gpio
+#define QX1_GPIO p0_r_gpio
 
 /* Y is Up/Left */
-#define QY0_GPIO FORWARD_GPIO
-#define QY1_GPIO LEFT_GPIO
+#define QY0_GPIO p0_d_gpio
+#define QY1_GPIO p0_l_gpio
 
 static const uint8_t quad0[] = { 0, 0, 1, 1 };
 static const uint8_t quad1[] = { 0, 1, 1, 0 };
@@ -76,13 +80,13 @@ mouse_put_macro(uint32_t tcode, uint is_pressed, uint was_pressed)
         if (code & 0x80) {
             switch (code) {
                 case ASE_BUTTON_0:
-                    *B0_GPIO = !is_pressed;
+                    *p0_b0_gpio = !is_pressed;
                     break;
                 case ASE_BUTTON_1:
-                    *B1_GPIO = !is_pressed;
+                    *p0_b1_gpio = !is_pressed;
                     break;
                 case ASE_BUTTON_2:
-                    *B2_GPIO = !is_pressed;
+                    *p0_b2_gpio = !is_pressed;
                     break;
                 case ASE_BUTTON_3:
                     if (was_pressed != is_pressed)
@@ -93,16 +97,16 @@ mouse_put_macro(uint32_t tcode, uint is_pressed, uint was_pressed)
                         keyboard_put_macro(NM_BUTTON_FIFTH, is_pressed);
                     break;
                 case ASE_JOYSTICK_UP:     // Joystick up
-                    *BACK_GPIO = !is_pressed;
+                    *p0_u_gpio = !is_pressed;
                     break;
                 case ASE_JOYSTICK_DOWN:   // Joystick down
-                    *FORWARD_GPIO = !is_pressed;
+                    *p0_d_gpio = !is_pressed;
                     break;
                 case ASE_JOYSTICK_LEFT:   // Joystick left
-                    *LEFT_GPIO = !is_pressed;
+                    *p0_l_gpio = !is_pressed;
                     break;
                 case ASE_JOYSTICK_RIGHT:  // Joystick right
-                    *RIGHT_GPIO = !is_pressed;
+                    *p0_r_gpio = !is_pressed;
                     break;
             }
         } else {
@@ -121,7 +125,7 @@ void
 mouse_put_scancode(uint8_t code, uint is_pressed, uint was_pressed)
 {
     code = capture_scancode(code | (is_pressed ? KEYCAP_DOWN : KEYCAP_UP));
-    if (code != 0xff)
+    if (code == 0xff)
         return;
     mouse_put_macro(config.keymap[code], is_pressed, was_pressed);
 }
@@ -369,5 +373,57 @@ mouse_poll(void)
     } else if (mouse_y < 0) {
         mouse_y++;
         move_y(1);
+    }
+}
+
+void
+mouse_init(void)
+{
+    if (config.board_type == BOARD_TYPE_KEYJAM) {
+        p0_b0_gpio = ADDR32(BND_IO(GPIOC + GPIO_ODR_OFFSET, low_bit(GPIO6)));
+        p0_b1_gpio = ADDR32(BND_IO(GPIOB + GPIO_ODR_OFFSET, low_bit(GPIO9)));
+        p0_b2_gpio = ADDR32(BND_IO(GPIOB + GPIO_ODR_OFFSET, low_bit(GPIO8)));
+        p0_u_gpio  = ADDR32(BND_IO(GPIOC + GPIO_ODR_OFFSET, low_bit(GPIO1)));
+        p0_d_gpio  = ADDR32(BND_IO(GPIOC + GPIO_ODR_OFFSET, low_bit(GPIO0)));
+        p0_l_gpio  = ADDR32(BND_IO(GPIOC + GPIO_ODR_OFFSET, low_bit(GPIO2)));
+        p0_r_gpio  = ADDR32(BND_IO(GPIOC + GPIO_ODR_OFFSET, low_bit(GPIO3)));
+
+        p1_b0_gpio = ADDR32(BND_IO(GPIOB + GPIO_ODR_OFFSET, low_bit(GPIO0)));
+        p1_b1_gpio = ADDR32(BND_IO(GPIOB + GPIO_ODR_OFFSET, low_bit(GPIO6)));
+        p1_b2_gpio = ADDR32(BND_IO(GPIOB + GPIO_ODR_OFFSET, low_bit(GPIO7)));
+        p1_u_gpio  = ADDR32(BND_IO(GPIOB + GPIO_ODR_OFFSET, low_bit(GPIO4)));
+        p1_d_gpio  = ADDR32(BND_IO(GPIOB + GPIO_ODR_OFFSET, low_bit(GPIO5)));
+        p1_l_gpio  = ADDR32(BND_IO(GPIOB + GPIO_ODR_OFFSET, low_bit(GPIO1)));
+        p1_r_gpio  = ADDR32(BND_IO(GPIOB + GPIO_ODR_OFFSET, low_bit(GPIO2)));
+    } else {
+        /* AmigaPCI and AmigaPCI STM32 Dev */
+        p0_b0_gpio = ADDR32(BND_IO(GPIOC + GPIO_ODR_OFFSET, low_bit(GPIO6)));
+        p0_b1_gpio = ADDR32(BND_IO(GPIOA + GPIO_ODR_OFFSET, low_bit(GPIO5)));
+        p0_b2_gpio = ADDR32(BND_IO(GPIOA + GPIO_ODR_OFFSET, low_bit(GPIO4)));
+        p0_u_gpio  = ADDR32(BND_IO(GPIOC + GPIO_ODR_OFFSET, low_bit(GPIO1)));
+        p0_d_gpio  = ADDR32(BND_IO(GPIOC + GPIO_ODR_OFFSET, low_bit(GPIO0)));
+        p0_l_gpio  = ADDR32(BND_IO(GPIOC + GPIO_ODR_OFFSET, low_bit(GPIO2)));
+        p0_r_gpio  = ADDR32(BND_IO(GPIOC + GPIO_ODR_OFFSET, low_bit(GPIO3)));
+
+        p1_b0_gpio = ADDR32(BND_IO(GPIOD + GPIO_ODR_OFFSET, low_bit(GPIO5)));
+        p1_b1_gpio = ADDR32(BND_IO(GPIOD + GPIO_ODR_OFFSET, low_bit(GPIO7)));
+        p1_b2_gpio = ADDR32(BND_IO(GPIOD + GPIO_ODR_OFFSET, low_bit(GPIO0)));
+        p1_u_gpio  = ADDR32(BND_IO(GPIOD + GPIO_ODR_OFFSET, low_bit(GPIO6)));
+        p1_d_gpio  = ADDR32(BND_IO(GPIOD + GPIO_ODR_OFFSET, low_bit(GPIO4)));
+        p1_l_gpio  = ADDR32(BND_IO(GPIOD + GPIO_ODR_OFFSET, low_bit(GPIO1)));
+        p1_r_gpio  = ADDR32(BND_IO(GPIOD + GPIO_ODR_OFFSET, low_bit(GPIO3)));
+
+        if (((config.board_type == BOARD_TYPE_AMIGAPCI) &&
+             (config.board_rev < 6)) ||
+            (config.board_type == BOARD_TYPE_APCIDEV)) {
+            /* These boards only have a single port */
+            p1_b0_gpio = p0_b0_gpio;
+            p1_b1_gpio = p0_b1_gpio;
+            p1_b2_gpio = p0_b2_gpio;
+            p1_u_gpio  = p0_u_gpio;
+            p1_d_gpio  = p0_d_gpio;
+            p1_l_gpio  = p0_l_gpio;
+            p1_r_gpio  = p0_r_gpio;
+        }
     }
 }

@@ -192,10 +192,14 @@ usb_set_power(int state)
 {
     uint enable = (state == USB_SET_POWER_ON) ? 1 : 0;
 
-    if (config.board_type == 2)  // AmigaPCI STM32 dev board has this backwards
-        enable = !enable;
+    if (config.board_type == BOARD_TYPE_APCIDEV)
+        enable = !enable; // AmigaPCI STM32 dev board has this backwards
 
-    gpio_setv(USB_ENABLE_PORT, USB_ENABLE_PIN, enable);
+    if (config.board_type == BOARD_TYPE_KEYJAM)
+        gpio_setv(GPIOA, GPIO9 | GPIO10, enable);
+    else
+        gpio_setv(USB_ENABLE_PORT, USB_ENABLE_PIN, enable);
+
     usb_power_timer = timer_tick_plus_msec(500);
     usb_is_powered = state;
 }

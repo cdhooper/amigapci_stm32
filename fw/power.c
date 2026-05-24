@@ -155,6 +155,9 @@ power_poll(void)
 {
     uint new_state;
 
+    if (config.board_type == BOARD_TYPE_KEYJAM)
+        return;
+
     power_button_poll();
 
     if (power_state == power_state_desired)
@@ -325,6 +328,11 @@ power_show(void)
 void
 power_init(void)
 {
+    if (config.board_type == BOARD_TYPE_KEYJAM) {
+        power_state = POWER_STATE_ON;
+        return;
+    }
+
     power_state = POWER_STATE_OFF;  // Just check limits
     sensor_check_readings();
     power_state = POWER_STATE_INITIAL;

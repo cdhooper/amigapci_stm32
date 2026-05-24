@@ -13,6 +13,7 @@
 
 void mouse_action(int off_x, int off_y, int off_wheel, int off_pan);
 void mouse_action_button(uint32_t buttons);
+void mouse_init(void);
 void mouse_poll(void);
 void mouse_put_macro(uint32_t macro, uint is_pressed, uint was_pressed);
 void mouse_put_scancode(uint8_t scancode, uint is_pressed, uint was_pressed);

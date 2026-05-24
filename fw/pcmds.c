@@ -817,7 +817,7 @@ typedef struct {
 static const config_set_t config_set[] = {
     { "board_rev",      "Board revision",
       CFOFF(board_rev), MODE_DEC },
-    { "board_type",     "Board type (1=AmigaPCI, 2=STM32Dev)",
+    { "board_type",     "Board type (1=AmigaPCI, 2=APCIDev, 3=KeyJam)",
       CFOFF(board_type), MODE_DEC },
     { "cpu_temp_bias",  "Bias (+/-) for CPU temperature",
       CFOFF(cpu_temp_bias), MODE_SIGNED },

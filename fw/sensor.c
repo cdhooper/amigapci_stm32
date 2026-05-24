@@ -45,7 +45,7 @@ typedef struct {
     int         s_limit_max;    // Maximum in milli-units
 } sensor_t;
 
-static const sensor_t sensors[] = {
+static const sensor_t apci_sensors[] = {
 //  { "VrefInt", ADC_CHANNEL_VREF, 0x00, 0, 1, 1, 0, 1200, 1220 },
     { "VrefInt", ADC_CHANNEL_VREF, 0x00, 0, 1, 1, 0, 1180, 1240 },
     { "TEMP",    ADC_CHANNEL_TEMP, 0x00, 0, 10000 / TEMP_AVGSLOPE, 1,
@@ -62,7 +62,19 @@ static const sensor_t sensors[] = {
     { "Fan",     CHANNEL_FAN_TACH, 0x00, 1, 1, 1, 0,   100000, 4000000 },
     { "Fan %",   CHANNEL_FAN_PWM, 0x00, 1, 1, 1, 0,    0, 100000 },
 };
-#define SENSOR_COUNT ARRAY_SIZE(sensors)
+
+static const sensor_t keyjam_sensors[] = {
+//  { "VrefInt", ADC_CHANNEL_VREF, 0x00, 0, 1, 1, 0, 1200, 1220 },
+    { "VrefInt", ADC_CHANNEL_VREF, 0x00, 0, 1, 1, 0, 1180, 1240 },
+    { "TEMP",    ADC_CHANNEL_TEMP, 0x00, 0, 10000 / TEMP_AVGSLOPE, 1,
+            -1 * TEMP_V25 * 10000 / TEMP_AVGSLOPE + 25 * 100000, 0, 60000 },
+    { "VBAT",    ADC_CHANNEL_VBAT, 0x00, 0, 2, 1, 0, 2000, 5100 },
+};
+
+static const sensor_t *sensors = apci_sensors;
+static uint sensor_count = ARRAY_SIZE(apci_sensors);
+
+#define SENSOR_COUNT_MAX ARRAY_SIZE(apci_sensors)
 
 #define SS_FLAG_UNDER_LIMIT        0x0001
 #define SS_FLAG_WARNED_OVER_LIMIT  0x0002
@@ -73,7 +85,7 @@ typedef struct {
     int  ss_reading;
     uint ss_flags;
 } sensor_state_t;
-sensor_state_t sensor_states[SENSOR_COUNT];
+sensor_state_t sensor_states[SENSOR_COUNT_MAX];
 
 uint64_t adc_startup_time;
 
@@ -166,7 +178,7 @@ sensor_check_readings(void)
     uint cur;
     uint adc_which = 0;
 
-    for (cur = 0; cur < ARRAY_SIZE(sensors); cur++) {
+    for (cur = 0; cur < sensor_count; cur++) {
         int reading;
         int limit_min = sensors[cur].s_limit_min;
         int limit_max = sensors[cur].s_limit_max;
@@ -237,7 +249,7 @@ sensor_get_power_state(void)
      * If any are down, then the power supply is in a fault state
      * or is off.
      */
-    for (cur = 0; cur < ARRAY_SIZE(sensors); cur++) {
+    for (cur = 0; cur < sensor_count; cur++) {
         if (sensors[cur].s_power_domain == 1) {
             /* This is the power supply-is-on domain */
             if (sensor_states[cur].ss_flags &
@@ -277,7 +289,7 @@ uint
 sensor_get(const char *name, uint *value, const char **type)
 {
     uint pos;
-    for (pos = 0; pos < ARRAY_SIZE(sensors); pos++) {
+    for (pos = 0; pos < sensor_count; pos++) {
         if (strcmp(name, sensors[pos].s_name) == 0) {
             *type = sensor_suffix(pos);
             *value = sensor_states[pos].ss_reading;
@@ -331,7 +343,7 @@ sensor_show(void)
     printf("   Sensor       Reading      Status             Limits\n"
            "-------------- ---------- ------------ "
            "-------------------------\n");
-    for (cur = 0; cur < ARRAY_SIZE(sensors); cur++) {
+    for (cur = 0; cur < sensor_count; cur++) {
         sensor_show_state(cur, 1);
     }
 }
@@ -351,7 +363,7 @@ sensor_poll(void)
 
     sensor_check_readings();
 
-    for (cur = 0; cur < ARRAY_SIZE(sensors); cur++) {
+    for (cur = 0; cur < sensor_count; cur++) {
         uint report_state = 0;
         if (sensor_states[cur].ss_flags & SS_FLAG_IGNORED)
             continue;
@@ -394,17 +406,25 @@ sensor_init(void)
     uint cur;
     uint adc_which = 0;
 
+    if (config.board_type == BOARD_TYPE_KEYJAM) {
+        sensors = keyjam_sensors;
+        sensor_count = ARRAY_SIZE(keyjam_sensors);
+    } else {
+        sensors = apci_sensors;
+        sensor_count = ARRAY_SIZE(apci_sensors);
+    }
+
     /* Initialize all sensors */
-    for (cur = 0; cur < ARRAY_SIZE(sensors); cur++) {
+    for (cur = 0; cur < sensor_count; cur++) {
         // Eventually handle other sensors, such as Fan RPM & PWM
-        switch (sensors[cur].s_adc_channel) {
+        switch (apci_sensors[cur].s_adc_channel) {
             case CHANNEL_FAN_TACH:
             case CHANNEL_FAN_PWM:
                 /* Non-ADC sensor */
                 break;
             default:
-                adc_setup_sensor(adc_which++, sensors[cur].s_gpio_packed,
-                                 sensors[cur].s_adc_channel);
+                adc_setup_sensor(adc_which++, apci_sensors[cur].s_gpio_packed,
+                                 apci_sensors[cur].s_adc_channel);
                 break;
         }
     }

@@ -119,6 +119,8 @@ OPENCM3_LIB := $(OPENCM3_DIR)/lib/lib$(LIBNAME).a
 # Where the Black Magic Probe is attached
 BMP_PORT = /dev/ttyACM0
 
+CUBE_PORT ?= /dev/ttyUSB0
+CUBE_CLI  := /usr/local/STMCubeProgrammer/bin/STM32_Programmer_CLI
 DFU_UTIL=dfu-util
 ST_BUILD_DIR=/usr/stlink
 ifeq (,$(wildcard $(ST_BUILD_DIR)))
@@ -272,7 +274,7 @@ $(OBJDIR) $(USB_OBJDIRS) $(EXTRA_OBJDIRS):
 $(OPENCM3_DIR)/Makefile:
 	@echo Cloning LibOpenCM3 for $@
 	git clone https://github.com/libopencm3/libopencm3
-	@(cd libopencm3; git checkout 3a85f91ed8bfe3322cda4ccec63eae2717f67f00)
+	@(cd libopencm3; git checkout 87a080c94ce67643216464821c752c1c406c6414)
 
 $(OPENCM3_DIR)/include/%: | $(OPENCM3_DIR)/Makefile
 	@echo Building $@
@@ -316,6 +318,10 @@ endif
 just-dfu:
 	$(DFU_UTIL) --device 0483:df11 --alt 0 --download $(BINARY).bin --dfuse-address 0x08000000:leave
 
+just-dfuser:
+	$(CUBE_CLI) -c port=$(CUBE_PORT) br=115200 -v -w $(BINARY).bin 0x08000000
+	$(CUBE_CLI) -c port=$(CUBE_PORT) br=115200 -g 0x08000000
+
 dfu-unprotect: $(UDEV_FILE_PATHS)
 	$(DFU_UTIL) -s 0:force:unprotect -a 0 --device 0483:df11 --alt 0 --download $(BINARY).bin
 
@@ -354,6 +360,7 @@ just-clobber: $(ST_TOOLS_PATH)/st-flash | $(UDEV_FILE_PATHS)
 	$(ST_TOOLS_PATH)/st-flash $(ST_ARGS) --reset write flash_clobber.bin 0x1fffc000
 
 dfu: all $(UDEV_FILE_PATHS) just-dfu
+dfuser: all just-dfuser
 flash: all just-flash
 
 # Connect to remote STM32 via ST-Link (follow with "make gdb")
@@ -378,4 +385,4 @@ $(ST_TOOLS_PATH)/st-flash build-stutils: | $(ST_BUILD_DIR)
 gdb:
 	gdb -q -x .gdbinit $(BINARY).elf
 
-.PHONY: images clean get-stutils build_stutils stlink dfu flash just-dfu just-flash just-unprotect just-dfu dfu-unprotect size elf bin hex srec list udev-files verbose
+.PHONY: images clean get-stutils build_stutils stlink dfu flash just-flash just-unprotect just-dfu just-dfuser dfu-unprotect size elf bin hex srec list udev-files verbose

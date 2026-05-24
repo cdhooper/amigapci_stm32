@@ -15,6 +15,7 @@
 #include "gpio.h"
 #include "timer.h"
 #include "printf.h"
+#include "config.h"
 
 #include <libopencm3/stm32/gpio.h>
 
@@ -42,6 +43,9 @@ void
 led_busy(int turn_on)
 {
 //  gpio_setv(LED_BUSY_PORT, LED_BUSY_PIN, turn_on);
+    if (config.board_type == BOARD_TYPE_KEYJAM) {
+        gpio_setv(GPIOA, GPIO2, turn_on);
+    }
 }
 
 /*
@@ -64,4 +68,11 @@ led_init(void)
     gpio_mode_setup(POWER_LED_PORT, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE,
                     POWER_LED_PIN);
     led_power(1);
+
+    if (config.board_type == BOARD_TYPE_KEYJAM) {
+        /* PA0 = P0_LED, PA1 = P1_LED, PA2 = STATUS_LED */
+        gpio_mode_setup(GPIOA, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE,
+                        GPIO0 | GPIO1 | GPIO2);
+        gpio_set(GPIO0 | GPIO1 | GPIO2, 1);
+    }
 }
