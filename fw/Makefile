@@ -120,7 +120,7 @@ OPENCM3_LIB := $(OPENCM3_DIR)/lib/lib$(LIBNAME).a
 BMP_PORT = /dev/ttyACM0
 
 CUBE_PORT ?= /dev/ttyUSB0
-CUBE_CLI  := /usr/local/STMCubeProgrammer/bin/STM32_Programmer_CLI
+CUBE_CLI  ?= /usr/local/STMCubeProgrammer/bin/STM32_Programmer_CLI
 DFU_UTIL=dfu-util
 ST_BUILD_DIR=/usr/stlink
 ifeq (,$(wildcard $(ST_BUILD_DIR)))

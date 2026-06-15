@@ -870,43 +870,43 @@ convert_mm_scancode_to_hid(uint keycode)
 static inline void
 set_kbclk_0(void)
 {
-   *ADDR32(BND_IO(KBCLK_PORT + GPIO_ODR_OFFSET, low_bit(KBCLK_PIN))) = 0;
+    *ADDR32(BND_IO(KBCLK_PORT + GPIO_ODR_OFFSET, low_bit(KBCLK_PIN))) = 0;
 }
 
 static inline void
 set_kbclk_1(void)
 {
-   *ADDR32(BND_IO(KBCLK_PORT + GPIO_ODR_OFFSET, low_bit(KBCLK_PIN))) = 1;
+    *ADDR32(BND_IO(KBCLK_PORT + GPIO_ODR_OFFSET, low_bit(KBCLK_PIN))) = 1;
 }
 
 static inline void
 set_kbdat_0(void)
 {
-   *ADDR32(BND_IO(KBDATA_PORT + GPIO_ODR_OFFSET, low_bit(KBDATA_PIN))) = 0;
+    *ADDR32(BND_IO(KBDATA_PORT + GPIO_ODR_OFFSET, low_bit(KBDATA_PIN))) = 0;
 }
 
 static inline void
 set_kbdat_1(void)
 {
-   *ADDR32(BND_IO(KBDATA_PORT + GPIO_ODR_OFFSET, low_bit(KBDATA_PIN))) = 1;
+    *ADDR32(BND_IO(KBDATA_PORT + GPIO_ODR_OFFSET, low_bit(KBDATA_PIN))) = 1;
 }
 
 static inline uint
 get_kbdat(void)
 {
-   return (*ADDR32(BND_IO(KBDATA_PORT + GPIO_IDR_OFFSET, low_bit(KBDATA_PIN))));
+    return (*ADDR32(BND_IO(KBDATA_PORT + GPIO_IDR_OFFSET, low_bit(KBDATA_PIN))));
 }
 
 static inline uint
 get_kbclk(void)
 {
-   return (*ADDR32(BND_IO(KBCLK_PORT + GPIO_IDR_OFFSET, low_bit(KBCLK_PIN))));
+    return (*ADDR32(BND_IO(KBCLK_PORT + GPIO_IDR_OFFSET, low_bit(KBCLK_PIN))));
 }
 
 static inline uint
 get_kbclk_output_value(void)
 {
-   return (*ADDR32(BND_IO(KBDATA_PORT + GPIO_ODR_OFFSET, low_bit(KBDATA_PIN))));
+    return (*ADDR32(BND_IO(KBDATA_PORT + GPIO_ODR_OFFSET, low_bit(KBDATA_PIN))));
 }
 
 static inline void
@@ -928,8 +928,8 @@ kbd_receive_debug(uint which, uint value)
         case 3:
             addr = BND_IO(D19_PORT + GPIO_ODR_OFFSET, low_bit(D19_PIN));
             break;
-   }
-   *ADDR32(addr) = value;
+    }
+    *ADDR32(addr) = value;
 #endif
 }
 

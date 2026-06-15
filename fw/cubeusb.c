@@ -128,7 +128,7 @@ static const char * const host_user_types[] = {
  * for the whatever class (HID, HUB, etc) of the device.
  */
 static const char * const host_gstate_types[] = {
-    "HOST_IDLE", "HOST_DEV_WAIT_FOR_ATTACHMENT",
+    "HOST_IDLE", "HOST_RESET", "HOST_DEV_WAIT_FOR_ATTACHMENT",
         "HOST_DEV_ATTACHED", "HOST_DEV_DISCONNECTED",
     "HOST_DETECT_DEVICE_SPEED", "HOST_ENUMERATION",
         "HOST_CLASS_REQUEST", "HOST_INPUT",
@@ -168,7 +168,8 @@ static const char * const host_controlstate_types[] = {
         "CTRL_DATA_OUT_WAIT", "CTRL_STATUS_IN",
     "CTRL_STATUS_IN_WAIT", "CTRL_STATUS_OUT",
         "CTRL_STATUS_OUT_WAIT", "CTRL_ERROR",
-    "CTRL_STALLED", "CTRL_COMPLETE",
+    "CTRL_ERROR_RECOVERY", "CTRL_STALLED",
+        "CTRL_COMPLETE",
 };
 
 static const char * const hid_state_types[] = {

@@ -117,7 +117,7 @@ config_set_defaults(void)
     config.fan_temp_max = 40;         // Temperature (C) for maximum fan speed
     config.fan_temp_min = 21;         // Temperature (C) for minimum fan speed
     config.fan_rpm_max = 2200;        // Fan maximum RPM
-#define AMIGAPCI
+#undef AMIGAPCI
 #ifdef AMIGAPCI
     config.board_rev = 6;             // Current version of AmigaPCI
     config.board_type = BOARD_TYPE_AMIGAPCI; // AmigaPCI

@@ -39,6 +39,7 @@
 #define R_WA_PIN                GPIO1   // PB1 RTC read/write operation
 #define HIDEN_PORT          GPIOB
 #define HIDEN_PIN               GPIO2   // PB2
+#define KEYJAM_HIDEN_PIN        GPIO10  // PB10
 #define D16_PORT            GPIOB
 #define D16_PIN                 GPIO4   // PB4
 #define D17_PORT            GPIOB

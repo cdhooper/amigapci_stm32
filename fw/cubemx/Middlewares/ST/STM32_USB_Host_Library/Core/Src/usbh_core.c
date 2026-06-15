@@ -496,26 +496,32 @@ USBH_StatusTypeDef  USBH_Process(USBH_HandleTypeDef *phost)
 
   switch (phost->gState)
   {
-    case HOST_IDLE :
+    case HOST_IDLE:
+      if (!phost->device.is_connected)
+        break;
+      USBH_UsrLog("USB%u.%u Device Connected", get_port(phost), phost->address);
+      phost->proc_timer = 0;
+      phost->gState = HOST_RESET;
+      break;
 
-      if (phost->device.is_connected)
-      {
-        USBH_UsrLog("USB%u.%u Device Connected", get_port(phost), phost->address);
+    case HOST_RESET:
+      if (phost->proc_timer++ < 200) {  // 200 ms
+        /* Wait between connection and reset (SOF Timer doesn't tick yet) */
+        USBH_Delay(1U);  // 1 ms each iteration
+        break;
+      }
 
-        /* Wait for 200 ms after connection */
-        phost->gState = HOST_DEV_WAIT_FOR_ATTACHMENT;
-        USBH_Delay(200U);
-        USBH_LL_ResetPort(phost);
+      phost->gState = HOST_DEV_WAIT_FOR_ATTACHMENT;
+      USBH_LL_ResetPort(phost);
 
 #if (USBH_USE_OS == 1U)
-        phost->os_msg = (uint32_t)USBH_PORT_EVENT;
+      phost->os_msg = (uint32_t)USBH_PORT_EVENT;
 #if (osCMSIS < 0x20000U)
-        (void)osMessagePut(phost->os_event, phost->os_msg, 0U);
+      (void)osMessagePut(phost->os_event, phost->os_msg, 0U);
 #else
-        (void)osMessageQueuePut(phost->os_event, &phost->os_msg, 0U, NULL);
+      (void)osMessageQueuePut(phost->os_event, &phost->os_msg, 0U, NULL);
 #endif
 #endif
-      }
       break;
 
     case HOST_DEV_WAIT_FOR_ATTACHMENT: /* Wait for Port Enabled */
@@ -524,18 +530,18 @@ USBH_StatusTypeDef  USBH_Process(USBH_HandleTypeDef *phost)
       {
         USBH_UsrLog("USB%u.%u Device Reset Completed", get_port(phost), phost->address);
         phost->gState = HOST_DEV_ATTACHED;
+        phost->proc_timer = phost->Timer;
       }
       break;
 
-    case HOST_DEV_ATTACHED :
+    case HOST_DEV_ATTACHED:
+      if (phost->Timer - phost->proc_timer > 100)  // 100 ms
+        break;  // Wait between reset and attach
 
       if (phost->pUser != NULL)
       {
         phost->pUser(phost, HOST_USER_CONNECTION);
       }
-
-      /* Wait for 100 ms after Reset */
-      USBH_Delay(100U);
 
       if (!phost->device.is_connected) {
         USBH_UsrLog ("USB%u.%u DISCONNECTED DURING CONNECTION DELAY",

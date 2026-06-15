@@ -865,8 +865,13 @@ gpio_init(void)
 
     gpio_setmode(RTCEN_PORT, RTCEN_PIN | R_WA_PIN, GPIO_SETMODE_INPUT_PU);
 
-    gpio_setv(HIDEN_PORT, HIDEN_PIN, 1);
-    gpio_setmode(HIDEN_PORT, HIDEN_PIN, GPIO_SETMODE_OUTPUT);
+    if (config.board_type == BOARD_TYPE_AMIGAPCI) {
+        gpio_setv(HIDEN_PORT, HIDEN_PIN, 1);
+        gpio_setmode(HIDEN_PORT, HIDEN_PIN, GPIO_SETMODE_OUTPUT);
+    } else {
+        gpio_setv(HIDEN_PORT, KEYJAM_HIDEN_PIN, 1);
+        gpio_setmode(HIDEN_PORT, KEYJAM_HIDEN_PIN, GPIO_SETMODE_OUTPUT);
+    }
 
     gpio_setv(D16_PORT, D16_PIN | D17_PIN | D18_PIN | D19_PIN, 1);
     gpio_setmode(D16_PORT, D16_PIN | D17_PIN | D18_PIN | D19_PIN,

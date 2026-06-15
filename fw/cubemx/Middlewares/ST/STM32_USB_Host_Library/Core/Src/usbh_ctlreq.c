@@ -22,9 +22,10 @@
 
 #undef DPRINTF
 
-#undef DEBUG_CONTROL
+#define DEBUG_CONTROL
 #ifdef DEBUG_CONTROL
-#define DPRINTF(x...) printf(x)
+#include "config.h"
+#define DPRINTF(x...) dprintf(DF_USB_CONTROL, x)
 #else
 #define DPRINTF(x...) do { } while (0)
 #endif
@@ -653,10 +654,11 @@ USBH_StatusTypeDef USBH_CtlReq(USBH_HandleTypeDef *phost, uint8_t *buff,
       {
           /* Failure Mode */
           phost->RequestState = CMD_SEND;  // Return to "ready to send" state
-          USBH_UsrLog("USB%u.%u USBH_CtlReq FAIL\n", get_port(phost), phost->address);
+          USBH_UsrLog("USB%u.%u USBH_CtlReq FAIL l=%x s=%x [%02x %02x %02x]", get_port(phost), phost->address, length, phost->Control.state, phost->Control.buff[0], phost->Control.buff[1], phost->Control.buff[2]);
           status = USBH_FAIL;
       } else if (status == USBH_BUSY) {
-          if (phost->Timer - phost->ctl_timer > 200) {
+          if (phost->Timer - phost->ctl_timer > 2000) {  // 2 seconds
+            /* Multiple retry timer has expired */
             status = USBH_TIMEOUT;
             phost->RequestState = CMD_SEND;
             phost->Control.state = CTRL_IDLE;
@@ -689,7 +691,7 @@ static USBH_StatusTypeDef USBH_HandleControl(USBH_HandleTypeDef *phost)
   {
     case CTRL_SETUP:
       /* send a SETUP packet */
-      DPRINTF("USB%u.%u ctrlsetup in=%x out=%x l=%x pipe=%x [%02x %02x %02x]\n", get_port(phost), phost->address, phost->InEp, phost->OutEp, phost->Control.length, phost->Control.pipe_out, phost->Control.buff[0], phost->Control.buff[1], phost->Control.buff[2]);
+      DPRINTF("USB%u.%u ctrlsetup in=%x out=%x request=%x,%x,%x,%x l=%x pipe=%x [%02x %02x %02x]\n", get_port(phost), phost->address, phost->InEp, phost->OutEp, phost->Control.setup.b.bRequest, phost->Control.setup.b.wValue.w, phost->Control.setup.b.wIndex.w, phost->Control.setup.b.bmRequestType, phost->Control.length, phost->Control.pipe_out, phost->Control.buff[0], phost->Control.buff[1], phost->Control.buff[2]);
 
       USBH_CtlSendSetup(phost, (uint8_t *)(void *)phost->Control.setup.d8,
                         phost->Control.pipe_out);
@@ -1058,11 +1060,8 @@ static USBH_StatusTypeDef USBH_HandleControl(USBH_HandleTypeDef *phost)
       */
       if (++phost->Control.errorcount <= USBH_MAX_ERROR_COUNT)
       {
-        /* Do the transmission again, starting from SETUP Packet */
-        phost->Control.state = CTRL_SETUP;
-        if (phost->RequestState == CMD_WAIT)
-          phost->busy--;
-        phost->RequestState = CMD_SEND;
+        phost->Control.state = CTRL_ERROR_RECOVERY;
+        phost->Control.errortimer = phost->Timer;
       }
       else
       {
@@ -1075,6 +1074,16 @@ static USBH_StatusTypeDef USBH_HandleControl(USBH_HandleTypeDef *phost)
       }
       break;
 
+    case CTRL_ERROR_RECOVERY:
+      /* Give device time to recover */
+      if (phost->Timer - phost->Control.errortimer > 100) {  // 100 ms
+        /* Do the transmission again, starting from SETUP Packet */
+        phost->Control.state = CTRL_SETUP;
+        if (phost->RequestState == CMD_WAIT)
+          phost->busy--;
+        phost->RequestState = CMD_SEND;
+      }
+      break;
     default:
       break;
   }

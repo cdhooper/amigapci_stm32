@@ -32,6 +32,8 @@ USB Mouse
         Reports at Telink Wireless Receiver
     RetroGames THE MOUSE MOD.RG011 USB Mouse
         ID 1c59:0027 Retro Games LTD: THEMouse
+    Cherry MC 2000 corded optical mouse
+        ID 046a:b092 Cherry: USB Optical Mouse
 
 USB Keyboard
     Acer Scorpius-M11SFL (wired)

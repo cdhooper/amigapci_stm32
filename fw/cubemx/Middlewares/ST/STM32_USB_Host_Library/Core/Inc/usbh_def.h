@@ -176,7 +176,7 @@ extern "C" {
 /* Default address is 5 because devices below a hub use device get 1 - 4 */
 #define USBH_DEVICE_ADDRESS                                0x05U
 
-#define USBH_MAX_ERROR_COUNT                               0x03U
+#define USBH_MAX_ERROR_COUNT                               0x10U
 
 #if (USBH_USE_OS == 1U)
 #define MSGQUEUE_OBJECTS                                   0x10U
@@ -325,6 +325,7 @@ typedef enum
 typedef enum
 {
   HOST_IDLE = 0U,
+  HOST_RESET,
   HOST_DEV_WAIT_FOR_ATTACHMENT,
   HOST_DEV_ATTACHED,
   HOST_DEV_DISCONNECTED,
@@ -369,6 +370,7 @@ typedef enum
   CTRL_STATUS_OUT,
   CTRL_STATUS_OUT_WAIT,
   CTRL_ERROR,
+  CTRL_ERROR_RECOVERY,
   CTRL_STALLED,
   CTRL_COMPLETE
 } CTRL_StateTypeDef;
@@ -415,9 +417,10 @@ typedef struct
   uint8_t               *buff;
   uint16_t              length;
   uint16_t              timer;
+  uint16_t              errortimer;
+  uint8_t               errorcount;
   USB_Setup_TypeDef     setup;
   CTRL_StateTypeDef     state;
-  uint8_t               errorcount;
 #if 0
   // MORI
   uint8_t toggle_in;
@@ -478,6 +481,7 @@ typedef struct _USBH_HandleTypeDef
   uint32_t              *Pipes;  // MORI
   __IO uint32_t         Timer;
   uint32_t              ctl_timer;
+  uint32_t              proc_timer;
   void                 *pData;
   void (* pUser)(struct _USBH_HandleTypeDef *pHandle, uint8_t id);
 

@@ -30,7 +30,11 @@ hiden_set(unsigned int enable)
     if (hiden_is_set != enable) {
         hiden_is_set = enable;
         dprintf(DF_HIDEN, "HID %s\n", enable ? "enabled" : "disabled");
-        gpio_setv(HIDEN_PORT, HIDEN_PIN, !enable);
+        if (config.board_type == BOARD_TYPE_AMIGAPCI) {
+            gpio_setv(HIDEN_PORT, HIDEN_PIN, !enable);
+        } else {
+            gpio_setv(HIDEN_PORT, KEYJAM_HIDEN_PIN, !enable);
+        }
     }
     hiden_timeout = 0;
 }
