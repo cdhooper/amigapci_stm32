@@ -18,6 +18,7 @@
 #include "timer.h"
 #include "uart.h"
 #include "amigartc.h"
+#include "button.h"
 #include "cmdline.h"
 #include "clock.h"
 #include "config.h"
@@ -64,6 +65,7 @@ main_poll(void)
     mouse_poll();
     amigartc_poll();
     hiden_poll();
+    button_poll();
 }
 
 int

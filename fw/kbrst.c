@@ -55,7 +55,11 @@ kbrst_poll(void)
     if (power_state == POWER_STATE_INITIAL)
         return;  // Wait for power state to be determined
 
-    reset_button = !gpio_get(STMRSTA_PORT, STMRSTA_PIN);
+    if (config.board_type == BOARD_TYPE_AMIGAPCI) {
+        reset_button = !gpio_get(STMRSTA_PORT, STMRSTA_PIN);
+    } else {
+        reset_button = 0;
+    }
     if (amiga_in_reset == 0xff) {
         /* Get initial state */
         amiga_in_reset = !gpio_get(KBRST_PORT, KBRST_PIN);

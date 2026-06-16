@@ -486,7 +486,6 @@ rtc_clock_config(uint clk_source, uint *prediv_async, uint *prediv_sync)
             hse_div = (input_clk + 500000) / 1000000;
             clk /= hse_div;
 #endif
-
             /*
              * HSE is selected as RTC clock source; configure HSE divisor
              * for RTC clock.
@@ -1132,6 +1131,8 @@ rtc_init(void)
     }
 
     clk_source = RCC_BDCR_RTCSEL_LSE;
+    if (config.board_type == BOARD_TYPE_KEYJAM)
+        clk_source = RCC_BDCR_RTCSEL_HSE;
 
     /*
      * After a reset, the backup domain (RTC registers, RTC backup data

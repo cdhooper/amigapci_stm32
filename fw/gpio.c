@@ -825,10 +825,12 @@ gpio_init(void)
         gpio_setmode(KBRST_PORT, KBRST_PIN | KBDATA_PIN | KBCLK_PIN,
                      GPIO_SETMODE_OUTPUT_ODRAIN_25 | GPIO_SETMODE_PU);
 
-        /* USB power power enables */
+        /* USB power enables */
         gpio_setv(GPIOA, GPIO9 | GPIO10, 0);  // active high
         gpio_setmode(GPIOA, GPIO9 | GPIO10, GPIO_SETMODE_OUTPUT_2);
 
+        /* USER and DFU Buttons are externally pulled down */
+        gpio_setmode(GPIOC, GPIO13 | GPIO14, GPIO_SETMODE_INPUT);
         return;
     }
     gpio_setmode(PWRSW_PORT, PWRSW_PIN, GPIO_SETMODE_INPUT_PU);  // Power button

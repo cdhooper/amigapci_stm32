@@ -105,7 +105,12 @@ power_button_poll(void)
 {
     static uint8_t  power_button_last = 0;
     static uint8_t  power_button_deglitch = 0;
-    uint8_t         power_button = -1;
+    uint8_t         power_button;
+
+    if ((config.board_type != BOARD_TYPE_AMIGAPCI) &&
+        (config.board_type != BOARD_TYPE_APCIDEV)) {
+        return;
+    }
 
     /* Check and debounce power button press */
     power_button = !gpio_get(PWRSW_PORT, PWRSW_PIN);
